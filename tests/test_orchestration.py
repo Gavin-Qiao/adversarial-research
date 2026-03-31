@@ -1,0 +1,705 @@
+"""Comprehensive test suite for the orchestration engine.
+
+Tests the config-driven state machine, severity/verdict extraction,
+context assembly, dispatch config, path computation, and YAML parsing.
+"""
+
+from pathlib import Path
+
+from orchestration import (
+    DEFAULT_CONFIG,
+    _parse_yaml_value,
+    check_waiting,
+    compute_paths,
+    detect_investigation_state,
+    detect_state,
+    extract_severity,
+    extract_verdict,
+    find_completed_rounds,
+    list_context_files,
+    load_config,
+    parse_framework,
+    read_dispatch_config,
+    suggest_next,
+)
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def make_sub_unit(research_dir, sub_rel="cycles/cycle-1/unit-1-test/sub-1a-direct"):
+    """Create a sub-unit directory structure."""
+    sub = research_dir / sub_rel
+    for role in ("thinker", "refutor", "coder", "judge", "researcher"):
+        (sub / role).mkdir(parents=True, exist_ok=True)
+    # Create frontier files
+    for frontier_path in [sub.parent / "frontier.md", sub / "frontier.md"]:
+        if not frontier_path.exists():
+            frontier_path.parent.mkdir(parents=True, exist_ok=True)
+            frontier_path.write_text(
+                "---\nid: test-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test\n"
+            )
+    return sub_rel
+
+
+def write_result(research_dir, rel_path, content="# Result\n\nTest content.", severity=None, verdict=None):
+    """Write a result file with optional severity/verdict fields."""
+    full = research_dir / rel_path
+    full.parent.mkdir(parents=True, exist_ok=True)
+    body = content
+    if severity:
+        body += f"\n\n**Severity**: {severity}\n"
+    if verdict:
+        body += f"\n\n**Verdict**: {verdict}\n"
+    full.write_text(f"---\nid: test\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n{body}")
+
+
+# ---------------------------------------------------------------------------
+# State Machine Tests
+# ---------------------------------------------------------------------------
+
+
+class TestDetectState:
+    def test_empty_subunit(self, research_dir):
+        """No files -> dispatch_thinker round 1"""
+        sub = make_sub_unit(research_dir)
+        config = DEFAULT_CONFIG
+        state = detect_state(research_dir, sub, config)
+        assert state["action"] == "dispatch_thinker"
+        assert state["round"] == 1
+        assert state["phase"] == "pre-falsification"
+
+    def test_thinker_r1_done(self, research_dir):
+        """Thinker R1 exists -> dispatch_refutor round 1"""
+        sub = make_sub_unit(research_dir)
+        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
+        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
+        assert state["action"] == "dispatch_refutor"
+        assert state["round"] == 1
+
+    def test_refutor_fatal_continues(self, research_dir):
+        """Fatal refutor -> dispatch_thinker round 2"""
+        sub = make_sub_unit(research_dir)
+        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
+        write_result(research_dir, f"{sub}/refutor/round-1/result.md", severity="Fatal (blocks the approach)")
+        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
+        assert state["action"] == "dispatch_thinker"
+        assert state["round"] == 2
+
+    def test_refutor_serious_continues(self, research_dir):
+        sub = make_sub_unit(research_dir)
+        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
+        write_result(research_dir, f"{sub}/refutor/round-1/result.md", severity="Serious (requires modification)")
+        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
+        assert state["action"] == "dispatch_thinker"
+        assert state["round"] == 2
+
+    def test_refutor_minor_exits(self, research_dir):
+        """Minor refutor -> dispatch_coder"""
+        sub = make_sub_unit(research_dir)
+        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
+        write_result(research_dir, f"{sub}/refutor/round-1/result.md", severity="Minor (worth noting)")
+        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
+        assert state["action"] == "dispatch_coder"
+        assert state["phase"] == "falsification"
+
+    def test_refutor_none_exits(self, research_dir):
+        sub = make_sub_unit(research_dir)
+        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
+        write_result(research_dir, f"{sub}/refutor/round-1/result.md", content="No genuine flaws found.")
+        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
+        assert state["action"] == "dispatch_coder"
+
+    def test_refutor_unknown_defaults_continue(self, research_dir):
+        """Unknown severity with default=continue -> thinker R2"""
+        sub = make_sub_unit(research_dir)
+        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
+        write_result(research_dir, f"{sub}/refutor/round-1/result.md", content="Some vague criticism.")
+        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
+        assert state["action"] == "dispatch_thinker"
+        assert state.get("severity") == "unknown"
+
+    def test_round_3_forces_coder(self, research_dir):
+        """After round 3, always dispatch coder regardless of severity"""
+        sub = make_sub_unit(research_dir)
+        for r in range(1, 4):
+            write_result(research_dir, f"{sub}/thinker/round-{r}/result.md")
+            write_result(research_dir, f"{sub}/refutor/round-{r}/result.md", severity="Fatal")
+        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
+        assert state["action"] == "dispatch_coder"
+
+    def test_coder_done_dispatches_judge(self, research_dir):
+        sub = make_sub_unit(research_dir)
+        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
+        write_result(research_dir, f"{sub}/refutor/round-1/result.md", severity="Minor")
+        write_result(research_dir, f"{sub}/coder/results/output.md")
+        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
+        assert state["action"] == "dispatch_judge"
+        assert state["phase"] == "judgment"
+
+    def test_verdict_dispatches_reviewer(self, research_dir):
+        sub = make_sub_unit(research_dir)
+        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
+        write_result(research_dir, f"{sub}/refutor/round-1/result.md", severity="Minor")
+        write_result(research_dir, f"{sub}/coder/results/output.md")
+        write_result(research_dir, f"{sub}/judge/results/verdict.md", verdict="SETTLED")
+        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
+        assert state["action"] == "dispatch_reviewer"
+        assert state["phase"] == "recording"
+
+    def test_nonexistent_subunit(self, research_dir):
+        state = detect_state(research_dir, "cycles/nonexistent/sub-1a", DEFAULT_CONFIG)
+        assert state["action"] == "error"
+
+
+# ---------------------------------------------------------------------------
+# Severity Tests
+# ---------------------------------------------------------------------------
+
+
+class TestExtractSeverity:
+    def test_fatal_structured(self, tmp_path):
+        f = tmp_path / "result.md"
+        f.write_text("**Severity**: Fatal (blocks the approach)\n")
+        assert extract_severity(f, DEFAULT_CONFIG) == "fatal"
+
+    def test_serious_structured(self, tmp_path):
+        f = tmp_path / "result.md"
+        f.write_text("**Severity**: Serious (requires modification)\n")
+        assert extract_severity(f, DEFAULT_CONFIG) == "serious"
+
+    def test_minor_structured(self, tmp_path):
+        f = tmp_path / "result.md"
+        f.write_text("**Severity**: Minor (worth noting)\n")
+        assert extract_severity(f, DEFAULT_CONFIG) == "minor"
+
+    def test_keyword_fallback(self, tmp_path):
+        f = tmp_path / "result.md"
+        f.write_text("This fundamentally flawed approach cannot work.\n")
+        assert extract_severity(f, DEFAULT_CONFIG) == "fatal"
+
+    def test_malformed(self, tmp_path):
+        f = tmp_path / "result.md"
+        f.write_text("Some text without severity indicators.\n")
+        assert extract_severity(f, DEFAULT_CONFIG) == "unknown"
+
+    def test_missing_file(self, tmp_path):
+        assert extract_severity(tmp_path / "nonexistent.md", DEFAULT_CONFIG) == "unknown"
+
+
+# ---------------------------------------------------------------------------
+# Verdict Tests
+# ---------------------------------------------------------------------------
+
+
+class TestExtractVerdict:
+    def test_settled(self, tmp_path):
+        f = tmp_path / "verdict.md"
+        f.write_text("**Verdict**: SETTLED\n")
+        assert extract_verdict(f, DEFAULT_CONFIG) == "SETTLED"
+
+    def test_falsified(self, tmp_path):
+        f = tmp_path / "verdict.md"
+        f.write_text("**Verdict**: FALSIFIED\n")
+        assert extract_verdict(f, DEFAULT_CONFIG) == "FALSIFIED"
+
+    def test_mixed(self, tmp_path):
+        f = tmp_path / "verdict.md"
+        f.write_text("**Verdict**: MIXED\n")
+        assert extract_verdict(f, DEFAULT_CONFIG) == "MIXED"
+
+    def test_malformed(self, tmp_path):
+        f = tmp_path / "verdict.md"
+        f.write_text("No verdict here.\n")
+        assert extract_verdict(f, DEFAULT_CONFIG) == "UNKNOWN"
+
+    def test_missing(self, tmp_path):
+        assert extract_verdict(tmp_path / "nope.md", DEFAULT_CONFIG) == "UNKNOWN"
+
+
+# ---------------------------------------------------------------------------
+# Context Tests
+# ---------------------------------------------------------------------------
+
+
+class TestContextFiles:
+    def test_round_1_thinker(self, research_dir):
+        """Round 1 thinker needs only frontiers"""
+        sub = make_sub_unit(research_dir)
+        files = list_context_files(research_dir, sub, "dispatch_thinker", 1)
+        assert any("frontier.md" in f for f in files)
+        assert not any("thinker" in f for f in files)
+
+    def test_round_1_refutor(self, research_dir):
+        """Round 1 refutor needs frontiers + thinker R1"""
+        sub = make_sub_unit(research_dir)
+        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
+        files = list_context_files(research_dir, sub, "dispatch_refutor", 1)
+        assert any("thinker/round-1/result.md" in f for f in files)
+
+    def test_coder_gets_all_rounds(self, research_dir):
+        """Coder gets frontiers + all debate rounds"""
+        sub = make_sub_unit(research_dir)
+        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
+        write_result(research_dir, f"{sub}/refutor/round-1/result.md")
+        write_result(research_dir, f"{sub}/thinker/round-2/result.md")
+        write_result(research_dir, f"{sub}/refutor/round-2/result.md")
+        files = list_context_files(research_dir, sub, "dispatch_coder", None)
+        assert len([f for f in files if "thinker" in f or "refutor" in f]) == 4
+
+    def test_reviewer_gets_verdict(self, research_dir):
+        """Reviewer context includes judge verdict"""
+        sub = make_sub_unit(research_dir)
+        write_result(research_dir, f"{sub}/judge/results/verdict.md")
+        files = list_context_files(research_dir, sub, "dispatch_reviewer", None)
+        assert any("verdict.md" in f for f in files)
+
+
+# ---------------------------------------------------------------------------
+# Config Tests
+# ---------------------------------------------------------------------------
+
+
+class TestConfig:
+    def test_load_default(self):
+        config = load_config(None)
+        assert "debate_loop" in config
+
+    def test_load_yaml_file(self):
+        config_path = Path(__file__).resolve().parent.parent / "config" / "orchestration.yaml"
+        config = load_config(config_path)
+        assert config["debate_loop"]["max_rounds"] == 3
+
+    def test_custom_max_rounds(self, research_dir):
+        """Modified max_rounds should affect state machine"""
+        sub = make_sub_unit(research_dir)
+        config = DEFAULT_CONFIG.copy()
+        config["debate_loop"] = {**config["debate_loop"], "max_rounds": 1}
+        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
+        write_result(research_dir, f"{sub}/refutor/round-1/result.md", severity="Fatal")
+        state = detect_state(research_dir, sub, config)
+        # With max_rounds=1, even fatal severity goes to coder
+        assert state["action"] == "dispatch_coder"
+
+
+# ---------------------------------------------------------------------------
+# Compute Paths Tests
+# ---------------------------------------------------------------------------
+
+
+class TestComputePaths:
+    def test_thinker_round(self):
+        paths = compute_paths("cycles/c1/unit-1/sub-1a", "thinker", 2)
+        assert "thinker/round-2/prompt.md" in paths["prompt_path"]
+        assert "thinker/round-2/result.md" in paths["result_path"]
+
+    def test_coder(self):
+        paths = compute_paths("cycles/c1/unit-1/sub-1a", "coder", None)
+        assert "coder/results/output.md" in paths["result_path"]
+
+    def test_judge(self):
+        paths = compute_paths("cycles/c1/unit-1/sub-1a", "judge", None)
+        assert "judge/results/verdict.md" in paths["result_path"]
+
+
+# ---------------------------------------------------------------------------
+# Dispatch Config Tests
+# ---------------------------------------------------------------------------
+
+
+class TestDispatchConfig:
+    def test_defaults(self, research_dir):
+        config = read_dispatch_config(research_dir)
+        assert config["thinker"] == "internal"
+        assert config["judge"] == "internal"
+
+    def test_reads_config(self, research_dir):
+        (research_dir / ".config.md").write_text("# Config\n- Thinker: external\n- Refutor: internal\n")
+        config = read_dispatch_config(research_dir)
+        assert config["thinker"] == "external"
+        assert config["refutor"] == "internal"
+
+
+# ---------------------------------------------------------------------------
+# Suggest Next Tests
+# ---------------------------------------------------------------------------
+
+
+class TestSuggestNext:
+    def test_settled(self):
+        s = suggest_next("SETTLED", "sub-1a", DEFAULT_CONFIG)
+        assert s["action"] == "complete"
+        assert "settled" in s["message"].lower()
+
+    def test_mixed(self):
+        s = suggest_next("MIXED", "sub-1a", DEFAULT_CONFIG)
+        assert s["action"] == "prompt_user"
+        assert len(s["options"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# Find Completed Rounds Tests
+# ---------------------------------------------------------------------------
+
+
+class TestFindCompletedRounds:
+    def test_no_dir(self, tmp_path):
+        assert find_completed_rounds(tmp_path / "nonexistent") == []
+
+    def test_with_rounds(self, tmp_path):
+        for r in [1, 3, 2]:  # intentionally out of order
+            d = tmp_path / f"round-{r}"
+            d.mkdir()
+            (d / "result.md").write_text("content")
+        assert find_completed_rounds(tmp_path) == [1, 2, 3]
+
+    def test_incomplete_round(self, tmp_path):
+        d = tmp_path / "round-1"
+        d.mkdir()
+        (d / "prompt.md").write_text("prompt only")
+        assert find_completed_rounds(tmp_path) == []
+
+
+# ---------------------------------------------------------------------------
+# Waiting Tests
+# ---------------------------------------------------------------------------
+
+
+class TestWaiting:
+    def test_not_waiting(self, tmp_path):
+        d = tmp_path / "round-1"
+        d.mkdir()
+        (d / "result.md").write_text("done")
+        assert check_waiting(tmp_path, 1) is None
+
+    def test_waiting(self, tmp_path):
+        d = tmp_path / "round-1"
+        d.mkdir()
+        (d / "prompt.md").write_text("waiting for external")
+        result = check_waiting(tmp_path, 1)
+        assert result is not None
+        assert "round 1" in result
+
+
+# ---------------------------------------------------------------------------
+# YAML Parser Tests
+# ---------------------------------------------------------------------------
+
+
+class TestYamlParser:
+    def test_inline_comments_stripped(self):
+        assert _parse_yaml_value("3                   # hard cap") == 3
+        assert _parse_yaml_value("true  # boolean") is True
+        assert _parse_yaml_value("refutor  # who gets last word") == "refutor"
+
+
+# ---------------------------------------------------------------------------
+# Parse Framework Tests
+# ---------------------------------------------------------------------------
+
+SAMPLE_FRAMEWORK = """\
+# Research Framework
+
+Some prose about the investigation.
+
+## Claims
+
+```yaml
+# CLAIM_REGISTRY
+claims:
+  - id: enrichment-bound
+    statement: "The enrichment functional has a tight upper bound"
+    maturity: supported
+    confidence: high
+    depends_on: []
+    falsification: "Find a sequence exceeding the proposed bound"
+  - id: bottleneck-ratio
+    statement: "The bottleneck ratio governs convergence rate"
+    maturity: conjecture
+    confidence: moderate
+    depends_on: [enrichment-bound]
+    falsification: "Construct a counterexample with divergent bottleneck ratio"
+```
+
+## Open Problems
+
+More prose.
+"""
+
+FRAMEWORK_NO_REGISTRY = """\
+# Research Framework
+
+Some prose with no claim registry YAML block.
+
+## Claims
+
+These are described in text only.
+"""
+
+FRAMEWORK_MALFORMED = """\
+# Research Framework
+
+```yaml
+# CLAIM_REGISTRY
+claims:
+  - this is not valid yaml mapping
+  - id: missing-colon
+    statement
+```
+
+Done.
+"""
+
+
+class TestParseFramework:
+    def test_valid_block(self, tmp_path):
+        f = tmp_path / "framework.md"
+        f.write_text(SAMPLE_FRAMEWORK)
+        claims = parse_framework(f)
+        assert len(claims) == 2
+        assert claims[0]["id"] == "enrichment-bound"
+        assert claims[0]["maturity"] == "supported"
+        assert claims[0]["confidence"] == "high"
+        assert claims[0]["depends_on"] == []
+        assert claims[1]["id"] == "bottleneck-ratio"
+        assert claims[1]["depends_on"] == ["enrichment-bound"]
+
+    def test_no_block(self, tmp_path):
+        f = tmp_path / "framework.md"
+        f.write_text(FRAMEWORK_NO_REGISTRY)
+        assert parse_framework(f) == []
+
+    def test_missing_file(self, tmp_path):
+        assert parse_framework(tmp_path / "nonexistent.md") == []
+
+    def test_malformed_yaml(self, tmp_path):
+        f = tmp_path / "framework.md"
+        f.write_text(FRAMEWORK_MALFORMED)
+        # Should not crash, returns whatever it can parse
+        claims = parse_framework(f)
+        # May return partial or empty — just must not raise
+        assert isinstance(claims, list)
+
+    def test_single_claim(self, tmp_path):
+        f = tmp_path / "framework.md"
+        f.write_text("""\
+# Framework
+
+```yaml
+# CLAIM_REGISTRY
+claims:
+  - id: solo-claim
+    statement: "A single claim"
+    maturity: experiment
+    confidence: low
+    falsification: "Run the experiment"
+```
+""")
+        claims = parse_framework(f)
+        assert len(claims) == 1
+        assert claims[0]["id"] == "solo-claim"
+        assert claims[0]["maturity"] == "experiment"
+        assert claims[0]["depends_on"] == []
+
+
+# ---------------------------------------------------------------------------
+# Investigation State Machine Tests
+# ---------------------------------------------------------------------------
+
+
+def _make_investigation_dir(tmp_path):
+    """Create base research structure for investigation tests."""
+    for d in ["context/assumptions", "cycles", ".db"]:
+        (tmp_path / d).mkdir(parents=True, exist_ok=True)
+    return tmp_path
+
+
+class TestDetectInvestigationState:
+    def test_empty_returns_gather_context(self, tmp_path):
+        rd = _make_investigation_dir(tmp_path)
+        state = detect_investigation_state(rd, DEFAULT_CONFIG)
+        assert state["action"] == "gather_context"
+
+    def test_with_distillation_returns_create_framework(self, tmp_path):
+        rd = _make_investigation_dir(tmp_path)
+        (rd / "context" / "distillation-topic.md").write_text("# Literature Survey\n\nContent.")
+        state = detect_investigation_state(rd, DEFAULT_CONFIG)
+        assert state["action"] == "create_framework"
+        assert "distillation-topic.md" in state["distillations"][0]
+
+    def test_with_framework_returns_scaffold_cycles(self, tmp_path):
+        rd = _make_investigation_dir(tmp_path)
+        (rd / "context" / "distillation-topic.md").write_text("# Survey\n")
+        (rd / "framework.md").write_text(SAMPLE_FRAMEWORK)
+        state = detect_investigation_state(rd, DEFAULT_CONFIG)
+        assert state["action"] == "scaffold_cycles"
+        assert len(state["claims"]) == 2
+
+    def test_scaffolded_returns_run_cycle(self, tmp_path):
+        rd = _make_investigation_dir(tmp_path)
+        (rd / "context" / "distillation-topic.md").write_text("# Survey\n")
+        (rd / "framework.md").write_text(SAMPLE_FRAMEWORK)
+        # Create cycle dirs matching claim IDs
+        for claim_id in ["enrichment-bound", "bottleneck-ratio"]:
+            cycle_dir = rd / "cycles" / f"cycle-1-{claim_id}"
+            unit_dir = cycle_dir / "unit-1-investigation"
+            sub_dir = unit_dir / "sub-1a-primary"
+            for role in ("thinker", "refutor", "coder", "judge", "researcher"):
+                (sub_dir / role).mkdir(parents=True, exist_ok=True)
+            (cycle_dir / "frontier.md").write_text(
+                f"---\nid: c1-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# {claim_id}\n"
+            )
+            (unit_dir / "frontier.md").write_text(
+                "---\nid: u1-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Investigation\n"
+            )
+            (sub_dir / "frontier.md").write_text(
+                "---\nid: s1a-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Primary\n"
+            )
+        state = detect_investigation_state(rd, DEFAULT_CONFIG)
+        assert state["action"] == "run_cycle"
+        assert "sub_unit" in state
+
+    def test_cycle_done_returns_review_cycle(self, tmp_path):
+        rd = _make_investigation_dir(tmp_path)
+        (rd / "context" / "distillation-topic.md").write_text("# Survey\n")
+        # Framework with single claim
+        (rd / "framework.md").write_text("""\
+# Framework
+
+```yaml
+# CLAIM_REGISTRY
+claims:
+  - id: test-claim
+    statement: "Test"
+    maturity: conjecture
+    confidence: moderate
+    falsification: "Disprove it"
+```
+""")
+        # Scaffold the cycle with a verdict (judge done, reviewer not done)
+        cycle_dir = rd / "cycles" / "cycle-1-test-claim"
+        unit_dir = cycle_dir / "unit-1-investigation"
+        sub_dir = unit_dir / "sub-1a-primary"
+        for role in ("thinker", "refutor", "coder", "judge", "researcher"):
+            (sub_dir / role).mkdir(parents=True, exist_ok=True)
+        for p in [cycle_dir / "frontier.md", unit_dir / "frontier.md", sub_dir / "frontier.md"]:
+            p.write_text("---\nid: test\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test\n")
+        # Add thinker + refutor + coder + verdict (complete but reviewer not done)
+        t_dir = sub_dir / "thinker" / "round-1"
+        t_dir.mkdir(parents=True, exist_ok=True)
+        (t_dir / "result.md").write_text("---\nid: t\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# T\n")
+        r_dir = sub_dir / "refutor" / "round-1"
+        r_dir.mkdir(parents=True, exist_ok=True)
+        (r_dir / "result.md").write_text(
+            "---\nid: r\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# R\n\n**Severity**: minor\n"
+        )
+        (sub_dir / "coder" / "results").mkdir(parents=True, exist_ok=True)
+        (sub_dir / "coder" / "results" / "output.md").write_text(
+            "---\nid: c\ntype: evidence\nstatus: active\ndate: 2026-01-01\n---\n\n# Coder\n"
+        )
+        (sub_dir / "judge" / "results").mkdir(parents=True, exist_ok=True)
+        (sub_dir / "judge" / "results" / "verdict.md").write_text(
+            "---\nid: v\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n# Verdict\n\n**Verdict**: SETTLED\n"
+        )
+        state = detect_investigation_state(rd, DEFAULT_CONFIG)
+        assert state["action"] == "review_cycle"
+
+    def test_all_done_returns_synthesize(self, tmp_path):
+        rd = _make_investigation_dir(tmp_path)
+        (rd / "context" / "distillation-topic.md").write_text("# Survey\n")
+        (rd / "framework.md").write_text("""\
+# Framework
+
+```yaml
+# CLAIM_REGISTRY
+claims:
+  - id: done-claim
+    statement: "Done"
+    maturity: supported
+    confidence: high
+    falsification: "N/A"
+```
+""")
+        # Create a completed cycle (reviewer done = frontier.md newer than verdict)
+        cycle_dir = rd / "cycles" / "cycle-1-done-claim"
+        unit_dir = cycle_dir / "unit-1-investigation"
+        sub_dir = unit_dir / "sub-1a-primary"
+        for role in ("thinker", "refutor", "coder", "judge", "researcher"):
+            (sub_dir / role).mkdir(parents=True, exist_ok=True)
+        for p in [cycle_dir / "frontier.md", unit_dir / "frontier.md"]:
+            p.write_text("---\nid: test\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test\n")
+        # Create all needed results for complete state
+        t_dir = sub_dir / "thinker" / "round-1"
+        t_dir.mkdir(parents=True, exist_ok=True)
+        (t_dir / "result.md").write_text("---\nid: t\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# T\n")
+        r_dir = sub_dir / "refutor" / "round-1"
+        r_dir.mkdir(parents=True, exist_ok=True)
+        (r_dir / "result.md").write_text(
+            "---\nid: r\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# R\n\n**Severity**: minor\n"
+        )
+        (sub_dir / "coder" / "results").mkdir(parents=True, exist_ok=True)
+        (sub_dir / "coder" / "results" / "output.md").write_text(
+            "---\nid: c\ntype: evidence\nstatus: active\ndate: 2026-01-01\n---\n\n# Coder\n"
+        )
+        (sub_dir / "judge" / "results").mkdir(parents=True, exist_ok=True)
+        import time
+        (sub_dir / "judge" / "results" / "verdict.md").write_text(
+            "---\nid: v\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n# Verdict\n\n**Verdict**: SETTLED\n"
+        )
+        time.sleep(0.05)  # Ensure frontier.md is newer than verdict
+        (sub_dir / "frontier.md").write_text(
+            "---\nid: sf\ntype: verdict\nstatus: settled\ndate: 2026-01-01\n---\n\n# Done\n"
+        )
+        state = detect_investigation_state(rd, DEFAULT_CONFIG)
+        assert state["action"] == "synthesize"
+
+    def test_complete_with_synthesis(self, tmp_path):
+        rd = _make_investigation_dir(tmp_path)
+        (rd / "context" / "distillation-topic.md").write_text("# Survey\n")
+        (rd / "framework.md").write_text("""\
+# Framework
+
+```yaml
+# CLAIM_REGISTRY
+claims:
+  - id: final-claim
+    statement: "Final"
+    maturity: supported
+    confidence: high
+    falsification: "N/A"
+```
+""")
+        # Create a completed cycle
+        cycle_dir = rd / "cycles" / "cycle-1-final-claim"
+        unit_dir = cycle_dir / "unit-1-investigation"
+        sub_dir = unit_dir / "sub-1a-primary"
+        for role in ("thinker", "refutor", "coder", "judge", "researcher"):
+            (sub_dir / role).mkdir(parents=True, exist_ok=True)
+        for p in [cycle_dir / "frontier.md", unit_dir / "frontier.md"]:
+            p.write_text("---\nid: test\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test\n")
+        t_dir = sub_dir / "thinker" / "round-1"
+        t_dir.mkdir(parents=True, exist_ok=True)
+        (t_dir / "result.md").write_text("---\nid: t\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# T\n")
+        r_dir = sub_dir / "refutor" / "round-1"
+        r_dir.mkdir(parents=True, exist_ok=True)
+        (r_dir / "result.md").write_text(
+            "---\nid: r\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# R\n\n**Severity**: minor\n"
+        )
+        (sub_dir / "coder" / "results").mkdir(parents=True, exist_ok=True)
+        (sub_dir / "coder" / "results" / "output.md").write_text(
+            "---\nid: c\ntype: evidence\nstatus: active\ndate: 2026-01-01\n---\n\n# Coder\n"
+        )
+        (sub_dir / "judge" / "results").mkdir(parents=True, exist_ok=True)
+        import time
+        (sub_dir / "judge" / "results" / "verdict.md").write_text(
+            "---\nid: v\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n# Verdict\n\n**Verdict**: SETTLED\n"
+        )
+        time.sleep(0.05)
+        (sub_dir / "frontier.md").write_text(
+            "---\nid: sf\ntype: verdict\nstatus: settled\ndate: 2026-01-01\n---\n\n# Done\n"
+        )
+        # Add synthesis
+        (rd / "synthesis.md").write_text("# Synthesis\n\nFinal results.")
+        state = detect_investigation_state(rd, DEFAULT_CONFIG)
+        assert state["action"] == "complete"

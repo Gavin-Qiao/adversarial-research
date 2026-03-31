@@ -1,0 +1,86 @@
+# Orchestration Configuration
+# Modify this file to change the adversarial research workflow.
+# Changes take effect immediately — no restart needed.
+
+# The debate loop: thinker and refutor alternate rounds
+debate_loop:
+  sequence: [thinker, refutor]   # within each round: thinker proposes, refutor attacks
+  max_rounds: 3                   # hard cap on debate rounds
+  final_say: refutor              # who gets the last word before coder
+
+# Role definitions
+roles:
+  - name: thinker
+    type: debate
+    max_rounds: 3
+    output_dir: "round-{round}"
+    files: [prompt.md, result.md]
+
+  - name: refutor
+    type: debate
+    max_rounds: 3
+    output_dir: "round-{round}"
+    files: [prompt.md, result.md]
+    exit_condition:
+      field: "Severity"
+      continue_on: [fatal, serious]   # continue debate loop
+      exit_on: [minor, none]          # proceed to coder
+      unknown: continue               # default when field not found
+
+  - name: coder
+    type: empirical
+    max_rounds: 1
+    output_dir: "results"
+    files: [output.md]
+
+  - name: judge
+    type: verdict
+    max_rounds: 1
+    output_dir: "results"
+    files: [verdict.md]
+    verdict_field: "Verdict"
+    verdict_values: [SETTLED, FALSIFIED, MIXED]
+
+  - name: reviewer
+    type: bookkeeper
+    max_rounds: 1
+
+# Phase definitions
+phases:
+  pre-falsification:
+    roles: [thinker, refutor]
+    description: "Iterative hypothesis refinement through adversarial debate"
+  falsification:
+    roles: [coder]
+    description: "Empirical testing of the refined hypothesis"
+  judgment:
+    roles: [judge]
+    description: "Evaluate all evidence and render verdict"
+  recording:
+    roles: [reviewer]
+    description: "Record outcome, update frontier"
+
+# Post-verdict actions
+post_verdict:
+  SETTLED:
+    action: complete
+    message: "Sub-unit settled. Run /status to see the frontier."
+  FALSIFIED:
+    action: complete
+    cascade: true
+    message: "Hypothesis falsified. Consider a new sub-unit with a different approach."
+  MIXED:
+    action: prompt_user
+    message: "Verdict mixed. Evidence insufficient."
+    options:
+      - "Retry with revised hypothesis (new sub-unit)"
+      - "Gather more coder evidence (re-run coder)"
+      - "Escalate to unit-level review"
+
+# Severity keywords for parsing refutor output
+# Used when the structured "Severity:" field is not found
+severity_keywords:
+  fatal: ["fatal", "blocks the approach", "fundamentally flawed"]
+  serious: ["serious", "requires modification", "significant concern"]
+  minor: ["minor", "worth noting", "cosmetic"]
+  none: ["no genuine flaws", "no fatal", "clean"]

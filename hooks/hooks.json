@@ -1,0 +1,17 @@
+{
+  "description": "Adversarial research plugin hooks",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -d research/cycles ] || [ -d research/context ]; then python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/manage.py\" --root research build 2>&1 | tail -5; fi",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

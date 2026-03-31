@@ -1,0 +1,25 @@
+{
+  "name": "adversarial-research",
+  "owner": {
+    "name": "Mohan"
+  },
+  "metadata": {
+    "description": "Adversarial multi-agent research methodology plugin for Claude Code"
+  },
+  "plugins": [
+    {
+      "name": "adversarial-research",
+      "source": "./",
+      "description": "Evidence-based adversarial research methodology with hypothesis tracking, assumption management, and cascade invalidation",
+      "version": "0.1.0",
+      "license": "MIT",
+      "keywords": [
+        "research",
+        "adversarial",
+        "hypothesis-testing",
+        "multi-agent",
+        "debate"
+      ]
+    }
+  ]
+}
