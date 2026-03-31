@@ -925,7 +925,6 @@ def detect_investigation_state(
     - gather_context    — no distillation files yet
     - create_framework  — distillation exists, no framework.md
     - scaffold_cycles   — framework exists, cycles not scaffolded
-    - run_wave          — wave N has unfinished cycles
     - run_cycle         — specific cycle needs conductor
     - review_cycle      — cycle done, needs reviewer
     - synthesize        — all waves complete, need synthesis

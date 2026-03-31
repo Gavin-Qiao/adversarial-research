@@ -9,10 +9,12 @@ from pathlib import Path
 from orchestration import (
     DEFAULT_CONFIG,
     _parse_yaml_value,
+    attenuate_confidence,
     check_waiting,
     compute_paths,
     detect_investigation_state,
     detect_state,
+    extract_confidence,
     extract_severity,
     extract_verdict,
     find_completed_rounds,
@@ -216,6 +218,63 @@ class TestExtractVerdict:
 
     def test_missing(self, tmp_path):
         assert extract_verdict(tmp_path / "nope.md", DEFAULT_CONFIG) == "UNKNOWN"
+
+    def test_inconclusive(self, tmp_path):
+        f = tmp_path / "verdict.md"
+        f.write_text("**Verdict**: INCONCLUSIVE\n")
+        assert extract_verdict(f, DEFAULT_CONFIG) == "INCONCLUSIVE"
+
+    def test_inconclusive_in_prose(self, tmp_path):
+        f = tmp_path / "verdict.md"
+        f.write_text("## Analysis\n\nAfter review...\n\n**Verdict**: INCONCLUSIVE — insufficient evidence\n")
+        assert extract_verdict(f, DEFAULT_CONFIG) == "INCONCLUSIVE"
+
+
+class TestExtractConfidence:
+    def test_high(self, tmp_path):
+        f = tmp_path / "verdict.md"
+        f.write_text("**Verdict**: SETTLED\n\n**Confidence**: high\n")
+        assert extract_confidence(f) == "high"
+
+    def test_moderate(self, tmp_path):
+        f = tmp_path / "verdict.md"
+        f.write_text("**Confidence**: moderate\n")
+        assert extract_confidence(f) == "moderate"
+
+    def test_low(self, tmp_path):
+        f = tmp_path / "verdict.md"
+        f.write_text("**Confidence**: low\n")
+        assert extract_confidence(f) == "low"
+
+    def test_missing(self, tmp_path):
+        f = tmp_path / "verdict.md"
+        f.write_text("**Verdict**: SETTLED\n")
+        assert extract_confidence(f) == "unknown"
+
+    def test_missing_file(self, tmp_path):
+        assert extract_confidence(tmp_path / "nope.md") == "unknown"
+
+    def test_bold_format(self, tmp_path):
+        f = tmp_path / "verdict.md"
+        f.write_text("**Confidence**: **high**\n")
+        assert extract_confidence(f) == "high"
+
+
+class TestAttenuateConfidence:
+    def test_high_to_moderate(self):
+        assert attenuate_confidence("high") == "moderate"
+
+    def test_moderate_to_low(self):
+        assert attenuate_confidence("moderate") == "low"
+
+    def test_low_stays_low(self):
+        assert attenuate_confidence("low") == "low"
+
+    def test_unknown_to_low(self):
+        assert attenuate_confidence("unknown") == "low"
+
+    def test_none_to_low(self):
+        assert attenuate_confidence(None) == "low"
 
 
 # ---------------------------------------------------------------------------

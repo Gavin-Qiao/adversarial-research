@@ -88,6 +88,7 @@ If code or docs change without updating the other, tests fail.
 | V1 | SETTLED | complete_settled | false |
 | V2 | FALSIFIED | complete_falsified | true |
 | V3 | MIXED | complete_mixed | false |
+| V4 | INCONCLUSIVE | complete_inconclusive | false |
 <!-- CONTRACT:VERDICT_TABLE_END -->
 
 ## External Agent Flow

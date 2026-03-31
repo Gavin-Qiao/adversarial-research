@@ -768,8 +768,12 @@ def cmd_validate(args: argparse.Namespace) -> None:
             errors.append(f"Invalid type '{row['type']}' for {nid} ({fp})")
 
         # Valid attack_type
-        if row["attack_type"] and row["attack_type"] not in {"undermines", "rebuts", "undercuts"}:
+        if row["attack_type"] and row["attack_type"] not in VALID_ATTACK_TYPES:
             errors.append(f"Invalid attack_type '{row['attack_type']}' for {nid} ({fp})")
+
+        # Valid cycle_status
+        if row["cycle_status"] and row["cycle_status"] not in VALID_CYCLE_STATUSES:
+            errors.append(f"Invalid cycle_status '{row['cycle_status']}' for {nid} ({fp})")
 
     # Check for self-loops
     self_loops = conn.execute("SELECT source_id, relation FROM edges WHERE source_id = target_id").fetchall()
@@ -1644,6 +1648,7 @@ def cmd_next(args: argparse.Namespace) -> None:
     from orchestration import (
         compute_paths,
         detect_state,
+        extract_confidence,
         find_active_subunit,
         list_context_files,
         load_config,
@@ -1673,6 +1678,11 @@ def cmd_next(args: argparse.Namespace) -> None:
 
     # Enrich with context files
     state["context_files"] = list_context_files(RESEARCH_DIR, sub_path, state["action"], state.get("round"))
+
+    # Enrich complete states with verdict confidence
+    if state["action"].startswith("complete_"):
+        verdict_path = RESEARCH_DIR / sub_path / "judge" / "results" / "verdict.md"
+        state["confidence"] = extract_confidence(verdict_path)
 
     print(json.dumps(state, indent=2))
 

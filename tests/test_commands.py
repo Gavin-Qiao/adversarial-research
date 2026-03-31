@@ -91,6 +91,72 @@ class TestCmdFalsify:
         _rc, out, _ = run_manage(populated_research, "falsify", "assumption-a1")
         assert "already falsified" in out.lower()
 
+    def test_multi_level_cascade(self, research_dir):
+        """A → B → C: falsify A, both B and C should be undermined."""
+        from manage import serialise_frontmatter
+
+        assume_dir = research_dir / "context" / "assumptions"
+        assume_dir.mkdir(parents=True, exist_ok=True)
+        (assume_dir / "a.md").write_text(
+            serialise_frontmatter(
+                {"id": "a", "type": "assumption", "status": "active", "date": "2026-01-01",
+                 "depends_on": [], "assumes": []}
+            ) + "\n# A\n"
+        )
+        cycles_dir = research_dir / "cycles" / "cycle-1" / "unit-1" / "thinker" / "round-1"
+        cycles_dir.mkdir(parents=True)
+        (cycles_dir / "result.md").write_text(
+            serialise_frontmatter(
+                {"id": "b", "type": "claim", "status": "active", "date": "2026-01-01",
+                 "depends_on": [], "assumes": ["a"]}
+            ) + "\n# B\n"
+        )
+        coder_dir = research_dir / "cycles" / "cycle-1" / "unit-1" / "coder" / "results"
+        coder_dir.mkdir(parents=True)
+        (coder_dir / "output.md").write_text(
+            serialise_frontmatter(
+                {"id": "c", "type": "evidence", "status": "active", "date": "2026-01-01",
+                 "depends_on": ["b"], "assumes": []}
+            ) + "\n# C\n"
+        )
+        rc, out, _ = run_manage(research_dir, "falsify", "a")
+        assert rc == 0
+        assert "undermined" in out
+        # Verify both b and c are undermined via DB query
+        _rc2, out2, _ = run_manage(
+            research_dir, "query", "SELECT id, status FROM nodes WHERE status='undermined'"
+        )
+        assert "b" in out2
+        assert "c" in out2
+
+    def test_cascade_attenuates_confidence(self, research_dir):
+        """Cascade should downgrade confidence on undermined nodes."""
+        from manage import serialise_frontmatter
+
+        assume_dir = research_dir / "context" / "assumptions"
+        assume_dir.mkdir(parents=True, exist_ok=True)
+        (assume_dir / "base.md").write_text(
+            serialise_frontmatter(
+                {"id": "base", "type": "assumption", "status": "active", "date": "2026-01-01",
+                 "depends_on": [], "assumes": []}
+            ) + "\n# Base\n"
+        )
+        cycles_dir = research_dir / "cycles" / "cycle-1" / "unit-1" / "thinker" / "round-1"
+        cycles_dir.mkdir(parents=True)
+        (cycles_dir / "result.md").write_text(
+            serialise_frontmatter(
+                {"id": "dep", "type": "claim", "status": "active", "date": "2026-01-01",
+                 "depends_on": [], "assumes": ["base"], "confidence": "high"}
+            ) + "\n# Dep\n"
+        )
+        rc, _out, _ = run_manage(research_dir, "falsify", "base")
+        assert rc == 0
+        # Check that confidence was attenuated: high → moderate
+        _rc2, out2, _ = run_manage(
+            research_dir, "query", "SELECT id, confidence FROM nodes WHERE id='dep'"
+        )
+        assert "moderate" in out2
+
 
 class TestCmdSettle:
     def test_marks_settled(self, sample_node):

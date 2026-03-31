@@ -28,18 +28,18 @@ claude --plugin-dir /path/to/adversarial-research
 
 ## Agents
 
-| Agent | Model | Purpose | Codebase Access |
-|-------|-------|---------|-----------------|
-| `@researcher` | Sonnet | Survey literature, gather background | Web + read |
-| `@thinker` | Opus | Propose hypotheses from context | None |
-| `@deep-thinker` | Opus | Synthesize across sub-units/cycles | None |
-| `@refutor` | Opus | Attack hypotheses, find counterexamples | None |
-| `@coder` | Sonnet | Validate empirically with synthetic data | Full |
-| `@judge` | Opus | Evaluate evidence, render verdict | Read-only |
-| `@reviewer` | Sonnet | Record outcomes, update frontier | Full |
-| `@conductor` | Opus | Orchestrate full cycle, dispatch agents | Full + Agent |
+| Agent | Model | Purpose | Codebase | Web |
+|-------|-------|---------|----------|-----|
+| `@researcher` | Sonnet | Survey literature, gather background | Read | Yes |
+| `@thinker` | Opus | Propose hypotheses from context | None | Yes |
+| `@deep-thinker` | Opus | Synthesize across sub-units/cycles | None | Yes |
+| `@refutor` | Opus | Attack hypotheses, find counterexamples | None | Yes |
+| `@coder` | Sonnet | Validate empirically with synthetic data | Full | No |
+| `@judge` | Opus | Evaluate evidence, render verdict | Read-only | No |
+| `@reviewer` | Sonnet | Record outcomes, update frontier | Full | No |
+| `@conductor` | Opus | Orchestrate full cycle, dispatch agents | Full + Agent | No |
 
-Thinker and refutor are intentionally isolated from the codebase to prevent anchoring bias. The conductor orchestrates other agents as subagents and uses the state machine for routing.
+Thinker and refutor have web access (for literature search) but no codebase access — isolated from files to prevent anchoring bias. The conductor orchestrates other agents as subagents and uses the state machine for routing.
 
 ## Commands
 

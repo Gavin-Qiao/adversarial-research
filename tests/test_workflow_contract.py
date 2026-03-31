@@ -292,6 +292,14 @@ class TestVerdictTableContract:
         result = suggest_next("MIXED", "test-sub", DEFAULT_CONFIG)
         assert result["cascade"] is False, "Contract V3 BROKEN: MIXED should not cascade"
 
+    def test_V4_inconclusive(self):
+        _v4 = self.contracts["V4"]  # ensure contract exists in docs
+        result = suggest_next("INCONCLUSIVE", "test-sub", DEFAULT_CONFIG)
+        assert result["action"] == "prompt_user", (
+            f"Contract V4 BROKEN: docs say INCONCLUSIVE action='prompt_user' but code returns '{result['action']}'"
+        )
+        assert result["cascade"] is False, "Contract V4 BROKEN: INCONCLUSIVE should not cascade"
+
 
 # ---------------------------------------------------------------------------
 # Meta-test: ensure all contract IDs are covered
