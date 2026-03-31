@@ -148,8 +148,9 @@ The conductor agent uses this same state machine (`manage.py next`) for main-lin
 
 After the verdict:
 - **SETTLED**: Sub-unit complete. Dependents can proceed.
-- **FALSIFIED**: Cascade applied. Consider a new sub-unit.
-- **MIXED**: Choose: retry, more evidence, or escalate.
+- **FALSIFIED**: Cascade applied — dependents set to `undermined` with attenuated confidence.
+- **MIXED**: Claim partially true under some conditions. Refine or gather more evidence.
+- **INCONCLUSIVE**: Insufficient evidence either way. Retry with different approach or defer.
 
 ## Configuration
 
@@ -197,7 +198,7 @@ research/
 ---
 id: <auto-derived from path>
 type: claim | assumption | evidence | reference | verdict | question
-status: pending | active | settled | falsified | mixed
+status: pending | active | settled | falsified | mixed | undermined
 date: YYYY-MM-DD
 depends_on: [node-id, ...]
 assumes: [assumption-id, ...]

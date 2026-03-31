@@ -56,7 +56,8 @@ Determine the next step and dispatch the appropriate agent.
 
    - **`complete_settled`**: Report: "Sub-unit settled." Show the suggestion from state JSON.
    - **`complete_falsified`**: Report: "Hypothesis falsified. Cascade applied." Show suggestions.
-   - **`complete_mixed`**: Use AskUserQuestion to present the options from state JSON and let the user choose.
+   - **`complete_mixed`**: Report: "Verdict mixed — claim partially true under some conditions." Use AskUserQuestion to present the options from state JSON and let the user choose.
+   - **`complete_inconclusive`**: Report: "Verdict inconclusive — insufficient evidence either way." Use AskUserQuestion to present the options from state JSON and let the user choose.
 
    - **`severity: unknown`** in state: Read the refutor's result file yourself and assess: does the attack represent a fatal flaw, a serious concern, or a minor issue? Then decide whether to continue the debate (dispatch thinker) or proceed to coder.
 

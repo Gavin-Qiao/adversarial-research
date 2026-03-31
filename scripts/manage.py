@@ -69,7 +69,7 @@ def init_paths(root: Path) -> None:
 # Constants
 # ---------------------------------------------------------------------------
 
-VALID_STATUSES = {"pending", "active", "settled", "falsified", "mixed"}
+VALID_STATUSES = {"pending", "active", "settled", "falsified", "mixed", "undermined"}
 VALID_TYPES = {"claim", "assumption", "evidence", "reference", "verdict", "question"}
 VALID_ATTACK_TYPES = {"undermines", "rebuts", "undercuts", None}
 VALID_MATURITIES = {"theorem-backed", "supported", "conjecture", "experiment", None}
@@ -930,11 +930,18 @@ def cmd_falsify(args: argparse.Namespace) -> None:
             if dep_id not in visited and dep_id != node_id:
                 visited.add(dep_id)
                 dep_node = conn.execute("SELECT * FROM nodes WHERE id = ?", (dep_id,)).fetchone()
-                if dep_node and dep_node["status"] not in ("falsified", "mixed"):
+                if dep_node and dep_node["status"] not in ("falsified", "undermined"):
                     dep_fpath = RESEARCH_DIR / dep_node["file_path"]
-                    if _update_frontmatter_in_file(dep_fpath, {"status": "mixed"}):
-                        conn.execute("UPDATE nodes SET status = 'mixed' WHERE id = ?", (dep_id,))
-                        changes.append((dep_id, dep_node["file_path"], "mixed"))
+                    from orchestration import attenuate_confidence
+
+                    new_conf = attenuate_confidence(dep_node["confidence"])
+                    updates = {"status": "undermined", "confidence": new_conf}
+                    if _update_frontmatter_in_file(dep_fpath, updates):
+                        conn.execute(
+                            "UPDATE nodes SET status = 'undermined', confidence = ? WHERE id = ?",
+                            (new_conf, dep_id),
+                        )
+                        changes.append((dep_id, dep_node["file_path"], "undermined"))
                 queue.append(dep_id)
 
     # Ledger entries
@@ -955,7 +962,7 @@ def cmd_falsify(args: argparse.Namespace) -> None:
     if evidence_id:
         print(f"      By: {evidence_id}")
     if len(changes) > 1:
-        print(f"\nCascade ({len(changes) - 1} dependent(s) set to mixed):")
+        print(f"\nCascade ({len(changes) - 1} dependent(s) set to undermined):")
         for nid, fp, status in changes[1:]:
             print(f"  {nid}  ({fp})  -> {status}")
     else:
@@ -1047,7 +1054,7 @@ def cmd_cascade(args: argparse.Namespace) -> None:
     print()
 
     if affected:
-        print(f"Would set {len(affected)} node(s) to 'mixed':")
+        print(f"Would set {len(affected)} node(s) to 'undermined':")
         for n in affected:
             rel = conn.execute(
                 "SELECT relation FROM edges WHERE source_id = ? AND target_id = ?",
@@ -1416,11 +1423,11 @@ def cmd_assumptions(args: argparse.Namespace) -> None:
                 cascaded = conn.execute(
                     "SELECT n.id, n.status FROM nodes n "
                     "JOIN edges e ON e.source_id = n.id AND e.target_id = ? AND e.relation = 'assumes' "
-                    "WHERE n.status = 'mixed'",
+                    "WHERE n.status IN ('mixed', 'undermined')",
                     (a["id"],),
                 ).fetchall()
                 if cascaded:
-                    lines.append(f"- **Cascade**: {', '.join('`' + c['id'] + '`' for c in cascaded)} set to mixed")
+                    lines.append(f"- **Cascade**: {', '.join('`' + c['id'] + '`' for c in cascaded)} set to undermined")
             lines.append("")
 
     content = "\n".join(lines) + "\n"

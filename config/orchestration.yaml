@@ -39,7 +39,7 @@ roles:
     output_dir: "results"
     files: [verdict.md]
     verdict_field: "Verdict"
-    verdict_values: [SETTLED, FALSIFIED, MIXED]
+    verdict_values: [SETTLED, FALSIFIED, MIXED, INCONCLUSIVE]
 
   - name: reviewer
     type: bookkeeper
@@ -71,11 +71,18 @@ post_verdict:
     message: "Hypothesis falsified. Consider a new sub-unit with a different approach."
   MIXED:
     action: prompt_user
-    message: "Verdict mixed. Evidence insufficient."
+    message: "Verdict mixed — claim partially true under some conditions."
     options:
-      - "Retry with revised hypothesis (new sub-unit)"
-      - "Gather more coder evidence (re-run coder)"
+      - "Refine claim (narrow conditions)"
+      - "Gather more coder evidence"
       - "Escalate to unit-level review"
+  INCONCLUSIVE:
+    action: prompt_user
+    message: "Verdict inconclusive — insufficient evidence either way."
+    options:
+      - "Retry with different approach (new sub-unit)"
+      - "Gather more evidence"
+      - "Defer and move to next claim"
 
 # Severity keywords for parsing refutor output
 # Used when the structured "Severity:" field is not found

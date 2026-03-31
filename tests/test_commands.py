@@ -77,8 +77,8 @@ class TestCmdFalsify:
         rc, out, _ = run_manage(populated_research, "falsify", "assumption-a1")
         assert rc == 0
         assert "Falsified: assumption-a1" in out
-        # The thinker claim that assumes it should be set to mixed
-        assert "mixed" in out
+        # The thinker claim that assumes it should be set to undermined
+        assert "undermined" in out
 
     def test_records_ledger(self, populated_research):
         run_manage(populated_research, "falsify", "assumption-a1")

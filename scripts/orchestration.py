@@ -248,8 +248,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "FALSIFIED": {"action": "complete", "cascade": True, "message": "Hypothesis falsified."},
         "MIXED": {
             "action": "prompt_user",
-            "message": "Verdict mixed.",
-            "options": ["Retry", "More evidence", "Escalate"],
+            "message": "Verdict mixed — claim partially true under some conditions.",
+            "options": ["Refine claim", "More evidence", "Escalate"],
+        },
+        "INCONCLUSIVE": {
+            "action": "prompt_user",
+            "message": "Verdict inconclusive — insufficient evidence either way.",
+            "options": ["Retry with different approach", "More evidence", "Defer"],
         },
     },
     "severity_keywords": {
@@ -369,7 +374,7 @@ def extract_severity(result_path: Path, config: dict[str, Any]) -> str:
 
 def extract_verdict(verdict_path: Path, config: dict[str, Any]) -> str:
     """Extract verdict from judge result.
-    Returns: SETTLED/FALSIFIED/MIXED/UNKNOWN"""
+    Returns: SETTLED/FALSIFIED/MIXED/INCONCLUSIVE/UNKNOWN"""
     if not verdict_path.exists():
         return "UNKNOWN"
     text = verdict_path.read_text(encoding="utf-8")
@@ -382,10 +387,39 @@ def extract_verdict(verdict_path: Path, config: dict[str, Any]) -> str:
                 return "SETTLED"
             if "FALSIFIED" in upper:
                 return "FALSIFIED"
+            if "INCONCLUSIVE" in upper:
+                return "INCONCLUSIVE"
             if "MIXED" in upper:
                 return "MIXED"
 
     return "UNKNOWN"
+
+
+def extract_confidence(verdict_path: Path) -> str:
+    """Extract confidence from judge/conductor verdict.
+    Returns: high/moderate/low/unknown"""
+    if not verdict_path.exists():
+        return "unknown"
+    text = verdict_path.read_text(encoding="utf-8")
+
+    for line in text.splitlines():
+        stripped = line.strip().lower()
+        if ("confidence" in stripped or "**confidence**" in stripped) and ":" in stripped:
+            val = stripped.split(":", 1)[1].strip().strip("*").strip()
+            for level in ("high", "moderate", "low"):
+                if level in val:
+                    return level
+
+    return "unknown"
+
+
+# Confidence attenuation: when cascading undermined, downgrade one level
+_CONFIDENCE_DOWNGRADE = {"high": "moderate", "moderate": "low", "low": "low", "unknown": "low"}
+
+
+def attenuate_confidence(current: str | None) -> str:
+    """Downgrade confidence by one level for undermined nodes."""
+    return _CONFIDENCE_DOWNGRADE.get(current or "unknown", "low")
 
 
 # ---------------------------------------------------------------------------
