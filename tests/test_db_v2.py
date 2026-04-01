@@ -143,7 +143,7 @@ class TestIncrementalBuild:
         self._make_file(research_dir, "cycles/cycle-1/unit-1/thinker/round-1/result.md", "c1-u1-t-r1")
         build_db(force=True)
         # Modify the file (ensure mtime advances)
-        time.sleep(0.05)
+        time.sleep(0.1)
         path.write_text(
             serialise_frontmatter({"id": "c1-u1-t-r1", "type": "claim", "status": "active", "date": "2026-01-01"})
             + "\n# Updated\n"

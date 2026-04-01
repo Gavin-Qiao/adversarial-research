@@ -66,7 +66,8 @@ After a verdict is rendered:
 2. **Update statuses** in the relevant files' frontmatter:
    - If SETTLED: set `status: settled` on the claim
    - If FALSIFIED: run `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root research falsify <id> --by <evidence-id>`
-   - If MIXED: set `status: mixed` and note what's unresolved
+   - If MIXED: set `status: mixed` and note what conditions apply
+   - If INCONCLUSIVE: set `status: active` and note what evidence is needed
 3. **Wire any missing edges**: ensure `depends_on` and `assumes` fields are complete
 4. **Regenerate tracking documents**:
    ```bash

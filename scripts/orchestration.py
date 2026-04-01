@@ -335,7 +335,7 @@ def _check_reviewer_complete(target: Path) -> bool:
         return False
     # Check if any frontier.md in the sub-unit was modified after the verdict
     frontier = target / "frontier.md"
-    return frontier.exists() and frontier.stat().st_mtime > verdict.stat().st_mtime
+    return frontier.exists() and frontier.stat().st_mtime >= verdict.stat().st_mtime
 
 
 # ---------------------------------------------------------------------------
@@ -559,6 +559,10 @@ def detect_state(research_dir: Path, sub_path: str, config: dict[str, Any]) -> d
     r_count = len(refutor_rounds)
 
     # --- State machine ---
+
+    # Skip debate entirely if max_rounds == 0
+    if max_rounds == 0 and not has_coder:
+        return _make_state("dispatch_coder", phase="falsification")
 
     # No thinker yet → start debate
     if t_count == 0:

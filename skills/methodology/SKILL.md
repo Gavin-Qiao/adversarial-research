@@ -90,7 +90,7 @@ counterfactual: "<what changes if this is false>" | null
    - If Minor/None or round = max: exit to empirical testing
    - Refutor always gets the final word before the coder
 3. **Falsification**: **Coder** tests empirically with synthetic data
-4. **Judgment**: **Judge** evaluates all evidence from a structured brief, renders SETTLED / FALSIFIED / MIXED
+4. **Judgment**: **Judge** evaluates all evidence from a structured brief, renders SETTLED / FALSIFIED / MIXED / INCONCLUSIVE
 5. **Recording**: **Reviewer** updates statuses, runs cascade, regenerates FRONTIER.md
 6. **Branching**:
    - SETTLED → sub-unit complete, dependents proceed

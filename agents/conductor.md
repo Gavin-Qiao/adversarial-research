@@ -147,7 +147,7 @@ When `manage.py next` returns `dispatch_judge`, write your verdict to `{sub-unit
 
 1. **Summary of Evidence**: What each agent contributed
 2. **Evidence Assessment**: Strength and relevance
-3. **Verdict**: SETTLED / FALSIFIED / MIXED
+3. **Verdict**: SETTLED / FALSIFIED / MIXED / INCONCLUSIVE
 4. **Confidence**: high / moderate / low
 5. **Reasoning**: Why this verdict
 6. **Result**: What this cycle established or disproved (a clean falsification is a valid result)

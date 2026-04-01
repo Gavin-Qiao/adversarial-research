@@ -58,10 +58,12 @@ Structure your verdict as:
 
 1. **Summary of Evidence**: Brief overview of what each role contributed
 2. **Evidence Assessment**: Strength and relevance of each piece of evidence
-3. **Verdict**: SETTLED / FALSIFIED / MIXED
-4. **Reasoning**: Why this verdict and not another
-5. **Recommended Actions**:
+3. **Verdict**: SETTLED / FALSIFIED / MIXED / INCONCLUSIVE
+4. **Confidence**: high / moderate / low
+5. **Reasoning**: Why this verdict and not another
+6. **Recommended Actions**:
    - If SETTLED: What to build on this
    - If FALSIFIED: What to try next, what assumptions to revisit
-   - If MIXED: What specific evidence is needed to resolve
+   - If MIXED: Claim partially true — what conditions apply, what to refine
+   - If INCONCLUSIVE: Insufficient evidence — what specific evidence is needed
 6. **Status Changes**: Which nodes should be updated (for `/adversarial-research:falsify` or manual edits)

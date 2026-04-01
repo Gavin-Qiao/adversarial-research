@@ -934,7 +934,7 @@ def cmd_falsify(args: argparse.Namespace) -> None:
             if dep_id not in visited and dep_id != node_id:
                 visited.add(dep_id)
                 dep_node = conn.execute("SELECT * FROM nodes WHERE id = ?", (dep_id,)).fetchone()
-                if dep_node and dep_node["status"] not in ("falsified", "undermined"):
+                if dep_node and dep_node["status"] != "falsified":
                     dep_fpath = RESEARCH_DIR / dep_node["file_path"]
                     from orchestration import attenuate_confidence
 
@@ -1101,7 +1101,10 @@ def cmd_scaffold(args: argparse.Namespace) -> None:
         if not parent:
             print("ERROR: --parent is required for 'unit'. Provide the cycle path (e.g., cycles/cycle-1-enrichment).")
             sys.exit(1)
-        base = RESEARCH_DIR / parent
+        base = (RESEARCH_DIR / parent).resolve()
+        if not str(base).startswith(str(RESEARCH_DIR.resolve())):
+            print("ERROR: Parent path escapes the research directory.")
+            sys.exit(1)
         if not base.exists():
             print(f"ERROR: Parent directory does not exist: {base}")
             sys.exit(1)
@@ -1114,7 +1117,10 @@ def cmd_scaffold(args: argparse.Namespace) -> None:
         if not parent:
             print("ERROR: --parent is required for 'sub-unit'. Provide the unit path.")
             sys.exit(1)
-        base = RESEARCH_DIR / parent
+        base = (RESEARCH_DIR / parent).resolve()
+        if not str(base).startswith(str(RESEARCH_DIR.resolve())):
+            print("ERROR: Parent path escapes the research directory.")
+            sys.exit(1)
         if not base.exists():
             print(f"ERROR: Parent directory does not exist: {base}")
             sys.exit(1)

@@ -341,6 +341,15 @@ class TestConfig:
         # With max_rounds=1, even fatal severity goes to coder
         assert state["action"] == "dispatch_coder"
 
+    def test_max_rounds_zero_skips_debate(self, research_dir):
+        """max_rounds=0 should skip debate entirely and go to coder"""
+        sub = make_sub_unit(research_dir)
+        config = DEFAULT_CONFIG.copy()
+        config["debate_loop"] = {**config["debate_loop"], "max_rounds": 0}
+        state = detect_state(research_dir, sub, config)
+        assert state["action"] == "dispatch_coder"
+        assert state["phase"] == "falsification"
+
 
 # ---------------------------------------------------------------------------
 # Compute Paths Tests
@@ -393,6 +402,11 @@ class TestSuggestNext:
 
     def test_mixed(self):
         s = suggest_next("MIXED", "sub-1a", DEFAULT_CONFIG)
+        assert s["action"] == "prompt_user"
+        assert len(s["options"]) > 0
+
+    def test_inconclusive(self):
+        s = suggest_next("INCONCLUSIVE", "sub-1a", DEFAULT_CONFIG)
         assert s["action"] == "prompt_user"
         assert len(s["options"]) > 0
 
@@ -706,7 +720,7 @@ claims:
         (sub_dir / "judge" / "results" / "verdict.md").write_text(
             "---\nid: v\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n# Verdict\n\n**Verdict**: SETTLED\n"
         )
-        time.sleep(0.05)  # Ensure frontier.md is newer than verdict
+        time.sleep(0.1)  # Ensure frontier.md is newer than verdict
         (sub_dir / "frontier.md").write_text(
             "---\nid: sf\ntype: verdict\nstatus: settled\ndate: 2026-01-01\n---\n\n# Done\n"
         )
@@ -754,7 +768,7 @@ claims:
         (sub_dir / "judge" / "results" / "verdict.md").write_text(
             "---\nid: v\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n# Verdict\n\n**Verdict**: SETTLED\n"
         )
-        time.sleep(0.05)
+        time.sleep(0.1)
         (sub_dir / "frontier.md").write_text(
             "---\nid: sf\ntype: verdict\nstatus: settled\ndate: 2026-01-01\n---\n\n# Done\n"
         )
@@ -762,3 +776,29 @@ claims:
         (rd / "synthesis.md").write_text("# Synthesis\n\nFinal results.")
         state = detect_investigation_state(rd, DEFAULT_CONFIG)
         assert state["action"] == "complete"
+
+    def test_framework_with_no_claims(self, tmp_path):
+        """Framework exists but has no CLAIM_REGISTRY — should still return scaffold_cycles with empty claims."""
+        rd = _make_investigation_dir(tmp_path)
+        (rd / "context" / "distillation-topic.md").write_text("# Survey\n")
+        (rd / "framework.md").write_text("# Framework\n\nJust prose, no YAML block.\n")
+        state = detect_investigation_state(rd, DEFAULT_CONFIG)
+        assert state["action"] == "scaffold_cycles"
+        assert state["claims"] == []
+
+    def test_partially_scaffolded_cycles(self, tmp_path):
+        """Some claims scaffolded, some not — should return scaffold_cycles with unscaffolded only."""
+        rd = _make_investigation_dir(tmp_path)
+        (rd / "context" / "distillation-topic.md").write_text("# Survey\n")
+        (rd / "framework.md").write_text(SAMPLE_FRAMEWORK)
+        # Only scaffold the first claim (enrichment-bound), not bottleneck-ratio
+        cycle_dir = rd / "cycles" / "cycle-1-enrichment-bound"
+        cycle_dir.mkdir(parents=True)
+        (cycle_dir / "frontier.md").write_text(
+            "---\nid: c1-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Enrichment\n"
+        )
+        state = detect_investigation_state(rd, DEFAULT_CONFIG)
+        assert state["action"] == "scaffold_cycles"
+        # Only the unscaffolded claim should be in the list
+        assert len(state["claims"]) == 1
+        assert state["claims"][0]["id"] == "bottleneck-ratio"

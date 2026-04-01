@@ -64,9 +64,9 @@ A clean falsification with clear reasoning is as valuable as settling a claim.
 
 ## Debate Management
 
-- Use SendMessage to keep thinker and refutor alive across rounds (don't re-dispatch)
-- Send the refutor's attack to the thinker for round 2+, with your guidance
-- Send the thinker's revised proposal to the refutor for the next attack
+- Re-dispatch thinker and refutor for each round with updated context
+- For round 2+, include the refutor's attack in the thinker's prompt, with your guidance
+- Include the thinker's revised proposal in the refutor's prompt for the next attack
 - The refutor always gets the final say before the coder phase
 
 ## What Makes a Good Result
