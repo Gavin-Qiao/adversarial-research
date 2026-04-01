@@ -1,25 +1,26 @@
 ---
 name: validate
-description: Check research log integrity. Use when the user wants to verify the research database, check for broken references, cycles, or invalid metadata.
+description: Check design log integrity. Use when the system needs to verify the design database, check for broken references, cycles, or invalid metadata.
+user-invocable: false
 allowed-tools:
   - Bash
 ---
 
-# Validate Research Log
+# Validate Design Log
 
-Run integrity checks on the research database.
+Run integrity checks on the design database.
 
 ## Usage
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root research validate
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design validate
 ```
 
 ## Checks performed
 
 - Duplicate node IDs
 - Required fields (id, type, status, date, file_path)
-- Valid status values (pending, active, settled, falsified, mixed)
+- Valid status values (pending, active, proven, disproven, partial)
 - Valid type values (claim, assumption, evidence, reference, verdict, question)
 - Valid attack_type values (undermines, rebuts, undercuts)
 - Self-loops in dependency edges

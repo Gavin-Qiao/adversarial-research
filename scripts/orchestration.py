@@ -1,8 +1,8 @@
-"""Orchestration engine for adversarial research workflows.
+"""Orchestration engine for principia design workflows.
 
 Provides config-driven state machine, context assembly, severity/verdict
 extraction, and external prompt generation. All logic is deterministic
-and testable — the fuzzy LLM layer lives in the /next skill, not here.
+and testable — the fuzzy LLM layer lives in the /step skill, not here.
 """
 
 from __future__ import annotations
@@ -228,13 +228,13 @@ def load_yaml(path: Path) -> dict[str, Any]:
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "debate_loop": {
-        "sequence": ["thinker", "refutor"],
+        "sequence": ["architect", "adversary"],
         "max_rounds": 3,
-        "final_say": "refutor",
+        "final_say": "adversary",
     },
     "roles": [
         {
-            "name": "refutor",
+            "name": "adversary",
             "exit_condition": {
                 "field": "Severity",
                 "continue_on": ["fatal", "serious"],
@@ -244,17 +244,25 @@ DEFAULT_CONFIG: dict[str, Any] = {
         },
     ],
     "post_verdict": {
-        "SETTLED": {"action": "complete", "message": "Sub-unit settled."},
-        "FALSIFIED": {"action": "complete", "cascade": True, "message": "Hypothesis falsified."},
-        "MIXED": {
+        "PROVEN": {"action": "complete", "message": "Claim proven."},
+        "DISPROVEN": {"action": "complete", "cascade": True, "message": "Hypothesis disproven."},
+        "PARTIAL": {
             "action": "prompt_user",
-            "message": "Verdict mixed — claim partially true under some conditions.",
-            "options": ["Refine claim", "More evidence", "Escalate"],
+            "message": "Verdict partial — claim holds under some conditions.",
+            "options": ["Narrow the claim", "More evidence", "Accept partial result"],
         },
         "INCONCLUSIVE": {
             "action": "prompt_user",
             "message": "Verdict inconclusive — insufficient evidence either way.",
-            "options": ["Retry with different approach", "More evidence", "Defer"],
+            "options": ["Try a different approach", "More evidence", "Defer"],
+        },
+        # Legacy verdict names (still recognized)
+        "SETTLED": {"action": "complete", "message": "Claim proven."},
+        "FALSIFIED": {"action": "complete", "cascade": True, "message": "Hypothesis disproven."},
+        "MIXED": {
+            "action": "prompt_user",
+            "message": "Verdict partial — claim holds under some conditions.",
+            "options": ["Narrow the claim", "More evidence", "Accept partial result"],
         },
     },
     "severity_keywords": {
@@ -263,6 +271,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "minor": ["minor", "worth noting"],
         "none": ["no genuine flaws", "no fatal"],
     },
+    "auto_review": True,
 }
 
 
@@ -329,11 +338,12 @@ def check_waiting(role_dir: Path, round_num: int) -> str | None:
 
 
 def _check_reviewer_complete(target: Path) -> bool:
-    """Check if the reviewer has completed (frontier updated after verdict)."""
-    verdict = target / "judge" / "results" / "verdict.md"
+    """Check if post-verdict bookkeeping is done (frontier updated after verdict)."""
+    # Support both principia (arbiter/) and legacy (judge/) directory names
+    arbiter_dir = target / "arbiter" if (target / "arbiter").exists() else target / "judge"
+    verdict = arbiter_dir / "results" / "verdict.md"
     if not verdict.exists():
         return False
-    # Check if any frontier.md in the sub-unit was modified after the verdict
     frontier = target / "frontier.md"
     return frontier.exists() and frontier.stat().st_mtime >= verdict.stat().st_mtime
 
@@ -344,7 +354,7 @@ def _check_reviewer_complete(target: Path) -> bool:
 
 
 def extract_severity(result_path: Path, config: dict[str, Any]) -> str:
-    """Extract severity from refutor result using config keywords.
+    """Extract severity from adversary result using config keywords.
     Returns: fatal/serious/minor/none/unknown"""
     if not result_path.exists():
         return "unknown"
@@ -373,8 +383,9 @@ def extract_severity(result_path: Path, config: dict[str, Any]) -> str:
 
 
 def extract_verdict(verdict_path: Path, config: dict[str, Any]) -> str:
-    """Extract verdict from judge result.
-    Returns: SETTLED/FALSIFIED/MIXED/INCONCLUSIVE/UNKNOWN"""
+    """Extract verdict from arbiter/judge result.
+    Returns: PROVEN/DISPROVEN/PARTIAL/INCONCLUSIVE/UNKNOWN
+    Also recognizes legacy names (SETTLED→PROVEN, FALSIFIED→DISPROVEN, MIXED→PARTIAL)."""
     if not verdict_path.exists():
         return "UNKNOWN"
     text = verdict_path.read_text(encoding="utf-8")
@@ -383,20 +394,28 @@ def extract_verdict(verdict_path: Path, config: dict[str, Any]) -> str:
         stripped = line.strip()
         if ("Verdict" in stripped or "**Verdict**" in stripped) and ":" in stripped:
             upper = stripped.upper()
-            if "SETTLED" in upper:
-                return "SETTLED"
-            if "FALSIFIED" in upper:
-                return "FALSIFIED"
+            # Principia names (check first)
+            if "PROVEN" in upper and "DISPROVEN" not in upper:
+                return "PROVEN"
+            if "DISPROVEN" in upper:
+                return "DISPROVEN"
             if "INCONCLUSIVE" in upper:
                 return "INCONCLUSIVE"
+            if "PARTIAL" in upper:
+                return "PARTIAL"
+            # Legacy names → map to principia
+            if "SETTLED" in upper:
+                return "PROVEN"
+            if "FALSIFIED" in upper:
+                return "DISPROVEN"
             if "MIXED" in upper:
-                return "MIXED"
+                return "PARTIAL"
 
     return "UNKNOWN"
 
 
 def extract_confidence(verdict_path: Path) -> str:
-    """Extract confidence from judge/conductor verdict.
+    """Extract confidence from arbiter/conductor verdict.
     Returns: high/moderate/low/unknown"""
     if not verdict_path.exists():
         return "unknown"
@@ -548,11 +567,15 @@ def detect_state(research_dir: Path, sub_path: str, config: dict[str, Any]) -> d
     roles_config = _get_roles_config(config)
     max_rounds = debate_config.get("max_rounds", 3)
 
-    # Scan existing files
-    thinker_rounds = find_completed_rounds(target / "thinker")
-    refutor_rounds = find_completed_rounds(target / "refutor")
-    has_coder = _any_result_exists(target / "coder")
-    has_verdict = (target / "judge" / "results" / "verdict.md").exists()
+    # Scan existing files (support both principia and legacy directory names)
+    thinker_dir = target / "architect" if (target / "architect").exists() else target / "thinker"
+    refutor_dir = target / "adversary" if (target / "adversary").exists() else target / "refutor"
+    coder_dir = target / "experimenter" if (target / "experimenter").exists() else target / "coder"
+    judge_dir = target / "arbiter" if (target / "arbiter").exists() else target / "judge"
+    thinker_rounds = find_completed_rounds(thinker_dir)
+    refutor_rounds = find_completed_rounds(refutor_dir)
+    has_coder = _any_result_exists(coder_dir)
+    has_verdict = (judge_dir / "results" / "verdict.md").exists()
     reviewer_done = _check_reviewer_complete(target)
 
     t_count = len(thinker_rounds)
@@ -562,71 +585,73 @@ def detect_state(research_dir: Path, sub_path: str, config: dict[str, Any]) -> d
 
     # Skip debate entirely if max_rounds == 0
     if max_rounds == 0 and not has_coder:
-        return _make_state("dispatch_coder", phase="falsification")
+        return _make_state("dispatch_experimenter", phase="experiment")
 
     # No thinker yet → start debate
     if t_count == 0:
-        waiting = check_waiting(target / "thinker", 1)
+        waiting = check_waiting(thinker_dir, 1)
         if waiting:
-            return _make_state("waiting", waiting_for=waiting, phase="pre-falsification")
-        return _make_state("dispatch_thinker", round_num=1, phase="pre-falsification")
+            return _make_state("waiting", waiting_for=waiting, phase="debate")
+        return _make_state("dispatch_architect", round_num=1, phase="debate")
 
-    # Thinker ahead of refutor → refutor's turn
+    # Architect ahead of adversary → adversary's turn
     if t_count > r_count:
-        waiting = check_waiting(target / "refutor", t_count)
+        waiting = check_waiting(refutor_dir, t_count)
         if waiting:
-            return _make_state("waiting", waiting_for=waiting, phase="pre-falsification")
-        return _make_state("dispatch_refutor", round_num=t_count, phase="pre-falsification")
+            return _make_state("waiting", waiting_for=waiting, phase="debate")
+        return _make_state("dispatch_adversary", round_num=t_count, phase="debate")
 
-    # Refutor has responded, no coder yet → decide: continue debate or proceed
+    # Adversary has responded, no experimenter yet → decide: continue debate or proceed
     if r_count >= t_count and not has_coder:
         # Check for waiting external
-        waiting = check_waiting(target / "thinker", r_count + 1)
+        waiting = check_waiting(thinker_dir, r_count + 1)
         if waiting:
-            return _make_state("waiting", waiting_for=waiting, phase="pre-falsification")
+            return _make_state("waiting", waiting_for=waiting, phase="debate")
 
-        # Final round reached → proceed to coder
+        # Final round reached → proceed to experimenter
         if r_count >= max_rounds:
-            return _make_state("dispatch_coder", phase="falsification")
+            return _make_state("dispatch_experimenter", phase="experiment")
 
-        # Check severity from refutor's latest result
-        refutor_result = target / "refutor" / f"round-{r_count}" / "result.md"
+        # Check severity from adversary's latest result
+        refutor_result = refutor_dir / f"round-{r_count}" / "result.md"
         severity = extract_severity(refutor_result, config)
 
-        refutor_config = roles_config.get("refutor", {})
+        refutor_config = roles_config.get("adversary", roles_config.get("refutor", {}))
         exit_cond = refutor_config.get("exit_condition", {})
         exit_on = exit_cond.get("exit_on", ["minor", "none"])
         continue_on = exit_cond.get("continue_on", ["fatal", "serious"])
         unknown_default = exit_cond.get("unknown", "continue")
 
         if severity in exit_on:
-            return _make_state("dispatch_coder", phase="falsification")
+            return _make_state("dispatch_experimenter", phase="experiment")
         if severity in continue_on:
-            return _make_state("dispatch_thinker", round_num=r_count + 1, phase="pre-falsification")
+            return _make_state("dispatch_architect", round_num=r_count + 1, phase="debate")
         # Unknown severity
         if unknown_default == "continue":
             return _make_state(
-                "dispatch_thinker",
+                "dispatch_architect",
                 round_num=r_count + 1,
-                phase="pre-falsification",
+                phase="debate",
                 severity="unknown",
             )
-        return _make_state("dispatch_coder", phase="falsification", severity="unknown")
+        return _make_state("dispatch_experimenter", phase="experiment", severity="unknown")
 
-    # Coder done, no verdict → dispatch judge
+    # Experimenter done, no verdict → dispatch arbiter
     if has_coder and not has_verdict:
-        waiting = check_waiting(target / "judge", 1)
+        waiting = check_waiting(judge_dir, 1)
         if waiting:
-            return _make_state("waiting", waiting_for=waiting, phase="judgment")
-        return _make_state("dispatch_judge", phase="judgment")
+            return _make_state("waiting", waiting_for=waiting, phase="verdict")
+        return _make_state("dispatch_arbiter", phase="verdict")
 
-    # Verdict rendered, reviewer not done → dispatch reviewer
+    # Verdict rendered, post-verdict not done → auto-review or dispatch reviewer
     if has_verdict and not reviewer_done:
+        if config.get("auto_review", True):
+            return _make_state("post_verdict", phase="recording")
         return _make_state("dispatch_reviewer", phase="recording")
 
-    # Reviewer done → complete
+    # Post-verdict done → complete
     if reviewer_done:
-        verdict = extract_verdict(target / "judge" / "results" / "verdict.md", config)
+        verdict = extract_verdict(judge_dir / "results" / "verdict.md", config)
         suggestion = suggest_next(verdict, sub_path, config)
         return _make_state(
             f"complete_{verdict.lower()}",
@@ -683,8 +708,13 @@ def list_context_files(
     sub_path: str,
     action: str,
     round_num: int | None = None,
+    agent: str = "",
 ) -> list[str]:
-    """List all context files the next agent needs, in reading order."""
+    """List all context files the next agent needs, in reading order.
+
+    When *agent* is provided, apply role-specific filtering to enforce
+    knowledge divergence between debate participants.
+    """
     target = research_dir / sub_path
     files: list[str] = []
 
@@ -698,36 +728,48 @@ def list_context_files(
     if sub_frontier.exists():
         files.append(str(sub_frontier.relative_to(research_dir)))
 
-    # Researcher results if they exist
-    researcher_dir = target / "researcher"
-    if researcher_dir.exists():
-        for f in sorted(researcher_dir.rglob("*.md")):
-            files.append(str(f.relative_to(research_dir)))
+    # Scout/researcher results if they exist
+    for scout_name in ("scout", "researcher"):
+        scout_dir = target / scout_name
+        if scout_dir.exists():
+            for f in sorted(scout_dir.rglob("*.md")):
+                files.append(str(f.relative_to(research_dir)))
 
-    # All completed thinker/refutor rounds in order
+    # All completed architect/adversary (or thinker/refutor) rounds in order
     for r in range(1, 4):
-        for role in ("thinker", "refutor"):
-            result = target / role / f"round-{r}" / "result.md"
-            if result.exists():
-                files.append(str(result.relative_to(research_dir)))
+        for role_pair in (("architect", "thinker"), ("adversary", "refutor")):
+            for role in role_pair:
+                result = target / role / f"round-{r}" / "result.md"
+                if result.exists():
+                    files.append(str(result.relative_to(research_dir)))
+                    break  # found in one name, skip the alias
 
-    # Coder output
-    coder_output = target / "coder" / "results" / "output.md"
-    if coder_output.exists():
-        files.append(str(coder_output.relative_to(research_dir)))
+    # Experimenter/coder output
+    for exp_name in ("experimenter", "coder"):
+        exp_output = target / exp_name / "results" / "output.md"
+        if exp_output.exists():
+            files.append(str(exp_output.relative_to(research_dir)))
+            break
 
-    # Judge verdict (only for reviewer context)
-    if action == "dispatch_reviewer":
-        verdict = target / "judge" / "results" / "verdict.md"
-        if verdict.exists():
-            files.append(str(verdict.relative_to(research_dir)))
+    # Arbiter/judge verdict (only for post-verdict context)
+    if action in ("dispatch_reviewer", "post_verdict"):
+        for arb_name in ("arbiter", "judge"):
+            verdict = target / arb_name / "results" / "verdict.md"
+            if verdict.exists():
+                files.append(str(verdict.relative_to(research_dir)))
+                break
+
+    # Agent-aware filtering for knowledge divergence
+    if agent in ("adversary", "refutor"):
+        # Adversary sees architect results but NOT architect prompts
+        files = [f for f in files if not (("/architect/" in f or "/thinker/" in f) and f.endswith("prompt.md"))]
 
     return files
 
 
 def assemble_context(research_dir: Path, context_files: list[str]) -> str:
     """Read and concatenate context files into a single document."""
-    from manage import extract_title, get_body
+    from frontmatter import extract_title, get_body
 
     sections: list[str] = []
     for fpath in context_files:
@@ -782,6 +824,14 @@ def read_dispatch_config(research_dir: Path) -> dict[str, str]:
     """Parse .config.md and return {{agent: 'internal'|'external'}}."""
     config_file = research_dir / ".config.md"
     defaults = {
+        # Principia names
+        "scout": "internal",
+        "architect": "internal",
+        "adversary": "internal",
+        "experimenter": "internal",
+        "arbiter": "internal",
+        "synthesizer": "internal",
+        # Legacy names (also recognized)
         "researcher": "internal",
         "thinker": "internal",
         "refutor": "internal",
@@ -814,31 +864,34 @@ def read_dispatch_config(research_dir: Path) -> dict[str, str]:
 
 def compute_paths(sub_path: str, agent: str, round_num: int | None) -> dict[str, str]:
     """Compute prompt_path and result_path for the next agent."""
-    if agent in ("thinker", "refutor") and round_num:
+    debate_roles = ("architect", "adversary", "thinker", "refutor")
+    experimenter_roles = ("experimenter", "coder")
+    arbiter_roles = ("arbiter", "judge")
+    if agent in debate_roles and round_num:
         base = f"{sub_path}/{agent}/round-{round_num}"
         return {"prompt_path": f"{base}/prompt.md", "result_path": f"{base}/result.md"}
-    if agent == "coder":
+    if agent in experimenter_roles:
         return {
-            "prompt_path": f"{sub_path}/coder/prompt.md",
-            "result_path": f"{sub_path}/coder/results/output.md",
+            "prompt_path": f"{sub_path}/{agent}/prompt.md",
+            "result_path": f"{sub_path}/{agent}/results/output.md",
         }
-    if agent == "judge":
+    if agent in arbiter_roles:
         return {
-            "prompt_path": f"{sub_path}/judge/prompt.md",
-            "result_path": f"{sub_path}/judge/results/verdict.md",
+            "prompt_path": f"{sub_path}/{agent}/prompt.md",
+            "result_path": f"{sub_path}/{agent}/results/verdict.md",
         }
     return {"prompt_path": f"{sub_path}/{agent}/prompt.md", "result_path": f"{sub_path}/{agent}/result.md"}
 
 
 # ---------------------------------------------------------------------------
-# Framework parsing (deep-thinker claim registry)
+# Blueprint parsing (synthesizer claim registry)
 # ---------------------------------------------------------------------------
 
 _REGISTRY_MARKER = "# CLAIM_REGISTRY"
 
 
 def parse_framework(framework_path: Path) -> list[dict[str, Any]]:
-    """Extract claim registry from deep-thinker framework output.
+    """Extract claim registry from synthesizer blueprint output.
 
     Looks for a fenced ```yaml block containing '# CLAIM_REGISTRY'.
     Returns list of claim dicts with keys: id, statement, maturity,
@@ -918,6 +971,7 @@ def detect_investigation_state(
     research_dir: Path,
     config: dict[str, Any],
     db_path: Path | None = None,
+    quick: bool = False,
 ) -> dict[str, Any]:
     """Detect the current state of a full investigation.
 
@@ -925,45 +979,87 @@ def detect_investigation_state(
     the investigation is in. Returns a JSON-serializable dict with
     an ``action`` key and relevant context.
 
+    If *quick* is True, skip context gathering and blueprint creation.
+    Instead, scaffold a single claim directly and run one debate round.
+
     States (in order):
-    - gather_context    — no distillation files yet
-    - create_framework  — distillation exists, no framework.md
-    - scaffold_cycles   — framework exists, cycles not scaffolded
+    - gather_context    — no survey files yet
+    - create_blueprint  — survey exists, no blueprint.md
+    - scaffold_cycles   — blueprint exists, cycles not scaffolded
     - run_cycle         — specific cycle needs conductor
-    - review_cycle      — cycle done, needs reviewer
+    - review_cycle      — cycle done, needs post-verdict
     - synthesize        — all waves complete, need synthesis
     - complete          — synthesis.md exists
     """
     context_dir = research_dir / "context"
-    framework_path = research_dir / "framework.md"
+    # Support both principia (blueprint.md) and legacy (framework.md) names
+    framework_path = research_dir / "blueprint.md"
+    if not framework_path.exists():
+        framework_path = research_dir / "framework.md"
     synthesis_path = research_dir / "synthesis.md"
     cycles_dir = research_dir / "cycles"
 
+    # --- Quick mode: skip context/blueprint, scaffold single claim ---
+    if quick:
+        claims_dir = research_dir / "claims"
+        if not claims_dir.exists() or not any(claims_dir.iterdir()):
+            return {"action": "scaffold_quick", "phase": "scaffolding"}
+        # Find the single claim and return its state
+        claim_dirs = sorted(d for d in claims_dir.iterdir() if d.is_dir())
+        if claim_dirs:
+            sub_path = str(claim_dirs[0].relative_to(research_dir))
+            state = detect_state(research_dir, sub_path, config)
+            if state.get("action", "").startswith("complete_"):
+                if not synthesis_path.exists():
+                    return {
+                        "action": "synthesize",
+                        "phase": "synthesis",
+                        "completed_cycles": [claim_dirs[0].name],
+                    }
+                return {"action": "complete", "phase": "complete"}
+            return {
+                "action": "run_cycle",
+                "phase": "execution",
+                "cycle": claim_dirs[0].name,
+                "sub_unit": sub_path,
+                "cycle_state": state,
+            }
+
     # --- Phase 1: Context gathering ---
-    distillations = sorted(context_dir.glob("distillation-*.md")) if context_dir.exists() else []
+    # Support both principia (survey-*.md) and legacy (distillation-*.md) names
+    distillations = sorted(context_dir.glob("survey-*.md")) if context_dir.exists() else []
+    if not distillations:
+        distillations = sorted(context_dir.glob("distillation-*.md")) if context_dir.exists() else []
     if not distillations:
         return {"action": "gather_context", "phase": "context"}
 
-    # --- Phase 2: Framework creation ---
+    # --- Phase 2: Blueprint creation ---
     if not framework_path.exists():
         return {
-            "action": "create_framework",
+            "action": "create_blueprint",
             "phase": "framework",
             "distillations": [str(d.relative_to(research_dir)) for d in distillations],
         }
 
-    # --- Phase 3: Scaffold cycles ---
+    # --- Phase 3: Scaffold cycles/claims ---
     claims = parse_framework(framework_path)
-    if not cycles_dir.exists() or not any(cycles_dir.iterdir()):
+    claims_dir = research_dir / "claims"
+    has_cycles = cycles_dir.exists() and any(cycles_dir.iterdir())
+    has_claims = claims_dir.exists() and any(claims_dir.iterdir())
+    if not has_cycles and not has_claims:
         return {
             "action": "scaffold_cycles",
             "phase": "scaffolding",
             "claims": claims,
         }
 
-    # Check that each claim has a corresponding cycle directory
-    existing_cycles = {d.name for d in cycles_dir.iterdir() if d.is_dir()} if cycles_dir.exists() else set()
-    unscaffolded = [c for c in claims if not any(c["id"] in name for name in existing_cycles)]
+    # Check that each claim has a corresponding directory (in cycles/ or claims/)
+    existing_dirs: set[str] = set()
+    if cycles_dir.exists():
+        existing_dirs |= {d.name for d in cycles_dir.iterdir() if d.is_dir()}
+    if claims_dir.exists():
+        existing_dirs |= {d.name for d in claims_dir.iterdir() if d.is_dir()}
+    unscaffolded = [c for c in claims if not any(c["id"] in name for name in existing_dirs)]
     if unscaffolded:
         return {
             "action": "scaffold_cycles",
@@ -972,70 +1068,149 @@ def detect_investigation_state(
         }
 
     # --- Phase 4+: Wave-based execution ---
-    # Find all sub-units across all cycles
+    # Collect all sub-unit/claim states
     cycle_states: list[dict[str, Any]] = []
-    for cycle_dir in sorted(cycles_dir.iterdir()):
-        if not cycle_dir.is_dir():
-            continue
-        # Find sub-unit directories (scan through unit dirs)
-        for unit_dir in sorted(cycle_dir.iterdir()):
-            if not unit_dir.is_dir() or not unit_dir.name.startswith("unit-"):
+
+    # Scan flat claims/ directory (principia style)
+    if claims_dir.exists():
+        for claim_dir in sorted(claims_dir.iterdir()):
+            if not claim_dir.is_dir() or not claim_dir.name.startswith("claim-"):
                 continue
-            for sub_dir in sorted(unit_dir.iterdir()):
-                if not sub_dir.is_dir() or not sub_dir.name.startswith("sub-"):
+            sub_path = str(claim_dir.relative_to(research_dir))
+            state = detect_state(research_dir, sub_path, config)
+            cycle_states.append({
+                "cycle": claim_dir.name,
+                "sub_unit": sub_path,
+                "state": state,
+            })
+
+    # Scan legacy cycles/ hierarchy
+    if cycles_dir.exists():
+        for cycle_dir in sorted(cycles_dir.iterdir()):
+            if not cycle_dir.is_dir():
+                continue
+            for unit_dir in sorted(cycle_dir.iterdir()):
+                if not unit_dir.is_dir() or not unit_dir.name.startswith("unit-"):
                     continue
-                sub_path = str(sub_dir.relative_to(research_dir))
-                state = detect_state(research_dir, sub_path, config)
-                cycle_states.append({
-                    "cycle": cycle_dir.name,
-                    "sub_unit": sub_path,
-                    "state": state,
-                })
+                for sub_dir in sorted(unit_dir.iterdir()):
+                    if not sub_dir.is_dir() or not sub_dir.name.startswith("sub-"):
+                        continue
+                    sub_path = str(sub_dir.relative_to(research_dir))
+                    state = detect_state(research_dir, sub_path, config)
+                    cycle_states.append({
+                        "cycle": cycle_dir.name,
+                        "sub_unit": sub_path,
+                        "state": state,
+                    })
 
     if not cycle_states:
-        # Cycles exist but no sub-units — need scaffolding
         return {
             "action": "scaffold_cycles",
             "phase": "scaffolding",
             "claims": claims,
         }
 
-    # Partition into incomplete, needs-review, and done
-    incomplete = []
-    needs_review = []
-    done = []
+    # Try wave-ordered execution if DB has dependency data
+    waves = compute_waves(research_dir, db_path) if db_path else []
 
+    # Build cycle_dir_name -> [cycle_states] lookup
+    by_cycle: dict[str, list[dict[str, Any]]] = {}
     for cs in cycle_states:
-        action = cs["state"].get("action", "")
-        if action.startswith("complete_"):
-            # Check if reviewer has run (complete means reviewer is done)
-            done.append(cs)
-        elif action == "dispatch_reviewer":
-            needs_review.append(cs)
-        else:
-            incomplete.append(cs)
+        by_cycle.setdefault(cs["cycle"], []).append(cs)
 
-    # Prioritize: review before new work, incomplete before new waves
-    if needs_review:
-        nr = needs_review[0]
+    # Build claim_id -> cycle_dir_name mapping
+    claim_to_cycle: dict[str, str] = {}
+    for cycle_dir_item in cycles_dir.iterdir():
+        if cycle_dir_item.is_dir():
+            for claim in claims:
+                if claim["id"] in cycle_dir_item.name:
+                    claim_to_cycle[claim["id"]] = cycle_dir_item.name
+
+    # Wave-ordered routing: process waves sequentially
+    if waves and len(waves) > 1:
+        for wave in waves:
+            wave_claim_ids = [node["id"] for node in wave]
+            wave_cycle_names = [claim_to_cycle[cid] for cid in wave_claim_ids if cid in claim_to_cycle]
+
+            w_needs_review = []
+            w_incomplete = []
+            w_done = []
+
+            for cycle_name in wave_cycle_names:
+                for cs in by_cycle.get(cycle_name, []):
+                    action = cs["state"].get("action", "")
+                    if action.startswith("complete_"):
+                        w_done.append(cs)
+                    elif action in ("dispatch_reviewer", "post_verdict"):
+                        w_needs_review.append(cs)
+                    else:
+                        w_incomplete.append(cs)
+
+            if w_needs_review:
+                nr = w_needs_review[0]
+                return {
+                    "action": "review_cycle",
+                    "phase": "review",
+                    "cycle": nr["cycle"],
+                    "sub_unit": nr["sub_unit"],
+                }
+            if w_incomplete:
+                ic = w_incomplete[0]
+                return {
+                    "action": "run_cycle",
+                    "phase": "execution",
+                    "cycle": ic["cycle"],
+                    "sub_unit": ic["sub_unit"],
+                    "cycle_state": ic["state"],
+                }
+            # Wave complete — continue to next wave
+    else:
+        # Fallback: no wave data or single wave — use alphabetical ordering
+        incomplete = []
+        needs_review = []
+
+        for cs in cycle_states:
+            action = cs["state"].get("action", "")
+            if action.startswith("complete_"):
+                pass  # done
+            elif action in ("dispatch_reviewer", "post_verdict"):
+                needs_review.append(cs)
+            else:
+                incomplete.append(cs)
+
+        if needs_review:
+            nr = needs_review[0]
+            return {
+                "action": "review_cycle",
+                "phase": "review",
+                "cycle": nr["cycle"],
+                "sub_unit": nr["sub_unit"],
+            }
+        if incomplete:
+            ic = incomplete[0]
+            return {
+                "action": "run_cycle",
+                "phase": "execution",
+                "cycle": ic["cycle"],
+                "sub_unit": ic["sub_unit"],
+                "cycle_state": ic["state"],
+            }
+
+    # All cycles are done
+    done = [cs for cs in cycle_states if cs["state"].get("action", "").startswith("complete_")]
+    proven = [cs for cs in done if cs["state"].get("action") == "complete_proven"]
+
+    # --- Phase 5: Compose surviving artifacts into algorithm ---
+    composition_path = research_dir / "composition.md"
+    if proven and not composition_path.exists() and not synthesis_path.exists():
         return {
-            "action": "review_cycle",
-            "phase": "review",
-            "cycle": nr["cycle"],
-            "sub_unit": nr["sub_unit"],
+            "action": "compose",
+            "phase": "composition",
+            "proven_claims": [cs["cycle"] for cs in proven],
+            "completed_cycles": [cs["cycle"] for cs in done],
         }
 
-    if incomplete:
-        ic = incomplete[0]
-        return {
-            "action": "run_cycle",
-            "phase": "execution",
-            "cycle": ic["cycle"],
-            "sub_unit": ic["sub_unit"],
-            "cycle_state": ic["state"],
-        }
-
-    # All cycles are done — synthesize
+    # --- Phase 6: Synthesize ---
     if not synthesis_path.exists():
         return {
             "action": "synthesize",

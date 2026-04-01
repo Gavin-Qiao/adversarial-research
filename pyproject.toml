@@ -1,8 +1,8 @@
 [project]
-name = "adversarial-research"
-version = "0.1.0"
+name = "principia"
+version = "0.2.0"
 requires-python = ">=3.10"
-description = "Evidence-based adversarial research methodology with hypothesis tracking"
+description = "Design algorithms from first principles through adversarial testing"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.9", "mypy>=1.14", "pre-commit>=4.0"]

@@ -1,4 +1,4 @@
-"""Shared test fixtures and builders for adversarial-research tests."""
+"""Shared test fixtures and builders for principia tests."""
 
 from __future__ import annotations
 

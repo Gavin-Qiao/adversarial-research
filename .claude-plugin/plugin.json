@@ -1,16 +1,16 @@
 {
-  "name": "adversarial-research",
-  "description": "Evidence-based adversarial research methodology with hypothesis tracking, assumption management, and cascade invalidation",
-  "version": "0.1.0",
+  "name": "principia",
+  "description": "Turn a philosophical principle into a working algorithm through rigorous adversarial testing. Decomposes ideas into testable claims, stress-tests each through structured debate and empirical experiments, and composes the surviving pieces into a design you can build on.",
+  "version": "0.2.0",
   "license": "MIT",
   "keywords": [
-    "research",
-    "adversarial",
-    "hypothesis-testing",
-    "argumentation",
+    "algorithm-design",
+    "first-principles",
+    "adversarial-testing",
+    "hypothesis-driven",
     "multi-agent",
     "debate",
-    "evidence-tracking"
+    "falsification"
   ],
   "author": {
     "name": "Mohan"

@@ -1,195 +1,127 @@
-# adversarial-research
+# principia
 
-Evidence-based adversarial research methodology for Claude Code. Track hypotheses, manage assumptions, cascade invalidation, and run structured adversarial cycles with specialized agents.
+Turn a philosophical principle into a working algorithm through rigorous adversarial testing.
+
+You start with an insight. Principia decomposes it into testable claims, stress-tests each through structured debate and empirical experiments, and composes the surviving pieces into a design you can build on.
 
 ## Installation
 
 ```bash
-claude --plugin-dir /path/to/adversarial-research
+claude plugin install principia
+# or
+claude --plugin-dir /path/to/principia
 ```
 
 ## Quick Start
 
 ```
-# Initialize a project
-/adversarial-research:init "My Research Project"
-
-# Scaffold a research structure
-/adversarial-research:scaffold cycle hypothesis-testing
-/adversarial-research:scaffold unit baseline --parent cycles/cycle-1-hypothesis-testing
-/adversarial-research:scaffold sub-unit direct --parent cycles/cycle-1-hypothesis-testing/unit-1-baseline
-
-# Run the cycle (step by step)
-/adversarial-research:next
-
-# Or run the full cycle automatically
-/adversarial-research:investigate "Does X predict Y?"
+/principia:init "Topological Enrichment"
+/principia:design "Persistent homology captures information that clustering
+algorithms discard. An algorithm that preserves topological features during
+hierarchical merging should produce more faithful cluster boundaries."
 ```
 
-## Agents
-
-| Agent | Model | Purpose | Codebase | Web |
-|-------|-------|---------|----------|-----|
-| `@researcher` | Sonnet | Survey literature, gather background | Read | Yes |
-| `@thinker` | Opus | Propose hypotheses from context | None | Yes |
-| `@deep-thinker` | Opus | Synthesize across sub-units/cycles | None | Yes |
-| `@refutor` | Opus | Attack hypotheses, find counterexamples | None | Yes |
-| `@coder` | Sonnet | Validate empirically with synthetic data | Full | No |
-| `@judge` | Opus | Evaluate evidence, render verdict | Read-only | No |
-| `@reviewer` | Sonnet | Record outcomes, update frontier | Full | No |
-| `@conductor` | Opus | Orchestrate full cycle, dispatch agents | Full + Agent | No |
-
-Thinker and refutor have web access (for literature search) but no codebase access — isolated from files to prevent anchoring bias. The conductor orchestrates other agents as subagents and uses the state machine for routing.
+That's it. Principia will:
+1. **Survey** the research landscape
+2. **Decompose** your principle into testable claims
+3. **Stress-test** each claim: debate (architect vs adversary) then experiment
+4. **Render verdicts**: proven / disproven / partial / inconclusive
+5. **Synthesize** surviving claims into a coherent design
 
 ## Commands
 
-### Orchestration
-
-| Command | Description |
+| Command | What it does |
 |---------|-------------|
-| `/adversarial-research:next [path]` | Advance one step. Auto-detects active sub-unit. |
-| `/adversarial-research:investigate "<question>"` | Full automated cycle: scaffold → debate → test → verdict |
+| `/principia:design "<principle>"` | Full pipeline: principle to algorithm |
+| `/principia:step [path]` | Advance one step manually |
+| `/principia:status` | Progress report |
+| `/principia:init [title]` | Bootstrap a new project |
+| `/principia:impact <id>` | Preview: what breaks if this claim fails? |
+| `/principia:query "<sql>"` | Query the evidence database |
+| `/principia:list [--type] [--status]` | Browse claims and evidence |
 
-### Structure
+## Agents
 
-| Command | Description |
-|---------|-------------|
-| `/adversarial-research:init` | Bootstrap research directory |
-| `/adversarial-research:scaffold <level> <name>` | Create cycle/unit/sub-unit structure |
-| `/adversarial-research:new <path>` | Create file with auto-generated frontmatter |
+| Agent | Model | Role |
+|-------|-------|------|
+| `@scout` | Sonnet | Surveys the landscape — prior work, relevant techniques |
+| `@architect` | Opus | Proposes designs and hypotheses from context |
+| `@adversary` | Opus | Stress-tests: finds flaws, counterexamples, edge cases |
+| `@synthesizer` | Opus | Unifies findings across claims into coherent design |
+| `@experimenter` | Sonnet | Tests empirically with code and synthetic data |
+| `@arbiter` | Opus | Evaluates all evidence, renders verdict |
+| `@conductor` | Opus | Orchestrates a full claim cycle autonomously |
 
-### Verdict Management
+The architect and adversary have no codebase access — isolated to prevent anchoring bias. The experimenter has full codebase access. The conductor orchestrates other agents as subagents.
 
-| Command | Description |
-|---------|-------------|
-| `/adversarial-research:settle <id>` | Mark claim as settled |
-| `/adversarial-research:falsify <id> [--by <evidence-id>]` | Falsify + cascade to dependents |
-| `/adversarial-research:cascade <id>` | Dry-run: preview cascade impact |
-
-### Tracking
-
-| Command | Description |
-|---------|-------------|
-| `/adversarial-research:status` | Generate FRONTIER.md + ASSUMPTIONS.md |
-| `/adversarial-research:validate` | Check database integrity |
-| `/adversarial-research:query "<sql>"` | Query the research database |
-| `/adversarial-research:methodology` | View the research methodology reference |
-
-### Coder Artifacts
-
-| Command | Description |
-|---------|-------------|
-| `manage.py register --id <id> --name --type --path` | Register a coder artifact for cross-cycle reuse |
-| `manage.py artifacts` | List all registered artifacts |
-| `manage.py codebook` | Generate CODEBOOK.md from the registry |
-
-### Investigation Planning (CLI)
-
-These commands are used internally by `/investigate` and the conductor:
-
-| Command | Description |
-|---------|-------------|
-| `manage.py investigate-next` | Detect next phase of the full investigation |
-| `manage.py parse-framework` | Parse claim registry from `framework.md` |
-| `manage.py waves [--json]` | Show execution waves (dependency order) |
-| `manage.py log-dispatch --cycle --agent --action` | Log a dispatch event (audit trail) |
-| `manage.py dispatch-log [--cycle] [--json]` | View dispatch history |
-
-## Complete Workflow Example
-
-Investigating whether metric X predicts outcome Y:
+## How It Works
 
 ```
-# 1. Initialize
-/adversarial-research:init "Metric X Investigation"
+/principia:design "Your philosophical principle here"
 
-# 2. Scaffold
-/adversarial-research:scaffold cycle predictive-power
-/adversarial-research:scaffold unit baseline --parent cycles/cycle-1-predictive-power
-/adversarial-research:scaffold sub-unit direct-correlation --parent cycles/cycle-1-predictive-power/unit-1-baseline
-
-# 3. Step through the adversarial cycle
-/adversarial-research:next          # dispatches thinker R1
-/adversarial-research:next          # dispatches refutor R1
-/adversarial-research:next          # checks severity → thinker R2 or coder
-/adversarial-research:next          # ... continues to verdict
-
-# 4. Check the frontier
-/adversarial-research:status
-
-# 5. If falsified, inspect the cascade
-/adversarial-research:cascade assumption-id
-/adversarial-research:falsify assumption-id --by evidence-id
+Phase 1: @scout surveys the landscape
+Phase 2: @synthesizer decomposes into testable claims
+Phase 3: For each claim (respecting dependencies):
+         @architect proposes → @adversary attacks (1-3 rounds)
+         → @experimenter tests empirically
+         → @arbiter renders verdict
+Phase 4: @synthesizer composes surviving claims into a design
 ```
 
-Or automate the whole thing:
+After each verdict:
+- **PROVEN**: Claim confirmed. Dependents can proceed.
+- **DISPROVEN**: Hypothesis fails. Dependents are **weakened** with reduced confidence.
+- **PARTIAL**: Holds under some conditions. Narrow or gather more evidence.
+- **INCONCLUSIVE**: Not enough evidence. Try a different approach or defer.
+
+The adversary always gets the last word before experiments. Anti-convergence protocols detect when agents agree too quickly and inject counter-evidence.
+
+### Step-by-Step Mode
+
+For manual control, use `/principia:step` to advance one agent at a time:
 
 ```
-/adversarial-research:investigate "Does metric X predict outcome Y?"
+/principia:step     # dispatches architect round 1
+/principia:step     # dispatches adversary round 1
+/principia:step     # severity check → architect round 2 or experimenter
+...                 # continue to verdict
 ```
-
-## How the Orchestration Works
-
-The `/next` command reads the sub-unit directory to determine what files exist and dispatches the next agent:
-
-```
-No thinker result     → dispatch thinker
-Thinker done          → dispatch refutor
-Refutor: fatal flaw   → dispatch thinker (next round, different framework)
-Refutor: minor/none   → dispatch coder
-Coder done            → prepare judge brief, dispatch judge
-Verdict rendered      → dispatch reviewer
-Reviewer done         → report verdict + suggestions
-```
-
-The debate loop caps at 3 rounds (configurable). The refutor always gets the last word.
-
-The conductor agent uses this same state machine (`manage.py next`) for main-line routing, with autonomy to dispatch side-channel coder checks and researcher lookups. All dispatches are logged to the `dispatches` table.
-
-After the verdict:
-- **SETTLED**: Sub-unit complete. Dependents can proceed.
-- **FALSIFIED**: Cascade applied — dependents set to `undermined` with attenuated confidence.
-- **MIXED**: Claim partially true under some conditions. Refine or gather more evidence.
-- **INCONCLUSIVE**: Insufficient evidence either way. Retry with different approach or defer.
 
 ## Configuration
 
-Orchestration behavior is controlled by `config/orchestration.yaml`:
+Behavior is controlled by `config/orchestration.yaml`:
 
 ```yaml
 debate_loop:
-  max_rounds: 3         # change to 1 for fast mode
-  final_say: refutor    # who gets last word
+  max_rounds: 3          # cap on debate rounds
+  final_say: adversary   # who gets last word
+
+auto_review: true        # automated post-verdict bookkeeping
 
 severity_keywords:
   fatal: ["fatal", "blocks the approach"]
   minor: ["minor", "worth noting"]
 ```
 
-See `config/README.md` for the full configuration reference.
-
-Agent dispatch preferences (internal subagent vs external prompt) are set during `/init` and stored in `research/.config.md`.
+See `config/README.md` for the full reference.
 
 ## Directory Structure
 
 ```
-research/
-├── cycles/                     # Research cycles
-│   └── cycle-N-name/
-│       └── unit-M-name/
-│           └── sub-Ma-name/
-│               ├── thinker/round-K/{prompt,result}.md
-│               ├── refutor/round-K/{prompt,result}.md
-│               ├── coder/{prompt.md,results/output.md}
-│               ├── judge/{brief.md,results/verdict.md}
-│               ├── researcher/results/
-│               └── frontier.md
-├── context/                    # Knowledge distillations
-│   └── assumptions/            # Tracked assumptions
-├── .db/                        # SQLite database (gitignored)
-├── .config.md                  # Agent dispatch preferences
-├── FRONTIER.md                 # Auto-generated research frontier
-└── ASSUMPTIONS.md              # Auto-generated assumption registry
+design/
+├── claims/                         # One directory per testable claim
+│   └── claim-N-name/
+│       ├── architect/round-K/      # Hypothesis proposals
+│       ├── adversary/round-K/      # Stress-test attacks
+│       ├── experimenter/results/   # Empirical tests
+│       ├── arbiter/results/        # Verdicts
+│       └── claim.md                # Claim statement + metadata
+├── context/surveys/                # Background research
+├── blueprint.md                    # Claim decomposition plan
+├── synthesis.md                    # Cross-claim synthesis
+├── PROGRESS.md                     # Auto-generated progress report
+├── FOUNDATIONS.md                   # Tracked assumptions
+└── TOOLKIT.md                      # Reusable experiment code
 ```
 
 ## Frontmatter Schema
@@ -198,13 +130,12 @@ research/
 ---
 id: <auto-derived from path>
 type: claim | assumption | evidence | reference | verdict | question
-status: pending | active | settled | falsified | mixed | undermined
+status: pending | active | proven | disproven | partial | weakened | inconclusive
 date: YYYY-MM-DD
-depends_on: [node-id, ...]
+depends_on: [claim-id, ...]
 assumes: [assumption-id, ...]
-attack_type: undermines | rebuts | undercuts
-falsified_by: evidence-id
-counterfactual: "what changes if false"
+maturity: theorem-backed | supported | conjecture | experiment
+confidence: high | moderate | low
 ---
 ```
 
@@ -212,13 +143,15 @@ counterfactual: "what changes if false"
 
 ```bash
 uv venv && uv pip install pytest ruff mypy
-source .venv/bin/activate
-pytest tests/ -q         # 201+ tests
-ruff check scripts/      # lint
-mypy scripts/            # type check
+uv run pytest tests/ -q     # 246 tests
+uv run ruff check scripts/  # lint
 ```
 
 ## Requirements
 
-- Python 3.10+ (stdlib only for core — no pip packages needed at runtime)
+- Python 3.10+ (stdlib only — no pip packages at runtime)
 - Claude Code 2.0+
+
+## License
+
+MIT

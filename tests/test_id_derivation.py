@@ -32,6 +32,23 @@ class TestDeriveId:
     def test_deep_thinker(self):
         assert derive_id("cycles/cycle-1/deep-thinker/result.md") == "c1-deep-thinker-result"
 
+    # --- Flat claims/ hierarchy (principia) ---
+
+    def test_flat_claim(self):
+        assert derive_id("claims/claim-1-enrichment/claim.md") == "h1-claim"
+
+    def test_flat_claim_with_role(self):
+        path = "claims/claim-2-topology/architect/round-1/result.md"
+        assert derive_id(path) == "h2-architect-r1-result"
+
+    def test_flat_claim_experimenter(self):
+        path = "claims/claim-1-enrichment/experimenter/results/output.md"
+        assert derive_id(path) == "h1-experimenter-output"
+
+    def test_flat_claim_arbiter(self):
+        path = "claims/claim-3-stability/arbiter/results/verdict.md"
+        assert derive_id(path) == "h3-arbiter-verdict"
+
 
 class TestInferType:
     def test_thinker_result(self):

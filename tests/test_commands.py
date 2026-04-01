@@ -76,20 +76,20 @@ class TestCmdFalsify:
     def test_cascades(self, populated_research):
         rc, out, _ = run_manage(populated_research, "falsify", "assumption-a1")
         assert rc == 0
-        assert "Falsified: assumption-a1" in out
-        # The thinker claim that assumes it should be set to undermined
-        assert "undermined" in out
+        assert "Disproven: assumption-a1" in out
+        # The dependent claim should be weakened
+        assert "weakened" in out.lower()
 
     def test_records_ledger(self, populated_research):
         run_manage(populated_research, "falsify", "assumption-a1")
-        rc, out, _ = run_manage(populated_research, "query", "SELECT * FROM ledger WHERE event='falsified'")
+        rc, out, _ = run_manage(populated_research, "query", "SELECT * FROM ledger WHERE event='disproven'")
         assert rc == 0
         assert "assumption-a1" in out
 
-    def test_skips_already_falsified(self, populated_research):
+    def test_skips_already_disproven(self, populated_research):
         run_manage(populated_research, "falsify", "assumption-a1")
         _rc, out, _ = run_manage(populated_research, "falsify", "assumption-a1")
-        assert "already falsified" in out.lower()
+        assert "already disproven" in out.lower()
 
     def test_multi_level_cascade(self, research_dir):
         """A → B → C: falsify A, both B and C should be undermined."""
@@ -121,10 +121,10 @@ class TestCmdFalsify:
         )
         rc, out, _ = run_manage(research_dir, "falsify", "a")
         assert rc == 0
-        assert "undermined" in out
-        # Verify both b and c are undermined via DB query
+        assert "weakened" in out
+        # Verify both b and c are weakened via DB query
         _rc2, out2, _ = run_manage(
-            research_dir, "query", "SELECT id, status FROM nodes WHERE status='undermined'"
+            research_dir, "query", "SELECT id, status FROM nodes WHERE status='weakened'"
         )
         assert "b" in out2
         assert "c" in out2
@@ -158,17 +158,41 @@ class TestCmdFalsify:
         assert "moderate" in out2
 
 
+    def test_dry_run_no_changes(self, populated_research):
+        """--dry-run should preview cascade without modifying files."""
+        rc, out, _ = run_manage(populated_research, "falsify", "assumption-a1", "--dry-run")
+        assert rc == 0
+        assert "Dry-run" in out
+        # Verify the node was NOT actually falsified
+        _rc2, out2, _ = run_manage(
+            populated_research, "query", "SELECT status FROM nodes WHERE id='assumption-a1'"
+        )
+        assert "falsified" not in out2
+
+    def test_dry_run_shows_cascade(self, populated_research):
+        """--dry-run should list affected dependents."""
+        rc, out, _ = run_manage(populated_research, "falsify", "assumption-a1", "--dry-run")
+        assert rc == 0
+        assert "weaken" in out.lower()
+
+    def test_force_skips_prompt(self, populated_research):
+        """--force should execute without confirmation even with cascade targets."""
+        rc, out, _ = run_manage(populated_research, "falsify", "assumption-a1", "--force")
+        assert rc == 0
+        assert "Disproven: assumption-a1" in out
+
+
 class TestCmdSettle:
     def test_marks_settled(self, sample_node):
         rc, out, _ = run_manage(sample_node, "settle", "c1-u1-thinker-r1-result")
         assert rc == 0
         assert "Settled" in out
 
-    def test_rejects_falsified(self, populated_research):
+    def test_rejects_disproven(self, populated_research):
         run_manage(populated_research, "falsify", "assumption-a1")
         rc, out, _ = run_manage(populated_research, "settle", "assumption-a1")
         assert rc != 0
-        assert "falsified" in out.lower()
+        assert "disproven" in out.lower()
 
 
 class TestCmdStatus:
@@ -176,17 +200,17 @@ class TestCmdStatus:
         rc, out, _ = run_manage(populated_research, "status")
         assert rc == 0
         assert "Generated" in out
-        frontier = populated_research / "FRONTIER.md"
+        frontier = populated_research / "PROGRESS.md"
         assert frontier.exists()
         content = frontier.read_text()
-        assert "Research Frontier" in content
+        assert "Design Progress" in content
 
 
 class TestCmdAssumptions:
     def test_generates_file(self, populated_research):
         rc, _out, _ = run_manage(populated_research, "assumptions")
         assert rc == 0
-        assumptions = populated_research / "ASSUMPTIONS.md"
+        assumptions = populated_research / "FOUNDATIONS.md"
         assert assumptions.exists()
         content = assumptions.read_text()
         assert "assumption-a1" in content
@@ -233,7 +257,7 @@ class TestCmdScaffold:
         assert rc == 0
         base = research_dir / "cycles" / "cycle-1-enrichment" / "unit-1-bottleneck" / "sub-1a-ratio-test"
         assert base.exists()
-        for role in ("thinker", "refutor", "coder", "judge", "researcher"):
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
             assert (base / role).exists()
 
     def test_auto_numbering(self, research_dir):
@@ -311,9 +335,7 @@ class TestCmdDispatchLog:
         )
         rc, out, _ = run_manage(research_dir, "dispatch-log", "--json")
         assert rc == 0
-        # The build output may precede the JSON — find the JSON array
-        json_start = out.index("[")
-        data = json.loads(out[json_start:])
+        data = json.loads(out)
         assert len(data) == 1
         assert data[0]["agent"] == "refutor"
 
@@ -420,7 +442,7 @@ class TestCmdArtifacts:
         run_manage(research_dir, "build")
         rc, out, _ = run_manage(research_dir, "artifacts")
         assert rc == 0
-        assert "No coder artifacts" in out
+        assert "No experiment artifacts" in out
 
     def test_lists_registered(self, research_dir):
         run_manage(research_dir, "build")
@@ -440,7 +462,7 @@ class TestCmdCodebook:
         rc, out, _ = run_manage(research_dir, "codebook")
         assert rc == 0
         assert "Generated" in out
-        codebook = research_dir / "CODEBOOK.md"
+        codebook = research_dir / "TOOLKIT.md"
         assert codebook.exists()
         assert "No artifacts" in codebook.read_text()
 
@@ -453,8 +475,124 @@ class TestCmdCodebook:
         )
         rc, _out, _ = run_manage(research_dir, "codebook")
         assert rc == 0
-        codebook = research_dir / "CODEBOOK.md"
+        codebook = research_dir / "TOOLKIT.md"
         content = codebook.read_text()
         assert "gen-1" in content
         assert "Generator" in content
         assert "Generates data" in content
+
+
+class TestCmdList:
+    def test_list_all(self, sample_node):
+        rc, out, _ = run_manage(sample_node, "list")
+        assert rc == 0
+        assert "c1-u1-thinker-r1-result" in out
+
+    def test_list_filter_type(self, populated_research):
+        rc, out, _ = run_manage(populated_research, "list", "--type", "assumption")
+        assert rc == 0
+        assert "assumption" in out
+
+    def test_list_filter_status(self, populated_research):
+        rc, _out, _ = run_manage(populated_research, "list", "--status", "active")
+        assert rc == 0
+
+    def test_list_json(self, sample_node):
+        import json
+
+        rc, out, _ = run_manage(sample_node, "list", "--json")
+        assert rc == 0
+        data = json.loads(out)
+        assert isinstance(data, list)
+        assert len(data) >= 1
+        assert "id" in data[0]
+
+
+class TestScaffoldClaim:
+    """Tests for the flat claim scaffold level."""
+
+    def test_scaffold_claim_creates_directory(self, research_dir):
+        rc, _out, _ = run_manage(research_dir, "scaffold", "claim", "enrichment")
+        assert rc == 0
+        claim_dir = research_dir / "claims" / "claim-1-enrichment"
+        assert claim_dir.exists()
+        assert (claim_dir / "claim.md").exists()
+
+    def test_scaffold_claim_creates_role_dirs(self, research_dir):
+        run_manage(research_dir, "scaffold", "claim", "topology")
+        claim_dir = research_dir / "claims" / "claim-1-topology"
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+            assert (claim_dir / role).is_dir(), f"Missing role dir: {role}"
+
+    def test_scaffold_claim_auto_numbers(self, research_dir):
+        run_manage(research_dir, "scaffold", "claim", "first")
+        run_manage(research_dir, "scaffold", "claim", "second")
+        assert (research_dir / "claims" / "claim-1-first").exists()
+        assert (research_dir / "claims" / "claim-2-second").exists()
+
+    def test_scaffold_claim_id_derivation(self, research_dir):
+        run_manage(research_dir, "scaffold", "claim", "enrichment")
+        claim_md = research_dir / "claims" / "claim-1-enrichment" / "claim.md"
+        from manage import parse_frontmatter
+
+        meta = parse_frontmatter(claim_md.read_text())
+        # claim-1-enrichment/claim -> h1-claim
+        assert meta["id"] == "h1-claim"
+
+
+class TestCmdResults:
+    """Tests for the results command."""
+
+    def test_results_generates_file(self, populated_research):
+        rc, _out, _ = run_manage(populated_research, "results")
+        assert rc == 0
+        results = populated_research / "RESULTS.md"
+        assert results.exists()
+        content = results.read_text()
+        assert "Design Results" in content
+
+    def test_results_includes_limitations(self, populated_research):
+        run_manage(populated_research, "results")
+        content = (populated_research / "RESULTS.md").read_text()
+        assert "Limitations" in content
+
+    def test_results_includes_synthesis(self, research_dir):
+        # Create a synthesis file
+        (research_dir / "synthesis.md").write_text("---\nid: synthesis\n---\n\nAll claims converge.")
+        rc, _, _ = run_manage(research_dir, "results")
+        assert rc == 0
+        content = (research_dir / "RESULTS.md").read_text()
+        assert "Synthesis" in content
+        assert "All claims converge" in content
+
+    def test_list_empty(self, research_dir):
+        rc, out, _ = run_manage(research_dir, "list")
+        assert rc == 0
+        assert "No nodes" in out
+
+
+class TestCmdQueryJson:
+    def test_query_json(self, sample_node):
+        import json
+
+        rc, out, _ = run_manage(sample_node, "query", "--json", "SELECT id, type FROM nodes")
+        assert rc == 0
+        data = json.loads(out)
+        assert isinstance(data, list)
+        assert len(data) >= 1
+
+    def test_query_json_empty(self, research_dir):
+        rc, out, _ = run_manage(research_dir, "query", "--json", "SELECT * FROM nodes")
+        assert rc == 0
+        assert out.strip() == "[]"
+
+
+class TestCmdValidateJson:
+    def test_validate_json_pass(self, sample_node):
+        import json
+
+        rc, out, _ = run_manage(sample_node, "validate", "--json")
+        assert rc == 0
+        data = json.loads(out)
+        assert data["valid"] is True
+        assert data["error_count"] == 0

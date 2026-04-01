@@ -70,6 +70,24 @@ class TestParseFrontmatter:
         assert "# comment" not in meta
         assert meta["id"] == "test"
 
+    def test_warns_on_multiline_yaml_list(self, capsys):
+        text = "---\ndepends_on:\n  - item1\n  - item2\nid: test\n---\n"
+        meta = parse_frontmatter(text, filepath="test.md")
+        # The flat parser cannot handle block lists — depends_on should be None
+        assert meta.get("depends_on") is None
+        assert meta["id"] == "test"
+        err = capsys.readouterr().err
+        assert "WARN" in err
+        assert "test.md" in err
+        assert "item1" in err
+
+    def test_no_false_warning_for_normal_keys(self, capsys):
+        text = "---\nid: test\nstatus: pending\ndepends_on: [a, b]\n---\n"
+        meta = parse_frontmatter(text)
+        assert meta["depends_on"] == ["a", "b"]
+        err = capsys.readouterr().err
+        assert "WARN" not in err
+
 
 class TestGetBody:
     def test_with_frontmatter(self):

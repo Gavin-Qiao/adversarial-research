@@ -154,11 +154,11 @@ def _setup_scenario(research_dir: Path, contract_id: str) -> None:
         _write_result(research_dir, f"{sub}/refutor/round-1/result.md", severity="Minor")
         _write_result(research_dir, f"{sub}/coder/results/output.md")
 
-    elif contract_id == "T10":
+    elif contract_id in ("T10", "T10B"):
         _write_result(research_dir, f"{sub}/thinker/round-1/result.md")
         _write_result(research_dir, f"{sub}/refutor/round-1/result.md", severity="Minor")
         _write_result(research_dir, f"{sub}/coder/results/output.md")
-        _write_result(research_dir, f"{sub}/judge/results/verdict.md", verdict="SETTLED")
+        _write_result(research_dir, f"{sub}/judge/results/verdict.md", verdict="PROVEN")
 
     elif contract_id == "T11":
         # Prompt exists but no result — waiting for external
@@ -255,6 +255,15 @@ class TestStateTableContract:
     def test_T10_verdict_exists(self, sub_unit):
         self._assert_contract(sub_unit, "T10")
 
+    def test_T10B_verdict_auto_review_false(self, sub_unit):
+        """T10B: auto_review=false falls back to dispatch_reviewer."""
+        contract = self.contracts["T10B"]
+        _setup_scenario(sub_unit, "T10B")
+        config = {**DEFAULT_CONFIG, "auto_review": False}
+        state = detect_state(sub_unit, SUB_REL, config)
+        expected_action, _ = _parse_action(contract["Action"])
+        assert state["action"] == expected_action
+
     def test_T11_waiting(self, sub_unit):
         self._assert_contract(sub_unit, "T11")
 
@@ -271,26 +280,26 @@ class TestVerdictTableContract:
     def _load_contracts(self):
         self.contracts = {row["ID"]: row for row in _load_verdict_contracts()}
 
-    def test_V1_settled(self):
+    def test_V1_proven(self):
         _v1 = self.contracts["V1"]  # ensure contract exists in docs
-        result = suggest_next("SETTLED", "test-sub", DEFAULT_CONFIG)
+        result = suggest_next("PROVEN", "test-sub", DEFAULT_CONFIG)
         assert result["action"] == "complete", (
-            f"Contract V1 BROKEN: docs say SETTLED action='complete' but code returns '{result['action']}'"
+            f"Contract V1 BROKEN: docs say PROVEN action='complete' but code returns '{result['action']}'"
         )
-        assert result["cascade"] is False, "Contract V1 BROKEN: SETTLED should not cascade"
+        assert result["cascade"] is False, "Contract V1 BROKEN: PROVEN should not cascade"
 
-    def test_V2_falsified(self):
+    def test_V2_disproven(self):
         _v2 = self.contracts["V2"]  # ensure contract exists in docs
-        result = suggest_next("FALSIFIED", "test-sub", DEFAULT_CONFIG)
+        result = suggest_next("DISPROVEN", "test-sub", DEFAULT_CONFIG)
         assert result["action"] == "complete", (
-            f"Contract V2 BROKEN: docs say FALSIFIED action='complete' but code returns '{result['action']}'"
+            f"Contract V2 BROKEN: docs say DISPROVEN action='complete' but code returns '{result['action']}'"
         )
-        assert result["cascade"] is True, "Contract V2 BROKEN: FALSIFIED should cascade"
+        assert result["cascade"] is True, "Contract V2 BROKEN: DISPROVEN should cascade"
 
-    def test_V3_mixed(self):
+    def test_V3_partial(self):
         _v3 = self.contracts["V3"]  # ensure contract exists in docs
-        result = suggest_next("MIXED", "test-sub", DEFAULT_CONFIG)
-        assert result["cascade"] is False, "Contract V3 BROKEN: MIXED should not cascade"
+        result = suggest_next("PARTIAL", "test-sub", DEFAULT_CONFIG)
+        assert result["cascade"] is False, "Contract V3 BROKEN: PARTIAL should not cascade"
 
     def test_V4_inconclusive(self):
         _v4 = self.contracts["V4"]  # ensure contract exists in docs

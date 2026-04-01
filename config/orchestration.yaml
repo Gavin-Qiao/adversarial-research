@@ -1,22 +1,22 @@
-# Orchestration Configuration
-# Modify this file to change the adversarial research workflow.
+# Principia Orchestration Configuration
+# Modify this file to change the algorithm design workflow.
 # Changes take effect immediately — no restart needed.
 
-# The debate loop: thinker and refutor alternate rounds
+# The debate loop: architect proposes, adversary attacks
 debate_loop:
-  sequence: [thinker, refutor]   # within each round: thinker proposes, refutor attacks
-  max_rounds: 3                   # hard cap on debate rounds
-  final_say: refutor              # who gets the last word before coder
+  sequence: [architect, adversary]
+  max_rounds: 3                      # hard cap on debate rounds
+  final_say: adversary               # who gets the last word before experimenter
 
 # Role definitions
 roles:
-  - name: thinker
+  - name: architect
     type: debate
     max_rounds: 3
     output_dir: "round-{round}"
     files: [prompt.md, result.md]
 
-  - name: refutor
+  - name: adversary
     type: debate
     max_rounds: 3
     output_dir: "round-{round}"
@@ -24,70 +24,67 @@ roles:
     exit_condition:
       field: "Severity"
       continue_on: [fatal, serious]   # continue debate loop
-      exit_on: [minor, none]          # proceed to coder
+      exit_on: [minor, none]          # proceed to experimenter
       unknown: continue               # default when field not found
 
-  - name: coder
+  - name: experimenter
     type: empirical
     max_rounds: 1
     output_dir: "results"
     files: [output.md]
 
-  - name: judge
+  - name: arbiter
     type: verdict
     max_rounds: 1
     output_dir: "results"
     files: [verdict.md]
     verdict_field: "Verdict"
-    verdict_values: [SETTLED, FALSIFIED, MIXED, INCONCLUSIVE]
-
-  - name: reviewer
-    type: bookkeeper
-    max_rounds: 1
+    verdict_values: [PROVEN, DISPROVEN, PARTIAL, INCONCLUSIVE]
 
 # Phase definitions
 phases:
-  pre-falsification:
-    roles: [thinker, refutor]
+  debate:
+    roles: [architect, adversary]
     description: "Iterative hypothesis refinement through adversarial debate"
-  falsification:
-    roles: [coder]
+  experiment:
+    roles: [experimenter]
     description: "Empirical testing of the refined hypothesis"
-  judgment:
-    roles: [judge]
+  verdict:
+    roles: [arbiter]
     description: "Evaluate all evidence and render verdict"
-  recording:
-    roles: [reviewer]
-    description: "Record outcome, update frontier"
 
 # Post-verdict actions
 post_verdict:
-  SETTLED:
+  PROVEN:
     action: complete
-    message: "Sub-unit settled. Run /status to see the frontier."
-  FALSIFIED:
+    message: "Claim proven. Run /principia:status to see progress."
+  DISPROVEN:
     action: complete
     cascade: true
-    message: "Hypothesis falsified. Consider a new sub-unit with a different approach."
-  MIXED:
+    message: "Hypothesis disproven. Dependents weakened."
+  PARTIAL:
     action: prompt_user
-    message: "Verdict mixed — claim partially true under some conditions."
+    message: "Verdict partial — claim holds under some conditions."
     options:
-      - "Refine claim (narrow conditions)"
-      - "Gather more coder evidence"
-      - "Escalate to unit-level review"
+      - "Narrow the claim (add conditions)"
+      - "Gather more experimental evidence"
+      - "Accept partial result and move on"
   INCONCLUSIVE:
     action: prompt_user
     message: "Verdict inconclusive — insufficient evidence either way."
     options:
-      - "Retry with different approach (new sub-unit)"
+      - "Try a different approach"
       - "Gather more evidence"
       - "Defer and move to next claim"
 
-# Severity keywords for parsing refutor output
-# Used when the structured "Severity:" field is not found
+# Severity keywords for parsing adversary output
 severity_keywords:
   fatal: ["fatal", "blocks the approach", "fundamentally flawed"]
   serious: ["serious", "requires modification", "significant concern"]
   minor: ["minor", "worth noting", "cosmetic"]
   none: ["no genuine flaws", "no fatal", "clean"]
+
+# Post-verdict automation
+# When true, post-verdict bookkeeping is done programmatically.
+# Set to false for human-in-the-loop review.
+auto_review: true

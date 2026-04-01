@@ -133,7 +133,7 @@ class TestIncrementalBuild:
         build_db(force=True)
         # Second build — nothing changed
         build_db()
-        output = capsys.readouterr().out
+        output = capsys.readouterr().err
         assert "0 new" in output
         assert "0 changed" in output
         assert "1 unchanged" in output
@@ -149,7 +149,7 @@ class TestIncrementalBuild:
             + "\n# Updated\n"
         )
         build_db()
-        output = capsys.readouterr().out
+        output = capsys.readouterr().err
         assert "1 changed" in output
         # Verify the status was updated
         conn = _get_or_create_db()
@@ -162,7 +162,7 @@ class TestIncrementalBuild:
         # Add a new file
         self._make_file(research_dir, "cycles/cycle-1/unit-1/refutor/round-1/result.md", "c1-u1-r-r1")
         build_db()
-        output = capsys.readouterr().out
+        output = capsys.readouterr().err
         assert "1 new" in output
         conn = _get_or_create_db()
         assert conn.execute("SELECT COUNT(*) as c FROM nodes").fetchone()["c"] == 2
@@ -174,7 +174,7 @@ class TestIncrementalBuild:
         # Delete one file
         (research_dir / "cycles/cycle-1/unit-1/refutor/round-1/result.md").unlink()
         build_db()
-        output = capsys.readouterr().out
+        output = capsys.readouterr().err
         assert "1 deleted" in output
         conn = _get_or_create_db()
         assert conn.execute("SELECT COUNT(*) as c FROM nodes").fetchone()["c"] == 1
@@ -184,7 +184,7 @@ class TestIncrementalBuild:
         build_db(force=True)
         build_db(force=True)
         # Force should say "from N files" not "N unchanged"
-        output = capsys.readouterr().out
+        output = capsys.readouterr().err
         assert "from" in output
 
 
@@ -222,6 +222,22 @@ class TestCoderRegistry:
         rows = conn.execute("SELECT * FROM coder_artifacts").fetchall()
         assert len(rows) == 1
         assert rows[0]["id"] == "ring-gen"
+
+    def test_dispatches_survive_rebuild(self, research_dir):
+        """Dispatch log should survive a full DB rebuild."""
+        conn = _get_or_create_db()
+        conn.execute(
+            "INSERT INTO dispatches (timestamp, cycle_id, agent, action, round, details) "
+            "VALUES ('2026-01-01T00:00:00', 'cycle-1', 'thinker', 'dispatch', 1, 'test')"
+        )
+        conn.commit()
+        conn.close()
+        build_db(force=True)
+        conn = _get_or_create_db()
+        rows = conn.execute("SELECT * FROM dispatches").fetchall()
+        assert len(rows) == 1
+        assert rows[0]["agent"] == "thinker"
+        assert rows[0]["cycle_id"] == "cycle-1"
 
 
 # ---------------------------------------------------------------------------

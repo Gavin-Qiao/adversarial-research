@@ -1,19 +1,19 @@
 ---
 name: query
-description: Run SQL queries against the research database. Use when the user wants to query nodes, edges, or the audit ledger directly.
+description: Run SQL queries against the design database. Use when the user wants to query nodes, edges, or the audit ledger directly.
 argument-hint: "<SQL query>"
 allowed-tools:
   - Bash
 ---
 
-# Query Research Database
+# Query Design Database
 
-Run read-only SQL against the research SQLite database.
+Run read-only SQL against the design SQLite database.
 
 ## Usage
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root research query "$ARGUMENTS"
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design query "$ARGUMENTS"
 ```
 
 ## Available tables
@@ -23,9 +23,9 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root research query "$ARGUME
 |--------|------|-------------|
 | id | TEXT | Primary key, derived from path |
 | type | TEXT | claim, assumption, evidence, reference, verdict, question |
-| status | TEXT | pending, active, settled, falsified, mixed |
+| status | TEXT | pending, active, proven, disproven, partial |
 | date | TEXT | ISO date (YYYY-MM-DD) |
-| file_path | TEXT | Relative path from research root |
+| file_path | TEXT | Relative path from design root |
 | title | TEXT | First `# heading` from file body |
 | counterfactual | TEXT | What would change if this were false |
 | attack_type | TEXT | undermines, rebuts, undercuts |
@@ -35,13 +35,13 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root research query "$ARGUME
 |--------|------|-------------|
 | source_id | TEXT | Node that has the dependency |
 | target_id | TEXT | Node being depended on |
-| relation | TEXT | depends_on, assumes, falsified_by |
+| relation | TEXT | depends_on, assumes, disproven_by |
 
 ### ledger
 | Column | Type | Description |
 |--------|------|-------------|
 | timestamp | TEXT | ISO date of event |
-| event | TEXT | falsified, updated |
+| event | TEXT | disproven, updated |
 | node_id | TEXT | Affected node |
 | details | TEXT | Human-readable description |
 

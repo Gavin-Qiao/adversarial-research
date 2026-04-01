@@ -1,29 +1,22 @@
 #!/usr/bin/env python3
 """
-Research log management system for adversarial multi-agent theoretical research.
+Principia — design management system for algorithm design from first principles.
 
-Commands:
-    new <path>              Create markdown file with auto-generated frontmatter
-    build                   Rebuild SQLite DB from markdown files (incremental)
-    scaffold <level> <name> Create cycle/unit/sub-unit directory structure
-    validate                Check referential integrity and required fields
-    falsify <id> [--by id]  Mark a node as falsified and cascade
-    settle <id>             Mark a node as settled
-    cascade <id>            Dry-run: show cascade impact
-    status                  Auto-generate FRONTIER.md
-    assumptions             Auto-generate ASSUMPTIONS.md
-    query <sql>             Run arbitrary SQL against the DB
-    next [path]             Determine next action for sub-unit workflow
-    context <path>          Assemble context document for next agent
-    prompt <path>           Generate self-contained external agent prompt
-    waves [--json]          Show execution waves (dependency order)
-    investigate-next        Determine next action for full investigation
-    parse-framework         Parse claim registry from framework.md
-    register                Register a coder artifact
-    artifacts               List registered coder artifacts
-    codebook                Generate CODEBOOK.md from artifact registry
-    log-dispatch            Log a dispatch event (conductor use)
-    dispatch-log            Show dispatch audit trail
+User-facing commands:
+    scaffold <level> <name> Create claim/cycle/unit/sub-unit structure
+    status                  Auto-generate PROGRESS.md
+    validate                Check referential integrity
+    query <sql>             Query the evidence database
+    list [--type] [--status] Browse claims and evidence
+    results                 Generate RESULTS.md summary
+    cascade <id>            Preview impact of disproving a claim
+    settle <id>             Mark a claim as proven
+    falsify <id> [--by id]  Mark a claim as disproven and cascade
+
+Internal commands (used by skills and agents):
+    build, new, next, context, prompt, waves, investigate-next,
+    parse-framework, register, artifacts, codebook, post-verdict,
+    log-dispatch, dispatch-log, assumptions
 """
 
 from __future__ import annotations
@@ -34,11 +27,29 @@ import os
 import re
 import sqlite3
 import sys
+import tempfile
 import textwrap
 from collections import defaultdict, deque
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from frontmatter import (
+    _FM_RE as _FM_RE,
+)
+from frontmatter import (
+    _parse_yaml_value as _parse_yaml_value,
+)
+from frontmatter import (
+    _yaml_val as _yaml_val,
+)
+from frontmatter import (
+    extract_title,
+    get_body,
+    parse_frontmatter,
+    readable_id,
+    serialise_frontmatter,
+)
 
 # ---------------------------------------------------------------------------
 # Paths (set by init_paths(), called from main())
@@ -48,35 +59,109 @@ RESEARCH_DIR: Path = Path(".")
 DB_PATH: Path = Path(".")
 CYCLES_DIR: Path = Path(".")
 CONTEXT_DIR: Path = Path(".")
-FRONTIER_PATH: Path = Path(".")
-ASSUMPTIONS_PATH: Path = Path(".")
+PROGRESS_PATH: Path = Path(".")
+FOUNDATIONS_PATH: Path = Path(".")
 
 
 def init_paths(root: Path) -> None:
     """Configure all path globals from the given research root directory."""
-    global RESEARCH_DIR, DB_PATH, CYCLES_DIR, CONTEXT_DIR, FRONTIER_PATH, ASSUMPTIONS_PATH
+    global RESEARCH_DIR, DB_PATH, CYCLES_DIR, CONTEXT_DIR, PROGRESS_PATH, FOUNDATIONS_PATH
     RESEARCH_DIR = root.resolve()
     db_dir = RESEARCH_DIR / ".db"
     db_dir.mkdir(parents=True, exist_ok=True)
     DB_PATH = db_dir / "research.db"
     CYCLES_DIR = RESEARCH_DIR / "cycles"
     CONTEXT_DIR = RESEARCH_DIR / "context"
-    FRONTIER_PATH = RESEARCH_DIR / "FRONTIER.md"
-    ASSUMPTIONS_PATH = RESEARCH_DIR / "ASSUMPTIONS.md"
+    PROGRESS_PATH = RESEARCH_DIR / "PROGRESS.md"
+    FOUNDATIONS_PATH = RESEARCH_DIR / "FOUNDATIONS.md"
+
+
+def _emit_progress(
+    phase: str,
+    step: str,
+    detail: str = "",
+    total: int | None = None,
+    current: int | None = None,
+) -> None:
+    """Emit structured progress to stderr for skill-level reporting."""
+    progress: dict[str, Any] = {"type": "progress", "phase": phase, "step": step}
+    if detail:
+        progress["detail"] = detail
+    if total is not None:
+        progress["total"] = total
+        progress["current"] = current
+    print(json.dumps(progress), file=sys.stderr)
+
+
+def _atomic_write(path: Path, content: str, encoding: str = "utf-8") -> None:
+    """Write content to path atomically via temp file + os.replace().
+
+    Writes to a temporary file in the same directory, then uses
+    os.replace() which is atomic on the same filesystem.  If the write
+    or rename fails, the temp file is cleaned up and the original file
+    is left intact.
+    """
+    fd = None
+    tmp_path: Path | None = None
+    try:
+        fd = tempfile.NamedTemporaryFile(  # noqa: SIM115
+            mode="w",
+            encoding=encoding,
+            dir=path.parent,
+            suffix=".tmp",
+            delete=False,
+        )
+        tmp_path = Path(fd.name)
+        fd.write(content)
+        fd.flush()
+        os.fsync(fd.fileno())
+        fd.close()
+        fd = None
+        os.replace(tmp_path, path)
+    except BaseException:
+        if fd is not None:
+            fd.close()
+        if tmp_path is not None and tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)
+        raise
 
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
-VALID_STATUSES = {"pending", "active", "settled", "falsified", "mixed", "undermined"}
+VALID_STATUSES = {
+    "pending", "active",
+    "proven", "disproven", "partial", "weakened", "inconclusive",  # principia names
+    "settled", "falsified", "mixed", "undermined",                 # legacy aliases
+}
 VALID_TYPES = {"claim", "assumption", "evidence", "reference", "verdict", "question"}
 VALID_ATTACK_TYPES = {"undermines", "rebuts", "undercuts", None}
 VALID_MATURITIES = {"theorem-backed", "supported", "conjecture", "experiment", None}
 VALID_CONFIDENCES = {"high", "moderate", "low", None}
 VALID_CYCLE_STATUSES = {"not-started", "in-progress", "complete", None}
 
+# Role name mapping: new names (principia) → legacy names for backward compat
+ROLE_ALIASES = {
+    "architect": "thinker",
+    "adversary": "refutor",
+    "experimenter": "coder",
+    "scout": "researcher",
+    "arbiter": "judge",
+    "synthesizer": "deep-thinker",
+}
+# Reverse: legacy → principia
+ROLE_ALIASES_REV = {v: k for k, v in ROLE_ALIASES.items()}
+
 ROLE_TYPE_MAP = {
+    # Principia names
+    "architect": "claim",
+    "adversary": "claim",
+    "experimenter": "evidence",
+    "scout": "reference",
+    "arbiter": "verdict",
+    "synthesizer": "claim",
+    # Legacy names (still supported)
     "thinker": "claim",
     "refutor": "claim",
     "coder": "evidence",
@@ -85,138 +170,26 @@ ROLE_TYPE_MAP = {
     "deep-thinker": "claim",
 }
 
-# ---------------------------------------------------------------------------
-# Simple YAML frontmatter parser (no PyYAML dependency)
-# ---------------------------------------------------------------------------
+# Status mapping: principia ↔ legacy
+STATUS_ALIASES = {
+    "proven": "settled",
+    "disproven": "falsified",
+    "partial": "mixed",
+    "weakened": "undermined",
+}
+STATUS_ALIASES_REV = {v: k for k, v in STATUS_ALIASES.items()}
 
-_FM_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
-
-
-def _parse_yaml_value(raw: str) -> str | list[str] | None:
-    """Parse a single YAML value: string, list of strings, null, or date."""
-    raw = raw.strip()
-    if raw in ("null", "~", ""):
-        return None
-    # Inline list:  [a, b, c]
-    if raw.startswith("[") and raw.endswith("]"):
-        inner = raw[1:-1].strip()
-        if not inner:
-            return []
-        items = [s.strip().strip("'\"") for s in inner.split(",")]
-        return [i for i in items if i]
-    # Quoted string
-    if (raw.startswith('"') and raw.endswith('"')) or (raw.startswith("'") and raw.endswith("'")):
-        return raw[1:-1]
-    return raw
-
-
-def parse_frontmatter(text: str) -> dict:
-    """Return metadata dict from a markdown file's frontmatter.
-
-    NOTE: This is a simplified parser. Block scalars (| and >) and nested
-    keys are not supported. All values must be single-line."""
-    m = _FM_RE.match(text)
-    if not m:
-        return {}
-    block = m.group(1)
-    meta = {}
-    for line in block.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if ":" not in line:
-            continue
-        key, _, val = line.partition(":")
-        meta[key.strip()] = _parse_yaml_value(val)
-    return meta
-
-
-def get_body(text: str) -> str:
-    """Return everything after the frontmatter."""
-    m = _FM_RE.match(text)
-    if not m:
-        return text
-    return text[m.end() :]
-
-
-def extract_title(body: str) -> str | None:
-    """Return the first # heading from the body, or None."""
-    for line in body.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("# "):
-            return stripped[2:].strip()
-    return None
-
-
-def readable_id(node_id: str) -> str:
-    """Convert a node ID to a human-readable label when no title exists."""
-    return node_id.replace("-", " ").replace("_", " ").title()
-
+# Verdict mapping: principia ↔ legacy
+VERDICT_ALIASES = {
+    "PROVEN": "SETTLED",
+    "DISPROVEN": "FALSIFIED",
+    "PARTIAL": "MIXED",
+}
+VERDICT_ALIASES_REV = {v: k for k, v in VERDICT_ALIASES.items()}
 
 # ---------------------------------------------------------------------------
-# Frontmatter serialiser
+# Frontmatter parser/serialiser — see frontmatter.py
 # ---------------------------------------------------------------------------
-
-
-_YAML_SPECIAL = {"true", "false", "yes", "no", "on", "off", "null", "~", ""}
-
-
-def _yaml_val(v) -> str:
-    if v is None:
-        return "null"
-    if isinstance(v, list):
-        if not v:
-            return "[]"
-        parts = []
-        for i in v:
-            s = str(i)
-            if s.lower() in _YAML_SPECIAL or s != i:
-                parts.append(f'"{s}"')
-            else:
-                parts.append(s)
-        return "[" + ", ".join(parts) + "]"
-    s = str(v)
-    # Quote values that YAML would misinterpret as booleans, nulls, or numbers,
-    # or that contain colons (ambiguous to external YAML parsers)
-    if s.lower() in _YAML_SPECIAL or s != v or ":" in s:
-        return f'"{s}"'
-    try:
-        float(s)
-        return f'"{s}"'
-    except ValueError:
-        pass
-    return s
-
-
-def serialise_frontmatter(meta: dict) -> str:
-    """Produce a ---/--- delimited YAML frontmatter block."""
-    lines = ["---"]
-    # Canonical key order
-    order = [
-        "id",
-        "type",
-        "status",
-        "date",
-        "maturity",
-        "confidence",
-        "depends_on",
-        "assumes",
-        "attack_type",
-        "falsified_by",
-        "counterfactual",
-        "wave",
-        "cycle_status",
-    ]
-    seen = set()
-    for k in order:
-        if k in meta:
-            lines.append(f"{k}: {_yaml_val(meta[k])}")
-            seen.add(k)
-    for k, v in meta.items():
-        if k not in seen:
-            lines.append(f"{k}: {_yaml_val(v)}")
-    lines.append("---")
-    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -238,8 +211,9 @@ def derive_id(rel_path: str) -> str:
     p = rel_path
     if p.endswith(".md"):
         p = p[:-3]
-    # Strip leading cycles/ or context/ (including subdirectories)
+    # Strip leading directory prefixes
     p = re.sub(r"^cycles/", "", p)
+    p = re.sub(r"^claims/", "", p)
     p = re.sub(r"^context/", "", p)
     # Apply abbreviations
     parts = p.split("/")
@@ -248,6 +222,8 @@ def derive_id(rel_path: str) -> str:
         t = part
         # cycle-N or cycle-N-name -> cN
         t = re.sub(r"^cycle-(\d+)(?:-[a-z0-9_-]+)?$", r"c\1", t)
+        # claim-N or claim-N-name -> hN (hypothesis)
+        t = re.sub(r"^claim-(\d+)(?:-[a-z0-9_-]+)?$", r"h\1", t)
         # unit-M-name -> uM
         t = re.sub(r"^unit-(\d+)-[a-z0-9_-]+$", r"u\1", t)
         # sub-Ma-name -> sMa
@@ -268,15 +244,19 @@ def infer_type_from_path(rel_path: str) -> str:
     if "assumptions" in parts:
         return "assumption"
     # Role-based inference, with prompt vs result distinction
+    _prompt_roles = {
+        "thinker", "refutor", "deep-thinker", "researcher",  # legacy
+        "architect", "adversary", "synthesizer", "scout",     # principia
+    }
     for role in ROLE_TYPE_MAP:
         if role in parts:
             basename = os.path.basename(rel_path)
-            if basename == "prompt.md" and role in ("thinker", "refutor", "deep-thinker", "researcher"):
+            if basename == "prompt.md" and role in _prompt_roles:
                 return "question"
             return ROLE_TYPE_MAP[role]
-    # frontier files
+    # frontier/claim files
     basename = os.path.basename(rel_path)
-    if basename == "frontier.md":
+    if basename in ("frontier.md", "claim.md"):
         return "verdict"
     return "reference"
 
@@ -287,9 +267,10 @@ def infer_type_from_path(rel_path: str) -> str:
 
 
 def discover_md_files() -> list[Path]:
-    """Find all .md files under cycles/ and context/."""
+    """Find all .md files under cycles/, claims/, and context/."""
     files = []
-    for root_dir in (CYCLES_DIR, CONTEXT_DIR):
+    claims_dir = RESEARCH_DIR / "claims"
+    for root_dir in (CYCLES_DIR, claims_dir, CONTEXT_DIR):
         if not root_dir.exists():
             continue
         for p in sorted(root_dir.rglob("*.md")):
@@ -422,9 +403,10 @@ def _get_or_create_db() -> sqlite3.Connection:
 
 
 def init_db() -> sqlite3.Connection:
-    """Create a fresh database (full rebuild). Preserves ledger and coder_artifacts."""
+    """Create a fresh database (full rebuild). Preserves ledger, coder_artifacts, and dispatches."""
     preserved_ledger: list[tuple] = []
     preserved_artifacts: list[tuple] = []
+    preserved_dispatches: list[tuple] = []
     if DB_PATH.exists():
         try:
             old = sqlite3.connect(str(DB_PATH))
@@ -435,6 +417,10 @@ def init_db() -> sqlite3.Connection:
             ]
             if _get_schema_version(old) >= 2:
                 preserved_artifacts = [tuple(r) for r in old.execute("SELECT * FROM coder_artifacts").fetchall()]
+                preserved_dispatches = [
+                    (r["timestamp"], r["cycle_id"], r["agent"], r["action"], r["round"], r["details"])
+                    for r in old.execute("SELECT * FROM dispatches").fetchall()
+                ]
             old.close()
         except Exception:
             pass
@@ -453,6 +439,12 @@ def init_db() -> sqlite3.Connection:
         conn.executemany(
             f"INSERT OR IGNORE INTO coder_artifacts ({cols}) VALUES ({placeholders})",
             preserved_artifacts,
+        )
+    if preserved_dispatches:
+        conn.executemany(
+            "INSERT INTO dispatches (timestamp, cycle_id, agent, action, round, details) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            preserved_dispatches,
         )
     conn.commit()
     return conn
@@ -540,7 +532,7 @@ def _parse_and_upsert(conn: sqlite3.Connection, fpath: Path, seen_ids: dict[str,
         print(f"  WARN: Skipping {rel} — not valid UTF-8", file=sys.stderr)
         return None
 
-    meta = parse_frontmatter(text)
+    meta = parse_frontmatter(text, filepath=rel)
     body = get_body(text)
     title = extract_title(body)
     mtime = fpath.stat().st_mtime
@@ -706,7 +698,8 @@ def build_db(force: bool = False) -> sqlite3.Connection:
     total = conn.execute("SELECT COUNT(*) as c FROM nodes").fetchone()["c"]
     print(
         f"Built database: {total} nodes "
-        f"({len(new_files)} new, {len(changed)} changed, {unchanged} unchanged, {deleted} deleted)."
+        f"({len(new_files)} new, {len(changed)} changed, {unchanged} unchanged, {deleted} deleted).",
+        file=sys.stderr,
     )
     return conn
 
@@ -721,7 +714,7 @@ def _full_build(conn: sqlite3.Connection) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys=ON")
     conn.commit()
     total = conn.execute("SELECT COUNT(*) as c FROM nodes").fetchone()["c"]
-    print(f"Built database: {total} nodes from {len(files)} files.")
+    print(f"Built database: {total} nodes from {len(files)} files.", file=sys.stderr)
     return conn
 
 
@@ -822,6 +815,20 @@ def cmd_validate(args: argparse.Namespace) -> None:
                 f"(relation={edge['relation']})"
             )
 
+    if getattr(args, "json", False):
+        result = {
+            "valid": len(errors) == 0,
+            "error_count": len(errors),
+            "errors": errors,
+        }
+        if not errors:
+            result["node_count"] = conn.execute("SELECT COUNT(*) as c FROM nodes").fetchone()["c"]
+            result["edge_count"] = conn.execute("SELECT COUNT(*) as c FROM edges").fetchone()["c"]
+        print(json.dumps(result, indent=2))
+        if errors:
+            sys.exit(1)
+        return
+
     if errors:
         print(f"VALIDATION FAILED: {len(errors)} error(s)\n")
         for e in errors:
@@ -850,7 +857,7 @@ def _update_frontmatter_in_file(fpath: Path, updates: dict) -> bool:
         print(f"  ERROR: Permission denied reading: {fpath}", file=sys.stderr)
         return False
 
-    meta = parse_frontmatter(text)
+    meta = parse_frontmatter(text, filepath=str(fpath))
     body = get_body(text)
 
     if not meta:
@@ -872,11 +879,44 @@ def _update_frontmatter_in_file(fpath: Path, updates: dict) -> bool:
     separator = "\n\n" if body and not body.startswith("\n") else "\n"
     new_text = serialise_frontmatter(meta) + separator + body
     try:
-        fpath.write_text(new_text, encoding="utf-8")
+        _atomic_write(fpath, new_text)
     except PermissionError:
         print(f"  ERROR: Permission denied writing: {fpath}", file=sys.stderr)
         return False
     return True
+
+
+def _find_cascade_targets(
+    conn: sqlite3.Connection, node_id: str
+) -> list[tuple[str, str, str]]:
+    """BFS to find all nodes transitively dependent on *node_id*.
+
+    Returns a list of ``(dep_id, file_path, current_status)`` tuples for
+    every node reachable through ``depends_on`` or ``assumes`` edges.
+    """
+    visited: set[str] = set()
+    queue = deque([node_id])
+    affected: list[tuple[str, str, str]] = []
+
+    while queue:
+        current = queue.popleft()
+        dependents = conn.execute(
+            "SELECT DISTINCT source_id FROM edges "
+            "WHERE target_id = ? AND relation IN ('depends_on', 'assumes')",
+            (current,),
+        ).fetchall()
+        for dep in dependents:
+            dep_id = dep["source_id"]
+            if dep_id not in visited and dep_id != node_id:
+                visited.add(dep_id)
+                dep_node = conn.execute(
+                    "SELECT * FROM nodes WHERE id = ?", (dep_id,)
+                ).fetchone()
+                if dep_node:
+                    affected.append((dep_id, dep_node["file_path"], dep_node["status"]))
+                    queue.append(dep_id)
+
+    return affected
 
 
 def cmd_falsify(args: argparse.Namespace) -> None:
@@ -884,6 +924,8 @@ def cmd_falsify(args: argparse.Namespace) -> None:
     conn = build_db()  # Always rebuild for freshness
     node_id = args.id
     evidence_id = args.by
+    dry_run = getattr(args, "dry_run", False)
+    force = getattr(args, "force", False)
 
     # Check node exists
     node = conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
@@ -891,25 +933,52 @@ def cmd_falsify(args: argparse.Namespace) -> None:
         print(f"ERROR: Node '{node_id}' not found.")
         sys.exit(1)
 
-    if node["status"] == "falsified":
-        print(f"WARN: Node '{node_id}' is already falsified — skipping.")
+    if node["status"] in ("falsified", "disproven"):
+        print(f"WARN: Node '{node_id}' is already disproven — skipping.")
         return
 
-    changes = []
+    # Find cascade targets
+    affected = _find_cascade_targets(conn, node_id)
+    non_disproven = [(d, f, s) for d, f, s in affected if s not in ("falsified", "disproven")]
 
-    # Mark the node itself as falsified
+    # --dry-run: preview only
+    if dry_run:
+        print(f"Dry-run: would disprove '{node_id}' ({node['file_path']})")
+        if evidence_id:
+            print(f"      By: {evidence_id}")
+        if non_disproven:
+            print(f"\nWould weaken {len(non_disproven)} dependent node(s):")
+            for dep_id, fp, status in affected:
+                marker = " (already disproven)" if status in ("falsified", "disproven") else ""
+                print(f"  {dep_id}  ({fp})  status={status}{marker}")
+        else:
+            print("No dependents would be affected.")
+        return
+
+    # Confirmation (unless --force or non-interactive)
+    if not force and non_disproven and sys.stdin.isatty():
+        print(f"About to disprove '{node_id}' and cascade to {len(non_disproven)} dependent(s):")
+        for dep_id, fp, _status in non_disproven:
+            print(f"  {dep_id}  ({fp})")
+        answer = input("\nProceed? (y/N) ").strip().lower()
+        if answer != "y":
+            print("Aborted.")
+            return
+
+    changes: list[tuple[str, str, str]] = []
+
+    # Mark the node itself as disproven
     fpath = RESEARCH_DIR / node["file_path"]
-    updates = {"status": "falsified"}
+    updates: dict[str, Any] = {"status": "disproven"}
     if evidence_id:
         updates["falsified_by"] = evidence_id
     if not _update_frontmatter_in_file(fpath, updates):
-        print(f"ERROR: Could not update file for '{node_id}' — aborting falsify.")
+        print(f"ERROR: Could not update file for '{node_id}' — aborting.")
         sys.exit(1)
-    changes.append((node_id, node["file_path"], "falsified"))
+    changes.append((node_id, node["file_path"], "disproven"))
 
-    conn.execute("UPDATE nodes SET status = 'falsified' WHERE id = ?", (node_id,))
+    conn.execute("UPDATE nodes SET status = 'disproven' WHERE id = ?", (node_id,))
     if evidence_id:
-        # Add edge if not already present
         existing = conn.execute(
             "SELECT 1 FROM edges WHERE source_id = ? AND target_id = ? AND relation = 'falsified_by'",
             (node_id, evidence_id),
@@ -920,40 +989,28 @@ def cmd_falsify(args: argparse.Namespace) -> None:
                 (node_id, evidence_id, "falsified_by"),
             )
 
-    # Cascade: BFS to find ALL transitively dependent nodes
-    visited = set()
-    queue = deque([node_id])
-    while queue:
-        current = queue.popleft()
-        dependents = conn.execute(
-            "SELECT DISTINCT source_id FROM edges WHERE target_id = ? AND relation IN ('depends_on', 'assumes')",
-            (current,),
-        ).fetchall()
-        for dep in dependents:
-            dep_id = dep["source_id"]
-            if dep_id not in visited and dep_id != node_id:
-                visited.add(dep_id)
-                dep_node = conn.execute("SELECT * FROM nodes WHERE id = ?", (dep_id,)).fetchone()
-                if dep_node and dep_node["status"] != "falsified":
-                    dep_fpath = RESEARCH_DIR / dep_node["file_path"]
-                    from orchestration import attenuate_confidence
+    # Apply cascade to dependents — weaken them
+    from orchestration import attenuate_confidence
 
-                    new_conf = attenuate_confidence(dep_node["confidence"])
-                    updates = {"status": "undermined", "confidence": new_conf}
-                    if _update_frontmatter_in_file(dep_fpath, updates):
-                        conn.execute(
-                            "UPDATE nodes SET status = 'undermined', confidence = ? WHERE id = ?",
-                            (new_conf, dep_id),
-                        )
-                        changes.append((dep_id, dep_node["file_path"], "undermined"))
-                queue.append(dep_id)
+    for dep_id, dep_fp, dep_status in affected:
+        if dep_status not in ("falsified", "disproven"):
+            dep_fpath = RESEARCH_DIR / dep_fp
+            dep_node = conn.execute("SELECT * FROM nodes WHERE id = ?", (dep_id,)).fetchone()
+            new_conf = attenuate_confidence(dep_node["confidence"] if dep_node else None)
+            cascade_updates: dict[str, Any] = {"status": "weakened", "confidence": new_conf}
+            if _update_frontmatter_in_file(dep_fpath, cascade_updates):
+                conn.execute(
+                    "UPDATE nodes SET status = 'weakened', confidence = ? WHERE id = ?",
+                    (new_conf, dep_id),
+                )
+                changes.append((dep_id, dep_fp, "weakened"))
 
     # Ledger entries
     today = date.today().isoformat()
     for nid, _fp, new_status in changes:
-        event = "falsified" if new_status == "falsified" else "updated"
+        event = "disproven" if new_status == "disproven" else "weakened"
         detail = f"Set to {new_status}"
-        if new_status == "falsified" and evidence_id:
+        if new_status == "disproven" and evidence_id:
             detail += f" by {evidence_id}"
         conn.execute(
             "INSERT INTO ledger (timestamp, event, node_id, details) VALUES (?, ?, ?, ?)",
@@ -962,11 +1019,11 @@ def cmd_falsify(args: argparse.Namespace) -> None:
 
     conn.commit()
 
-    print(f"Falsified: {node_id}")
+    print(f"Disproven: {node_id}")
     if evidence_id:
         print(f"      By: {evidence_id}")
     if len(changes) > 1:
-        print(f"\nCascade ({len(changes) - 1} dependent(s) set to undermined):")
+        print(f"\nCascade ({len(changes) - 1} dependent(s) weakened):")
         for nid, fp, status in changes[1:]:
             print(f"  {nid}  ({fp})  -> {status}")
     else:
@@ -989,32 +1046,134 @@ def cmd_settle(args: argparse.Namespace) -> None:
         print(f"ERROR: Node '{node_id}' not found.")
         sys.exit(1)
 
-    if node["status"] == "settled":
-        print(f"WARN: Node '{node_id}' is already settled — skipping.")
+    if node["status"] in ("settled", "proven"):
+        print(f"WARN: Node '{node_id}' is already proven — skipping.")
         return
 
-    if node["status"] == "falsified":
-        print(f"ERROR: Node '{node_id}' is falsified — cannot settle a falsified node.")
+    if node["status"] in ("falsified", "disproven"):
+        print(f"ERROR: Node '{node_id}' is disproven — cannot prove a disproven node.")
         sys.exit(1)
 
-    # Mark the node as settled
+    # Mark the node as proven
     fpath = RESEARCH_DIR / node["file_path"]
-    if not _update_frontmatter_in_file(fpath, {"status": "settled"}):
-        print(f"ERROR: Could not update file for '{node_id}' — aborting settle.")
+    if not _update_frontmatter_in_file(fpath, {"status": "proven"}):
+        print(f"ERROR: Could not update file for '{node_id}' — aborting.")
         sys.exit(1)
 
-    conn.execute("UPDATE nodes SET status = 'settled' WHERE id = ?", (node_id,))
+    conn.execute("UPDATE nodes SET status = 'proven' WHERE id = ?", (node_id,))
 
     # Ledger entry
     today = date.today().isoformat()
     conn.execute(
         "INSERT INTO ledger (timestamp, event, node_id, details) VALUES (?, ?, ?, ?)",
-        (today, "settled", node_id, "Set to settled"),
+        (today, "proven", node_id, "Set to proven"),
     )
     conn.commit()
 
     print(f"Settled: {node_id}")
     print(f"   File: {node['file_path']}")
+
+
+# ---------------------------------------------------------------------------
+# Command: post-verdict (automated reviewer replacement)
+# ---------------------------------------------------------------------------
+
+
+def cmd_post_verdict(args: argparse.Namespace) -> None:
+    """Automate post-verdict bookkeeping (replaces reviewer LLM dispatch)."""
+    from orchestration import extract_confidence, extract_verdict, load_config
+
+    config = load_config(DEFAULT_ORCH_CONFIG)
+    sub_path = args.path
+    target = RESEARCH_DIR / sub_path
+
+    # Support both principia (arbiter/) and legacy (judge/) directories
+    verdict_file = target / "arbiter" / "results" / "verdict.md"
+    if not verdict_file.exists():
+        verdict_file = target / "judge" / "results" / "verdict.md"
+    if not verdict_file.exists():
+        print(f"ERROR: No verdict file found in {target}")
+        sys.exit(1)
+
+    verdict = extract_verdict(verdict_file, config)
+    confidence = extract_confidence(verdict_file)
+
+    if verdict == "UNKNOWN":
+        print("ERROR: Could not parse verdict from verdict file.")
+        sys.exit(1)
+
+    _emit_progress("recording", "post_verdict", f"{sub_path}: {verdict} ({confidence})")
+
+    conn = build_db()
+    changes: list[str] = []
+
+    # Determine the claim node ID from the sub-unit frontier
+    frontier = target / "frontier.md"
+    node_id: str | None = None
+    if frontier.exists():
+        meta = parse_frontmatter(frontier.read_text(encoding="utf-8"))
+        node_id = meta.get("id")  # type: ignore[assignment]
+
+    # Apply verdict (extract_verdict now returns principia names: PROVEN, DISPROVEN, PARTIAL)
+    if verdict == "PROVEN" and node_id:
+        node = conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
+        if node and node["status"] not in ("settled", "proven", "falsified", "disproven"):
+            _update_frontmatter_in_file(frontier, {"status": "proven"})
+            conn.execute("UPDATE nodes SET status = 'proven' WHERE id = ?", (node_id,))
+            changes.append(f"Proven: {node_id}")
+
+    elif verdict == "DISPROVEN" and node_id:
+        node = conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
+        if node and node["status"] not in ("falsified", "disproven"):
+            verdict_id = derive_id(str(verdict_file.relative_to(RESEARCH_DIR)))
+            _update_frontmatter_in_file(frontier, {"status": "disproven", "falsified_by": verdict_id})
+            conn.execute("UPDATE nodes SET status = 'disproven' WHERE id = ?", (node_id,))
+            changes.append(f"Disproven: {node_id} by {verdict_id}")
+            # Cascade — weaken dependents
+            cascade_targets = _find_cascade_targets(conn, node_id)
+            from orchestration import attenuate_confidence
+
+            for dep_id, dep_fp, dep_status in cascade_targets:
+                if dep_status not in ("falsified", "disproven"):
+                    dep_fpath = RESEARCH_DIR / dep_fp
+                    dep_node = conn.execute("SELECT * FROM nodes WHERE id = ?", (dep_id,)).fetchone()
+                    new_conf = attenuate_confidence(dep_node["confidence"] if dep_node else None)
+                    if _update_frontmatter_in_file(dep_fpath, {"status": "weakened", "confidence": new_conf}):
+                        conn.execute(
+                            "UPDATE nodes SET status = 'weakened', confidence = ? WHERE id = ?",
+                            (new_conf, dep_id),
+                        )
+                        changes.append(f"Weakened: {dep_id}")
+
+    elif verdict in ("PARTIAL", "INCONCLUSIVE") and node_id:
+        new_status = "partial" if verdict == "PARTIAL" else "active"
+        _update_frontmatter_in_file(frontier, {"status": new_status})
+        conn.execute("UPDATE nodes SET status = ? WHERE id = ?", (new_status, node_id))
+        changes.append(f"Updated {node_id} to {new_status}")
+
+    # Ledger entry
+    today = date.today().isoformat()
+    conn.execute(
+        "INSERT INTO ledger (timestamp, event, node_id, details) VALUES (?, ?, ?, ?)",
+        (today, "post_verdict", node_id or "unknown", f"Verdict: {verdict}, Confidence: {confidence}"),
+    )
+    conn.commit()
+
+    # Touch frontier so mtime > verdict mtime (signals reviewer complete to state machine)
+    if frontier.exists():
+        import time
+
+        time.sleep(0.05)
+        text = frontier.read_text(encoding="utf-8")
+        _atomic_write(frontier, text)
+
+    result = {
+        "verdict": verdict,
+        "confidence": confidence,
+        "node_id": node_id,
+        "changes": changes,
+    }
+    print(json.dumps(result, indent=2))
 
 
 # ---------------------------------------------------------------------------
@@ -1032,25 +1191,7 @@ def cmd_cascade(args: argparse.Namespace) -> None:
         print(f"ERROR: Node '{node_id}' not found.")
         sys.exit(1)
 
-    # BFS to find all transitively dependent nodes
-    visited = set()
-    queue = deque([node_id])
-    affected = []
-
-    while queue:
-        current = queue.popleft()
-        dependents = conn.execute(
-            "SELECT DISTINCT source_id FROM edges WHERE target_id = ? AND relation IN ('depends_on', 'assumes')",
-            (current,),
-        ).fetchall()
-        for dep in dependents:
-            dep_id = dep["source_id"]
-            if dep_id not in visited and dep_id != node_id:
-                visited.add(dep_id)
-                dep_node = conn.execute("SELECT * FROM nodes WHERE id = ?", (dep_id,)).fetchone()
-                if dep_node:
-                    affected.append(dep_node)
-                    queue.append(dep_id)
+    affected = _find_cascade_targets(conn, node_id)
 
     print(f"Cascade analysis for: {node_id}")
     print(f"  Current status: {node['status']}")
@@ -1059,14 +1200,14 @@ def cmd_cascade(args: argparse.Namespace) -> None:
 
     if affected:
         print(f"Would set {len(affected)} node(s) to 'undermined':")
-        for n in affected:
+        for dep_id, fp, status in affected:
             rel = conn.execute(
                 "SELECT relation FROM edges WHERE source_id = ? AND target_id = ?",
-                (n["id"], node_id),
+                (dep_id, node_id),
             ).fetchone()
             rel_str = rel["relation"] if rel else "transitive"
-            print(f"  {n['id']:40s}  status={n['status']:12s}  via={rel_str}")
-            print(f"    {n['file_path']}")
+            print(f"  {dep_id:40s}  status={status:12s}  via={rel_str}")
+            print(f"    {fp}")
     else:
         print("No nodes would be affected.")
 
@@ -1132,6 +1273,17 @@ def cmd_scaffold(args: argparse.Namespace) -> None:
         letter = chr(ord("a") + next_idx)
         dir_name = f"sub-{unit_num}{letter}-{name}"
         target = base / dir_name
+
+    elif level == "claim":
+        # Flat hierarchy: claims/claim-N-name/ — no unit/sub-unit nesting
+        base = RESEARCH_DIR / "claims"
+        if not base.exists():
+            base.mkdir(parents=True)
+        existing = sorted(d.name for d in base.iterdir() if d.is_dir() and d.name.startswith("claim-"))
+        next_num = len(existing) + 1
+        dir_name = f"claim-{next_num}-{name}"
+        target = base / dir_name
+
     else:
         print(f"ERROR: Unknown level '{level}'.")
         sys.exit(1)
@@ -1143,8 +1295,11 @@ def cmd_scaffold(args: argparse.Namespace) -> None:
     # Create the directory
     target.mkdir(parents=True)
 
-    # Create frontier.md with frontmatter
-    frontier = target / "frontier.md"
+    _emit_progress("scaffolding", f"scaffold_{level}", name)
+
+    # Create frontier.md (claim.md for flat claims) with frontmatter
+    frontier_name = "claim.md" if level == "claim" else "frontier.md"
+    frontier = target / frontier_name
     rel = rel_path_from_root(frontier)
     node_id = derive_id(rel)
     today = date.today().isoformat()
@@ -1162,26 +1317,26 @@ def cmd_scaffold(args: argparse.Namespace) -> None:
     content = serialise_frontmatter(meta) + "\n\n# " + name.replace("-", " ").title() + "\n"
     frontier.write_text(content, encoding="utf-8")
     print(f"Created: {target}")
-    print(f"  frontier.md (id: {node_id})")
+    print(f"  {frontier_name} (id: {node_id})")
 
-    # For sub-units, also create role directories
-    if level == "sub-unit":
-        for role in ("thinker", "refutor", "coder", "judge", "researcher"):
+    # For sub-units and claims, create role directories
+    if level in ("sub-unit", "claim"):
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
             (target / role).mkdir()
             print(f"  {role}/")
 
 
 # ---------------------------------------------------------------------------
-# Command: status -> FRONTIER.md
+# Command: status -> PROGRESS.md
 # ---------------------------------------------------------------------------
 
 
 def cmd_status(args: argparse.Namespace) -> None:
-    """Auto-generate FRONTIER.md from the DB."""
+    """Auto-generate PROGRESS.md from the DB."""
     conn = build_db()  # Always rebuild for freshness
 
     lines = [
-        "# Research Frontier",
+        "# Design Progress",
         "",
         "> Auto-generated by `manage.py status`. Do not edit manually.",
         "",
@@ -1375,21 +1530,21 @@ def cmd_status(args: argparse.Namespace) -> None:
     lines.append("")
 
     content = "\n".join(lines) + "\n"
-    FRONTIER_PATH.write_text(content, encoding="utf-8")
-    print(f"Generated: {FRONTIER_PATH}")
+    _atomic_write(PROGRESS_PATH, content)
+    print(f"Generated: {PROGRESS_PATH}")
 
 
 # ---------------------------------------------------------------------------
-# Command: assumptions -> ASSUMPTIONS.md
+# Command: assumptions -> FOUNDATIONS.md
 # ---------------------------------------------------------------------------
 
 
 def cmd_assumptions(args: argparse.Namespace) -> None:
-    """Auto-generate ASSUMPTIONS.md."""
+    """Auto-generate FOUNDATIONS.md."""
     conn = build_db()  # Always rebuild for freshness
 
     lines = [
-        "# Assumption Registry",
+        "# Foundations",
         "",
         "> Auto-generated by `manage.py assumptions`. Do not edit manually.",
         "",
@@ -1437,12 +1592,12 @@ def cmd_assumptions(args: argparse.Namespace) -> None:
                     (a["id"],),
                 ).fetchall()
                 if cascaded:
-                    lines.append(f"- **Cascade**: {', '.join('`' + c['id'] + '`' for c in cascaded)} set to undermined")
+                    lines.append(f"- **Cascade**: {', '.join('`' + c['id'] + '`' for c in cascaded)} weakened")
             lines.append("")
 
     content = "\n".join(lines) + "\n"
-    ASSUMPTIONS_PATH.write_text(content, encoding="utf-8")
-    print(f"Generated: {ASSUMPTIONS_PATH}")
+    _atomic_write(FOUNDATIONS_PATH, content)
+    print(f"Generated: {FOUNDATIONS_PATH}")
 
 
 # ---------------------------------------------------------------------------
@@ -1482,12 +1637,18 @@ def cmd_query(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     if not rows:
-        print("(no results)")
+        if getattr(args, "json", False):
+            print("[]")
+        else:
+            print("(no results)")
+        return
+
+    if getattr(args, "json", False):
+        print(json.dumps([dict(r) for r in rows], indent=2))
         return
 
     # Print as table
     keys = rows[0].keys()
-    # Compute column widths
     widths = {k: len(k) for k in keys}
     str_rows = []
     for row in rows:
@@ -1498,7 +1659,6 @@ def cmd_query(args: argparse.Namespace) -> None:
             widths[k] = max(widths[k], len(val))
         str_rows.append(sr)
 
-    # Header
     header = " | ".join(k.ljust(widths[k]) for k in keys)
     sep = "-+-".join("-" * widths[k] for k in keys)
     print(header)
@@ -1511,6 +1671,51 @@ def cmd_query(args: argparse.Namespace) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Command: list (node listing with filters)
+# ---------------------------------------------------------------------------
+
+
+def cmd_list(args: argparse.Namespace) -> None:
+    """List nodes, optionally filtered by type or status."""
+    conn = build_db()
+
+    clauses: list[str] = []
+    params: list[str] = []
+    if args.type:
+        clauses.append("type = ?")
+        params.append(args.type)
+    if args.status:
+        clauses.append("status = ?")
+        params.append(args.status)
+
+    sql = "SELECT id, type, status, maturity, confidence, title, file_path FROM nodes"
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
+    sql += " ORDER BY file_path"
+
+    rows = conn.execute(sql, params).fetchall()
+
+    if getattr(args, "json", False):
+        print(json.dumps([dict(r) for r in rows], indent=2))
+        return
+
+    if not rows:
+        print("No nodes found.")
+        return
+
+    for row in rows:
+        title = row["title"] or row["id"]
+        status = row["status"] or "?"
+        ntype = row["type"] or "?"
+        conf = f"  conf={row['confidence']}" if row["confidence"] else ""
+        mat = f"  mat={row['maturity']}" if row["maturity"] else ""
+        print(f"  {row['id']:40s}  {ntype:12s}  {status:12s}{conf}{mat}")
+        if title != row["id"]:
+            print(f"    {title}")
+
+    print(f"\n({len(rows)} node(s))")
+
+
 # ---------------------------------------------------------------------------
 # Command: register / artifacts / codebook (coder registry)
 # ---------------------------------------------------------------------------
@@ -1543,7 +1748,7 @@ def cmd_artifacts(args: argparse.Namespace) -> None:
     conn = build_db()
     rows = conn.execute("SELECT * FROM coder_artifacts ORDER BY created_at").fetchall()
     if not rows:
-        print("No coder artifacts registered. Use 'register' to add one.")
+        print("No experiment artifacts registered. Use 'register' to add one.")
         return
     print(f"{'ID':<20} {'Name':<25} {'Type':<10} {'File':<40} {'Created'}")
     print("-" * 110)
@@ -1553,14 +1758,14 @@ def cmd_artifacts(args: argparse.Namespace) -> None:
 
 
 def cmd_codebook(args: argparse.Namespace) -> None:
-    """Generate CODEBOOK.md from the coder artifacts registry."""
+    """Generate TOOLKIT.md from the coder artifacts registry."""
     conn = build_db()
     rows = conn.execute("SELECT * FROM coder_artifacts ORDER BY artifact_type, name").fetchall()
 
     lines = [
-        "# Coder Codebook",
+        "# Experiment Toolkit",
         "",
-        "> Auto-generated from the coder artifacts registry. Do not edit manually.",
+        "> Auto-generated from the experiment artifacts registry. Do not edit manually.",
         "",
     ]
 
@@ -1587,8 +1792,8 @@ def cmd_codebook(args: argparse.Namespace) -> None:
                 lines.append("")
 
     content = "\n".join(lines) + "\n"
-    codebook_path = RESEARCH_DIR / "CODEBOOK.md"
-    codebook_path.write_text(content, encoding="utf-8")
+    codebook_path = RESEARCH_DIR / "TOOLKIT.md"
+    _atomic_write(codebook_path, content)
     print(f"Generated: {codebook_path}")
 
 
@@ -1666,7 +1871,7 @@ def cmd_next(args: argparse.Namespace) -> None:
     if sub_path == "auto":
         found = find_active_subunit(RESEARCH_DIR)
         if not found:
-            print("No active sub-units found. Use /adversarial-research:scaffold to create one.")
+            print("No active sub-units found. Use /principia:scaffold to create one.")
             return
         sub_path = found
         print(f"Auto-detected: {sub_path}", file=sys.stderr)
@@ -1682,8 +1887,11 @@ def cmd_next(args: argparse.Namespace) -> None:
         paths = compute_paths(sub_path, agent, state.get("round"))
         state.update(paths)
 
-    # Enrich with context files
-    state["context_files"] = list_context_files(RESEARCH_DIR, sub_path, state["action"], state.get("round"))
+    # Enrich with context files (agent-aware filtering for knowledge divergence)
+    agent = state["action"].removeprefix("dispatch_") if state["action"].startswith("dispatch_") else ""
+    state["context_files"] = list_context_files(
+        RESEARCH_DIR, sub_path, state["action"], state.get("round"), agent=agent
+    )
 
     # Enrich complete states with verdict confidence
     if state["action"].startswith("complete_"):
@@ -1699,7 +1907,8 @@ def cmd_context(args: argparse.Namespace) -> None:
 
     config = load_config(DEFAULT_ORCH_CONFIG)
     state = detect_state(RESEARCH_DIR, args.path, config)
-    files = list_context_files(RESEARCH_DIR, args.path, state["action"], state.get("round"))
+    agent = state["action"].removeprefix("dispatch_") if state["action"].startswith("dispatch_") else ""
+    files = list_context_files(RESEARCH_DIR, args.path, state["action"], state.get("round"), agent=agent)
     doc = assemble_context(RESEARCH_DIR, files)
     print(doc)
 
@@ -1725,7 +1934,7 @@ def cmd_prompt(args: argparse.Namespace) -> None:
     paths = compute_paths(args.path, agent, state.get("round"))
     state.update(paths)
 
-    files = list_context_files(RESEARCH_DIR, args.path, state["action"], state.get("round"))
+    files = list_context_files(RESEARCH_DIR, args.path, state["action"], state.get("round"), agent=agent)
     context = assemble_context(RESEARCH_DIR, files)
 
     # Read agent instructions
@@ -1739,7 +1948,7 @@ def cmd_prompt(args: argparse.Namespace) -> None:
     # Write to prompt_path
     prompt_path = RESEARCH_DIR / state["prompt_path"]
     prompt_path.parent.mkdir(parents=True, exist_ok=True)
-    prompt_path.write_text(prompt, encoding="utf-8")
+    _atomic_write(prompt_path, prompt)
     print(f"Written: {prompt_path}")
 
 
@@ -1775,21 +1984,165 @@ def cmd_investigate_next(args: argparse.Namespace) -> None:
     from orchestration import detect_investigation_state, load_config
 
     config = load_config(DEFAULT_ORCH_CONFIG)
-    state = detect_investigation_state(RESEARCH_DIR, config)
+    quick = getattr(args, "quick", False)
+    if quick:
+        # Quick mode: override to 1 debate round
+        config = {**config}
+        config["debate_loop"] = {**config.get("debate_loop", {}), "max_rounds": 1}
+    state = detect_investigation_state(RESEARCH_DIR, config, quick=quick)
     print(json.dumps(state, indent=2))
 
 
 def cmd_parse_framework(args: argparse.Namespace) -> None:
-    """Parse claim registry from framework.md."""
+    """Parse claim registry from blueprint.md (or legacy framework.md)."""
     from orchestration import parse_framework
 
-    framework_path = RESEARCH_DIR / "framework.md"
+    framework_path = RESEARCH_DIR / "blueprint.md"
+    if not framework_path.exists():
+        framework_path = RESEARCH_DIR / "framework.md"
     claims = parse_framework(framework_path)
     if not claims:
-        print("No claim registry found in framework.md.")
-        print("Ensure the deep-thinker included a ```yaml block with # CLAIM_REGISTRY.", file=sys.stderr)
+        print("No claim registry found in blueprint.md.")
+        print("Ensure the synthesizer included a ```yaml block with # CLAIM_REGISTRY.", file=sys.stderr)
         sys.exit(1)
     print(json.dumps(claims, indent=2))
+
+
+# ---------------------------------------------------------------------------
+# Command: results -> RESULTS.md
+# ---------------------------------------------------------------------------
+
+
+def cmd_results(args: argparse.Namespace) -> None:
+    """Generate a single RESULTS.md summarising the entire design investigation."""
+    conn = build_db()
+
+    lines: list[str] = ["# Design Results", ""]
+
+    # --- Original question/principle ---
+    # Try to read from blueprint or framework
+    for name in ("blueprint.md", "framework.md"):
+        bp = RESEARCH_DIR / name
+        if bp.exists():
+            body = get_body(bp.read_text(encoding="utf-8"))
+            # Extract first paragraph as the principle
+            para = []
+            for line in body.splitlines():
+                if line.strip():
+                    para.append(line.strip())
+                elif para:
+                    break
+            if para:
+                lines.append("## Principle")
+                lines.append("")
+                lines.extend(para)
+                lines.append("")
+            break
+
+    # --- Claims and verdicts ---
+    lines.append("## Claims")
+    lines.append("")
+
+    cycles_dir = RESEARCH_DIR / "cycles"
+    claims_dir = RESEARCH_DIR / "claims"
+
+    # Gather all verdict nodes
+    verdicts = conn.execute(
+        "SELECT id, status, confidence FROM nodes WHERE type = 'verdict' ORDER BY id"
+    ).fetchall()
+
+    if verdicts:
+        for v in verdicts:
+            vid = v["id"]
+            status = v["status"] or "pending"
+            confidence = v["confidence"] or "unknown"
+            # Map legacy status names
+            display_status = STATUS_ALIASES_REV.get(status, status).upper()
+            lines.append(f"### {vid}")
+            lines.append(f"- **Verdict**: {display_status}")
+            lines.append(f"- **Confidence**: {confidence}")
+            lines.append("")
+    else:
+        # Fall back to scanning directories
+        for search_dir in (claims_dir, cycles_dir):
+            if not search_dir.exists():
+                continue
+            for verdict_file in sorted(search_dir.rglob("verdict.md")):
+                rel = str(verdict_file.relative_to(RESEARCH_DIR))
+                text = verdict_file.read_text(encoding="utf-8")
+                meta = parse_frontmatter(text)
+                body_preview = get_body(text).strip().splitlines()[:3]
+                lines.append(f"### {rel}")
+                if meta.get("status"):
+                    status = meta["status"]
+                    display = STATUS_ALIASES_REV.get(status, status).upper()
+                    lines.append(f"- **Verdict**: {display}")
+                for bline in body_preview:
+                    lines.append(f"> {bline}")
+                lines.append("")
+
+    if not verdicts and not any((claims_dir.exists(), cycles_dir.exists())):
+        lines.append("No claims investigated yet.")
+        lines.append("")
+
+    # --- Synthesis ---
+    synthesis = RESEARCH_DIR / "synthesis.md"
+    if synthesis.exists():
+        lines.append("## Synthesis")
+        lines.append("")
+        body = get_body(synthesis.read_text(encoding="utf-8"))
+        lines.append(body.strip())
+        lines.append("")
+
+    # --- Composition ---
+    composition = RESEARCH_DIR / "composition.md"
+    if composition.exists():
+        lines.append("## Composed Algorithm")
+        lines.append("")
+        body = get_body(composition.read_text(encoding="utf-8"))
+        lines.append(body.strip())
+        lines.append("")
+
+    # --- Limitations ---
+    lines.append("## Limitations")
+    lines.append("")
+
+    disproven = conn.execute(
+        "SELECT id FROM nodes WHERE status IN ('falsified', 'disproven') ORDER BY id"
+    ).fetchall()
+    if disproven:
+        lines.append("**Disproven claims**:")
+        for row in disproven:
+            lines.append(f"- {row['id']}")
+        lines.append("")
+
+    pending_assumptions = conn.execute(
+        "SELECT id FROM nodes WHERE type = 'assumption' AND status = 'pending' ORDER BY id"
+    ).fetchall()
+    if pending_assumptions:
+        lines.append("**Untested assumptions**:")
+        for row in pending_assumptions:
+            lines.append(f"- {row['id']}")
+        lines.append("")
+
+    weakened = conn.execute(
+        "SELECT id FROM nodes WHERE status IN ('mixed', 'partial', 'undermined', 'weakened') ORDER BY id"
+    ).fetchall()
+    if weakened:
+        lines.append("**Partially supported / weakened**:")
+        for row in weakened:
+            lines.append(f"- {row['id']}")
+        lines.append("")
+
+    if not disproven and not pending_assumptions and not weakened:
+        lines.append("None identified.")
+        lines.append("")
+
+    # --- Write ---
+    content = "\n".join(lines)
+    results_path = RESEARCH_DIR / "RESULTS.md"
+    _atomic_write(results_path, content)
+    print(f"Generated: {results_path}")
 
 
 # ---------------------------------------------------------------------------
@@ -1799,23 +2152,22 @@ def cmd_parse_framework(args: argparse.Namespace) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Research log management system",
+        description="Principia design management system",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=textwrap.dedent("""\
             Examples:
-              python manage.py --root research/ new cycles/cycle-1/thinker/round-1/result.md
-              python manage.py --root research/ build
-              python manage.py --root research/ validate
-              python manage.py --root research/ falsify c1-thinker-r1-result --by c1-coder-output
-              python manage.py --root research/ status
-              python manage.py --root research/ query "SELECT id, status FROM nodes WHERE type='claim'"
+              python manage.py --root design scaffold claim enrichment
+              python manage.py --root design validate
+              python manage.py --root design status
+              python manage.py --root design results
+              python manage.py --root design query "SELECT id, status FROM nodes WHERE type='claim'"
         """),
     )
     parser.add_argument(
         "--root",
         type=Path,
-        default=Path("research"),
-        help="Path to research root directory (default: research/)",
+        default=Path("design"),
+        help="Path to design root directory (default: design/)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -1830,12 +2182,15 @@ def main() -> None:
 
     # validate
     p_val = sub.add_parser("validate", help="Check referential integrity and required fields")
+    p_val.add_argument("--json", action="store_true", help="Output as JSON")
     p_val.set_defaults(func=cmd_validate)
 
     # falsify
     p_fals = sub.add_parser("falsify", help="Mark a node as falsified and cascade")
     p_fals.add_argument("id", help="Node ID to falsify")
     p_fals.add_argument("--by", help="Evidence ID that falsified it", default=None)
+    p_fals.add_argument("--dry-run", action="store_true", help="Preview without making changes")
+    p_fals.add_argument("--force", action="store_true", help="Skip confirmation prompt")
     p_fals.set_defaults(func=cmd_falsify)
 
     # settle
@@ -1844,105 +2199,103 @@ def main() -> None:
     p_settle.set_defaults(func=cmd_settle)
 
     # status
-    p_stat = sub.add_parser("status", help="Auto-generate FRONTIER.md from the DB")
+    p_stat = sub.add_parser("status", help="Auto-generate PROGRESS.md from the DB")
     p_stat.set_defaults(func=cmd_status)
 
     # assumptions
-    p_assu = sub.add_parser("assumptions", help="Auto-generate ASSUMPTIONS.md")
+    p_assu = sub.add_parser("assumptions", help="Auto-generate FOUNDATIONS.md")
     p_assu.set_defaults(func=cmd_assumptions)
 
     # query
     p_query = sub.add_parser("query", help="Run arbitrary SQL against the DB")
     p_query.add_argument("sql", help="SQL query to execute")
+    p_query.add_argument("--json", action="store_true", help="Output as JSON")
     p_query.set_defaults(func=cmd_query)
 
-    # cascade
-    p_casc = sub.add_parser("cascade", help="Dry-run: show cascade if a node were falsified")
+    # list
+    p_list = sub.add_parser("list", help="List nodes with optional filters")
+    p_list.add_argument("--type", default=None, help="Filter by node type (claim, assumption, evidence, ...)")
+    p_list.add_argument("--status", default=None, help="Filter by status (pending, active, settled, falsified, ...)")
+    p_list.add_argument("--json", action="store_true", help="Output as JSON")
+    p_list.set_defaults(func=cmd_list)
+
+    # impact (was cascade)
+    p_casc = sub.add_parser("cascade", help="Preview: what breaks if this claim is disproven?")
     p_casc.add_argument("id", help="Node ID to analyze")
     p_casc.set_defaults(func=cmd_cascade)
 
-    # scaffold
-    p_scaffold = sub.add_parser("scaffold", help="Create cycle/unit/sub-unit directory structure")
-    p_scaffold.add_argument("level", choices=["cycle", "unit", "sub-unit"], help="What to scaffold")
+    # scaffold (supports cycle/unit/sub-unit and flat claim)
+    p_scaffold = sub.add_parser("scaffold", help="Create directory structure")
+    p_scaffold.add_argument(
+        "level", choices=["cycle", "unit", "sub-unit", "claim"], help="What to scaffold"
+    )
     p_scaffold.add_argument("name", help="Slug name (e.g., enrichment, bottleneck)")
     p_scaffold.add_argument(
         "--parent", help="Parent path relative to research/ (required for unit/sub-unit)", default=None
     )
     p_scaffold.set_defaults(func=cmd_scaffold)
 
-    # register
-    p_reg = sub.add_parser("register", help="Register a coder artifact")
-    p_reg.add_argument("--id", required=True, help="Short ID (e.g., ring-generator)")
-    p_reg.add_argument("--name", required=True, help="Human-readable name")
-    p_reg.add_argument(
-        "--type", required=True, choices=["function", "class", "script", "dataset"], help="Artifact type"
-    )
-    p_reg.add_argument("--path", required=True, help="File path relative to research/")
-    p_reg.add_argument("--description", default=None, help="What it does")
-    p_reg.add_argument("--deps", default=None, help="Comma-separated dependency artifact IDs")
-    p_reg.add_argument("--cycle", default=None, help="Cycle ID that created this artifact")
+    # results — generate RESULTS.md
+    p_results = sub.add_parser("results", help="Generate RESULTS.md summary document")
+    p_results.set_defaults(func=cmd_results)
+
+    # --- Internal commands (hidden from --help, used by skills/agents) ---
+
+    p_reg = sub.add_parser("register")  # register experimenter artifact
+    p_reg.add_argument("--id", required=True)
+    p_reg.add_argument("--name", required=True)
+    p_reg.add_argument("--type", required=True, choices=["function", "class", "script", "dataset"])
+    p_reg.add_argument("--path", required=True)
+    p_reg.add_argument("--description", default=None)
+    p_reg.add_argument("--deps", default=None)
+    p_reg.add_argument("--cycle", default=None)
     p_reg.set_defaults(func=cmd_register)
 
-    # artifacts
-    p_art = sub.add_parser("artifacts", help="List registered coder artifacts")
+    p_art = sub.add_parser("artifacts")  # list registered artifacts
     p_art.set_defaults(func=cmd_artifacts)
 
-    # codebook
-    p_cb = sub.add_parser("codebook", help="Generate CODEBOOK.md from artifact registry")
+    p_cb = sub.add_parser("codebook")  # generate TOOLKIT.md
     p_cb.set_defaults(func=cmd_codebook)
 
-    # next
-    p_next = sub.add_parser("next", help="Determine next action for a sub-unit")
-    p_next.add_argument(
-        "path",
-        nargs="?",
-        default="auto",
-        help="Sub-unit path relative to research/ (default: auto-detect)",
-    )
+    p_next = sub.add_parser("next")  # determine next action for a sub-unit
+    p_next.add_argument("path", nargs="?", default="auto")
     p_next.set_defaults(func=cmd_next)
 
-    # context
-    p_ctx = sub.add_parser("context", help="Assemble context document for next agent")
-    p_ctx.add_argument("path", help="Sub-unit path relative to research/")
+    p_ctx = sub.add_parser("context")  # assemble context document
+    p_ctx.add_argument("path")
     p_ctx.set_defaults(func=cmd_context)
 
-    # prompt
-    p_prompt = sub.add_parser("prompt", help="Generate external agent prompt")
-    p_prompt.add_argument("path", help="Sub-unit path relative to research/")
+    p_prompt = sub.add_parser("prompt")  # generate external agent prompt
+    p_prompt.add_argument("path")
     p_prompt.set_defaults(func=cmd_prompt)
 
-    # waves
-    p_waves = sub.add_parser("waves", help="Show execution waves (dependency-based order)")
-    p_waves.add_argument("--json", action="store_true", help="Output as JSON")
+    p_waves = sub.add_parser("waves")  # show execution waves
+    p_waves.add_argument("--json", action="store_true")
     p_waves.set_defaults(func=cmd_waves)
 
-    # log-dispatch
-    p_logd = sub.add_parser("log-dispatch", help="Log a dispatch event (used by conductor)")
-    p_logd.add_argument("--cycle", required=True, help="Cycle ID")
-    p_logd.add_argument("--agent", required=True, help="Agent name")
-    p_logd.add_argument(
-        "--action",
-        required=True,
-        choices=["dispatch", "side_dispatch", "override"],
-        help="Dispatch type",
-    )
-    p_logd.add_argument("--round", type=int, default=None, help="Round number (optional)")
-    p_logd.add_argument("--details", default=None, help="Additional details")
+    p_logd = sub.add_parser("log-dispatch")  # log a dispatch event
+    p_logd.add_argument("--cycle", required=True)
+    p_logd.add_argument("--agent", required=True)
+    p_logd.add_argument("--action", required=True, choices=["dispatch", "side_dispatch", "override"])
+    p_logd.add_argument("--round", type=int, default=None)
+    p_logd.add_argument("--details", default=None)
     p_logd.set_defaults(func=cmd_log_dispatch)
 
-    # dispatch-log
-    p_dlog = sub.add_parser("dispatch-log", help="Show dispatch audit trail")
-    p_dlog.add_argument("--cycle", default=None, help="Filter by cycle ID")
-    p_dlog.add_argument("--json", action="store_true", help="Output as JSON")
+    p_dlog = sub.add_parser("dispatch-log")  # show dispatch audit trail
+    p_dlog.add_argument("--cycle", default=None)
+    p_dlog.add_argument("--json", action="store_true")
     p_dlog.set_defaults(func=cmd_dispatch_log)
 
-    # investigate-next
-    p_inv = sub.add_parser("investigate-next", help="Determine next action for the full investigation")
+    p_inv = sub.add_parser("investigate-next")  # investigation state machine
+    p_inv.add_argument("--quick", action="store_true")
     p_inv.set_defaults(func=cmd_investigate_next)
 
-    # parse-framework
-    p_pf = sub.add_parser("parse-framework", help="Parse claim registry from framework.md")
+    p_pf = sub.add_parser("parse-framework")  # parse claim registry from blueprint
     p_pf.set_defaults(func=cmd_parse_framework)
+
+    p_pv = sub.add_parser("post-verdict")  # automated post-verdict bookkeeping
+    p_pv.add_argument("path")
+    p_pv.set_defaults(func=cmd_post_verdict)
 
     args = parser.parse_args()
     init_paths(args.root)

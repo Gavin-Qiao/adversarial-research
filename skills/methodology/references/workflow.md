@@ -1,83 +1,84 @@
-# Adversarial Research Workflow
+# Principia Design Workflow
 
 ## Phases
 
 A sub-unit investigation proceeds through four phases:
 
 ```
-Pre-falsification → Falsification → Judgment → Recording
-(thinker/refutor)    (coder)         (judge)    (reviewer)
+Dialectic       -> Refutation    -> Judgment  -> Recording
+(architect/adversary) (experimenter)  (arbiter)   (post-verdict)
 ```
 
-### Phase 1: Pre-falsification (Debate)
+### Phase 1: Dialectic (Debate)
 
-The thinker and refutor alternate rounds. The thinker proposes, the refutor attacks.
+The architect and adversary alternate rounds. The architect proposes, the adversary attacks.
 
 ```
 Round 1:
-  Thinker R1: proposes hypothesis
-  Refutor R1: attacks it (rates severity: Fatal / Serious / Minor)
+  Architect R1: proposes design solution
+  Adversary R1: attacks it (rates severity: Fatal / Serious / Minor)
 
   If severity is Fatal or Serious AND round < max_rounds:
-    → Round 2 (thinker must shift framework, not just patch)
+    -> Round 2 (architect must shift framework, not just patch)
   If severity is Minor or None:
-    → Exit to Falsification phase
+    -> Exit to Refutation phase
   If round = max_rounds:
-    → Exit to Falsification phase (regardless of severity)
+    -> Exit to Refutation phase (regardless of severity)
 
 Round 2:
-  Thinker R2: revised hypothesis from a different theoretical angle
-  Refutor R2: attacks revision
+  Architect R2: revised proposal from a different theoretical angle
+  Adversary R2: attacks revision
   (same exit logic)
 
 Round 3 (hard cap):
-  Thinker R3: final proposal
-  Refutor R3: final attack (refutor always gets the last word)
-  → Exit to Falsification phase
+  Architect R3: final proposal
+  Adversary R3: final attack (adversary always gets the last word)
+  -> Exit to Refutation phase
 ```
 
-The refutor always gets the final say before the coder. The max round limit and severity exit conditions are configurable in `config/orchestration.yaml`.
+The adversary always gets the final say before the experimenter. The max round limit and severity exit conditions are configurable in `config/orchestration.yaml`.
 
-### Phase 2: Falsification (Empirical Testing)
+### Phase 2: Refutation (Empirical Testing)
 
-The coder receives all debate context and runs experiments with synthetic data. The coder should pre-register analysis criteria (in prompt.md) before seeing results. Reports quantitative metrics with statistical rigor.
+The experimenter receives all debate context and runs experiments with synthetic data. The experimenter should pre-register analysis criteria (in prompt.md) before seeing results. Reports quantitative metrics with statistical rigor.
 
 ### Phase 3: Judgment
 
 A structured brief is prepared summarizing:
-- The claim (thinker's final hypothesis)
-- Key disagreement between thinker and refutor
+- The claim (architect's final design proposal)
+- Key disagreement between architect and adversary
 - Strongest argument for and against
 - Empirical evidence and whether pre-registered criteria were met
 - Unresolved points
 
-The judge reads the brief (and can dig into individual files) and renders: SETTLED / FALSIFIED / MIXED.
+The arbiter reads the brief (and can dig into individual files) and renders: PROVEN / DISPROVEN / PARTIAL.
 
 ### Phase 4: Recording
 
-The reviewer updates frontmatter statuses, runs cascade invalidation if falsified, regenerates FRONTIER.md and ASSUMPTIONS.md, and writes a summary.
+The post-verdict step updates frontmatter statuses, runs cascade invalidation if disproven, regenerates PROGRESS.md and FOUNDATIONS.md, and writes a summary.
 
 ## State Machine
 
-The orchestrator determines the next action by scanning what files exist in the sub-unit directory.
+The conductor determines the next action by scanning what files exist in the sub-unit directory.
 
-Each row below is a **contract** — tested automatically by `tests/test_workflow_contract.py`.
+Each row below is a **contract** -- tested automatically by `tests/test_workflow_contract.py`.
 If code or docs change without updating the other, tests fail.
 
 <!-- CONTRACT:STATE_TABLE_START -->
 | ID | State | Action | Phase |
 |----|-------|--------|-------|
-| T1 | No thinker round-1 result | dispatch_thinker round 1 | pre-falsification |
-| T2 | Thinker round 1 done, no refutor | dispatch_refutor round 1 | pre-falsification |
-| T3 | Refutor done, severity fatal, round < max | dispatch_thinker round 2 | pre-falsification |
-| T4 | Refutor done, severity serious, round < max | dispatch_thinker round 2 | pre-falsification |
-| T5 | Refutor done, severity minor | dispatch_coder | falsification |
-| T6 | Refutor done, severity none | dispatch_coder | falsification |
-| T7 | Refutor done, severity unknown, default continue | dispatch_thinker round 2 | pre-falsification |
-| T8 | Refutor done, round = max_rounds (3) | dispatch_coder | falsification |
-| T9 | Coder done, no verdict | dispatch_judge | judgment |
-| T10 | Verdict exists, reviewer not done | dispatch_reviewer | recording |
-| T11 | Prompt exists without result | waiting | pre-falsification |
+| T1 | No architect round-1 result | dispatch_architect round 1 | debate |
+| T2 | Architect round 1 done, no adversary | dispatch_adversary round 1 | debate |
+| T3 | Adversary done, severity fatal, round < max | dispatch_architect round 2 | debate |
+| T4 | Adversary done, severity serious, round < max | dispatch_architect round 2 | debate |
+| T5 | Adversary done, severity minor | dispatch_experimenter | experiment |
+| T6 | Adversary done, severity none | dispatch_experimenter | experiment |
+| T7 | Adversary done, severity unknown, default continue | dispatch_architect round 2 | debate |
+| T8 | Adversary done, round = max_rounds (3) | dispatch_experimenter | experiment |
+| T9 | Experimenter done, no verdict | dispatch_arbiter | verdict |
+| T10 | Verdict exists, post-verdict not done, auto_review true | post_verdict | recording |
+| T10B | Verdict exists, post-verdict not done, auto_review false | dispatch_reviewer | recording   |
+| T11 | Prompt exists without result | waiting | debate |
 <!-- CONTRACT:STATE_TABLE_END -->
 
 ## Branching After Verdict
@@ -85,29 +86,29 @@ If code or docs change without updating the other, tests fail.
 <!-- CONTRACT:VERDICT_TABLE_START -->
 | ID | Verdict | Action | Cascade |
 |----|---------|--------|---------|
-| V1 | SETTLED | complete_settled | false |
-| V2 | FALSIFIED | complete_falsified | true |
-| V3 | MIXED | complete_mixed | false |
+| V1 | PROVEN | complete_proven | false |
+| V2 | DISPROVEN | complete_disproven | true |
+| V3 | PARTIAL | complete_partial | false |
 | V4 | INCONCLUSIVE | complete_inconclusive | false |
 <!-- CONTRACT:VERDICT_TABLE_END -->
 
 ## External Agent Flow
 
 For agents configured as external:
-1. The orchestrator generates a self-contained prompt.md with all context embedded
+1. The conductor generates a self-contained prompt.md with all context embedded
 2. The user pastes it into an external session (claude.ai, API, etc.)
 3. The user saves the response as result.md
-4. The orchestrator detects the file and continues
+4. The conductor detects the file and continues
 
 ## Unit and Cycle Resolution
 
 When all sub-units in a unit are resolved (no pending):
-1. Dispatch deep-thinker for cross-unit synthesis
-2. Dispatch judge for unit-level verdict
-3. Dispatch reviewer to update unit frontier
+1. Dispatch synthesizer for cross-unit synthesis
+2. Dispatch arbiter for unit-level verdict
+3. Run post-verdict to update unit progress
 
 When all units in a cycle are resolved:
-1. Update cycle frontier
+1. Update cycle progress
 2. Decide whether to open next cycle or conclude
 
 ## Configurable vs Hardcoded
@@ -119,8 +120,8 @@ When all units in a cycle are resolved:
 - Which severity levels continue debate vs exit
 
 **Hardcoded** (in `scripts/orchestration.py`):
-- Phase order: pre-falsification → falsification → judgment → recording
-- Debate participants: thinker and refutor
+- Phase order: dialectic -> refutation -> judgment -> recording
+- Debate participants: architect and adversary
 - The state machine transition logic
 - Context file ordering
 

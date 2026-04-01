@@ -1,24 +1,26 @@
 {
-  "name": "adversarial-research",
+  "name": "principia",
   "owner": {
     "name": "Mohan"
   },
   "metadata": {
-    "description": "Adversarial multi-agent research methodology plugin for Claude Code"
+    "description": "Turn a philosophical principle into a working algorithm through rigorous adversarial testing"
   },
   "plugins": [
     {
-      "name": "adversarial-research",
+      "name": "principia",
       "source": "./",
-      "description": "Evidence-based adversarial research methodology with hypothesis tracking, assumption management, and cascade invalidation",
-      "version": "0.1.0",
+      "description": "Design algorithms from first principles through structured adversarial debate, empirical testing, and dependency-aware claim tracking",
+      "version": "0.2.0",
       "license": "MIT",
       "keywords": [
-        "research",
-        "adversarial",
-        "hypothesis-testing",
+        "algorithm-design",
+        "first-principles",
+        "adversarial-testing",
+        "hypothesis-driven",
         "multi-agent",
-        "debate"
+        "debate",
+        "falsification"
       ]
     }
   ]
