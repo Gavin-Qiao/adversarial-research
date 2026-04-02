@@ -783,3 +783,37 @@ class TestCmdPostVerdict:
         (sub / "frontier.md").write_text("---\nid: test\n---\n")
         rc, _, _ = run_manage(research_dir, "post-verdict", "cycles/cycle-1/unit-1-test/sub-1a-probe")
         assert rc != 0
+
+
+class TestBreadcrumb:
+    def test_understand_breadcrumb(self, research_dir):
+        """investigate-next includes breadcrumb for understand phase."""
+        import json
+
+        rc, out, _ = run_manage(research_dir, "investigate-next")
+        assert rc == 0
+        state = json.loads(out)
+        assert "breadcrumb" in state
+        assert "[Understand" in state["breadcrumb"]
+
+    def test_divide_breadcrumb(self, research_dir):
+        """investigate-next includes breadcrumb for divide phase."""
+        import json
+
+        (research_dir / ".north-star.md").write_text("# Test principle\n")
+        (research_dir / ".context.md").write_text("# Context\n")
+        (research_dir / "context" / "survey-test.md").write_text("# Survey\n")
+        rc, out, _ = run_manage(research_dir, "investigate-next")
+        assert rc == 0
+        state = json.loads(out)
+        assert "[Divide]" in state["breadcrumb"]
+
+    def test_breadcrumb_includes_north_star(self, research_dir):
+        """Breadcrumb includes north star title when .north-star.md exists."""
+        import json
+
+        (research_dir / ".north-star.md").write_text("# Topology-preserving clustering\n\nDetails.\n")
+        rc, out, _ = run_manage(research_dir, "investigate-next")
+        assert rc == 0
+        state = json.loads(out)
+        assert "Topology-preserving" in state["breadcrumb"]

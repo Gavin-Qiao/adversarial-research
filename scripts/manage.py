@@ -1017,7 +1017,11 @@ def cmd_falsify(args: argparse.Namespace) -> None:
             (today, event, nid, detail),
         )
 
-    conn.commit()
+    try:
+        conn.commit()
+    except sqlite3.Error as exc:
+        print(f"ERROR: DB commit failed: {exc}. Files were updated; run 'build' to resync DB.", file=sys.stderr)
+        sys.exit(1)
 
     print(f"Disproven: {node_id}")
     if evidence_id:
@@ -1146,7 +1150,7 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
                         changes.append(f"Weakened: {dep_id}")
 
     elif verdict in ("PARTIAL", "INCONCLUSIVE") and node_id:
-        new_status = "partial" if verdict == "PARTIAL" else "active"
+        new_status = "partial" if verdict == "PARTIAL" else "inconclusive"
         _update_frontmatter_in_file(frontier, {"status": new_status})
         conn.execute("UPDATE nodes SET status = ? WHERE id = ?", (new_status, node_id))
         changes.append(f"Updated {node_id} to {new_status}")
@@ -1157,15 +1161,15 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
         "INSERT INTO ledger (timestamp, event, node_id, details) VALUES (?, ?, ?, ?)",
         (today, "post_verdict", node_id or "unknown", f"Verdict: {verdict}, Confidence: {confidence}"),
     )
-    conn.commit()
+    try:
+        conn.commit()
+    except sqlite3.Error as exc:
+        print(f"ERROR: DB commit failed: {exc}. Files were updated; run 'build' to resync DB.", file=sys.stderr)
+        sys.exit(1)
 
-    # Touch frontier so mtime > verdict mtime (signals reviewer complete to state machine)
-    if frontier.exists():
-        import time
-
-        time.sleep(0.05)
-        text = frontier.read_text(encoding="utf-8")
-        _atomic_write(frontier, text)
+    # Write marker file signaling post-verdict bookkeeping is done
+    marker = target / ".post_verdict_done"
+    _atomic_write(marker, today)
 
     result = {
         "verdict": verdict,
@@ -1266,11 +1270,14 @@ def cmd_scaffold(args: argparse.Namespace) -> None:
             print(f"ERROR: Parent directory does not exist: {base}")
             sys.exit(1)
         existing = sorted(d.name for d in base.iterdir() if d.is_dir() and d.name.startswith("sub-"))
-        # Derive letter suffix: count existing → a, b, c, ...
+        # Derive letter suffix: count existing → a, b, c, ..., z, aa, ab, ...
         parent_unit_match = re.search(r"unit-(\d+)", parent)
         unit_num = parent_unit_match.group(1) if parent_unit_match else "1"
         next_idx = len(existing)
-        letter = chr(ord("a") + next_idx)
+        if next_idx < 26:
+            letter = chr(ord("a") + next_idx)
+        else:
+            letter = chr(ord("a") + (next_idx // 26) - 1) + chr(ord("a") + (next_idx % 26))
         dir_name = f"sub-{unit_num}{letter}-{name}"
         target = base / dir_name
 
@@ -1889,8 +1896,9 @@ def cmd_next(args: argparse.Namespace) -> None:
 
     # Enrich with context files (agent-aware filtering for knowledge divergence)
     agent = state["action"].removeprefix("dispatch_") if state["action"].startswith("dispatch_") else ""
+    mr = config.get("debate_loop", {}).get("max_rounds", 3)
     state["context_files"] = list_context_files(
-        RESEARCH_DIR, sub_path, state["action"], state.get("round"), agent=agent
+        RESEARCH_DIR, sub_path, state["action"], state.get("round"), agent=agent, max_rounds=mr
     )
 
     # Enrich complete states with verdict confidence
@@ -1908,7 +1916,8 @@ def cmd_context(args: argparse.Namespace) -> None:
     config = load_config(DEFAULT_ORCH_CONFIG)
     state = detect_state(RESEARCH_DIR, args.path, config)
     agent = state["action"].removeprefix("dispatch_") if state["action"].startswith("dispatch_") else ""
-    files = list_context_files(RESEARCH_DIR, args.path, state["action"], state.get("round"), agent=agent)
+    mr = config.get("debate_loop", {}).get("max_rounds", 3)
+    files = list_context_files(RESEARCH_DIR, args.path, state["action"], state.get("round"), agent=agent, max_rounds=mr)
     doc = assemble_context(RESEARCH_DIR, files)
     print(doc)
 
@@ -1934,7 +1943,8 @@ def cmd_prompt(args: argparse.Namespace) -> None:
     paths = compute_paths(args.path, agent, state.get("round"))
     state.update(paths)
 
-    files = list_context_files(RESEARCH_DIR, args.path, state["action"], state.get("round"), agent=agent)
+    mr = config.get("debate_loop", {}).get("max_rounds", 3)
+    files = list_context_files(RESEARCH_DIR, args.path, state["action"], state.get("round"), agent=agent, max_rounds=mr)
     context = assemble_context(RESEARCH_DIR, files)
 
     # Read agent instructions
@@ -1979,6 +1989,52 @@ def cmd_waves(args: argparse.Namespace) -> None:
     print(f"\n{len(waves)} wave(s), {sum(len(w) for w in waves)} node(s)")
 
 
+def _format_investigation_breadcrumb(state: dict[str, Any], research_dir: Path) -> str:
+    """Format a breadcrumb string for the current investigation state."""
+    phase = state.get("phase", "")
+    action = state.get("action", "")
+
+    # Read north star title if exists
+    ns_path = research_dir / ".north-star.md"
+    north_star = ""
+    if ns_path.exists():
+        body = get_body(ns_path.read_text(encoding="utf-8"))
+        first_line = body.strip().split("\n")[0].lstrip("# ").strip()
+        north_star = first_line[:80]
+
+    parts: list[str] = []
+
+    if phase == "understand":
+        substeps = state.get("substeps", [])
+        current = substeps[0].title() if substeps else "Complete"
+        parts.append(f"[Understand > {current}]")
+        remaining = ", ".join(s for s in substeps[1:])
+        if remaining:
+            parts.append(f"  Next: {remaining}")
+    elif phase == "divide":
+        if action == "scaffold":
+            n = len(state.get("claims", []))
+            parts.append(f"[Divide > Scaffold] {n} claims to scaffold")
+        else:
+            parts.append("[Divide] Decomposing into testable claims")
+    elif phase == "test":
+        cycle = state.get("cycle", "")
+        if action == "test_claim":
+            parts.append(f"[Test > {cycle}] Dispatching conductor")
+        elif action == "record_verdict":
+            parts.append(f"[Test > {cycle}] Recording verdict")
+    elif phase == "synthesize":
+        n = len(state.get("proven_claims", []))
+        parts.append(f"[Synthesize] Composing from {n} proven claims")
+    elif phase == "complete":
+        parts.append("[Complete] Design process finished")
+
+    if north_star:
+        parts.append(f'  North star: "{north_star}"')
+
+    return "\n".join(parts)
+
+
 def cmd_investigate_next(args: argparse.Namespace) -> None:
     """Determine next action for the full investigation."""
     from orchestration import detect_investigation_state, load_config
@@ -1990,6 +2046,7 @@ def cmd_investigate_next(args: argparse.Namespace) -> None:
         config = {**config}
         config["debate_loop"] = {**config.get("debate_loop", {}), "max_rounds": 1}
     state = detect_investigation_state(RESEARCH_DIR, config, quick=quick)
+    state["breadcrumb"] = _format_investigation_breadcrumb(state, RESEARCH_DIR)
     print(json.dumps(state, indent=2))
 
 
@@ -2139,7 +2196,7 @@ def cmd_results(args: argparse.Namespace) -> None:
         lines.append("")
 
     # --- Write ---
-    content = "\n".join(lines)
+    content = "\n".join(lines) + "\n"
     results_path = RESEARCH_DIR / "RESULTS.md"
     _atomic_write(results_path, content)
     print(f"Generated: {results_path}")
