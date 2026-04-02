@@ -1056,6 +1056,8 @@ class TestFullCycleIntegration:
 
         # Step 6: Reviewer done (frontier mtime > verdict mtime) → complete
         import time
+        # Ensure frontier.md mtime > verdict.md mtime (tests the legacy mtime fallback path;
+        # the .post_verdict_done marker is the primary mechanism but mtime is kept as fallback)
         time.sleep(0.1)
         frontier = research_dir / sub / "frontier.md"
         frontier.write_text(

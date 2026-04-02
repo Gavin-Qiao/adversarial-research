@@ -976,6 +976,24 @@ def parse_framework(framework_path: Path) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
+def _classify_cycle_states(
+    cycle_states: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Classify cycle states into needs_review, incomplete, and done."""
+    needs_review: list[dict[str, Any]] = []
+    incomplete: list[dict[str, Any]] = []
+    done: list[dict[str, Any]] = []
+    for cs in cycle_states:
+        action = cs["state"].get("action", "")
+        if action.startswith("complete_"):
+            done.append(cs)
+        elif action in ("dispatch_reviewer", "post_verdict"):
+            needs_review.append(cs)
+        else:
+            incomplete.append(cs)
+    return needs_review, incomplete, done
+
+
 def detect_investigation_state(
     research_dir: Path,
     config: dict[str, Any],
@@ -1161,6 +1179,13 @@ def detect_investigation_state(
                     if _id_matches_dir(claim["id"], cycle_dir_item.name):
                         claim_to_cycle[claim["id"]] = cycle_dir_item.name
 
+    if claims_dir.exists():
+        for claim_dir_item in claims_dir.iterdir():
+            if claim_dir_item.is_dir():
+                for claim in claims:
+                    if _id_matches_dir(claim["id"], claim_dir_item.name):
+                        claim_to_cycle[claim["id"]] = claim_dir_item.name
+
     if waves and len(waves) > 1:
         for wave in waves:
             wave_claim_ids = [node["id"] for node in wave]
@@ -1168,19 +1193,8 @@ def detect_investigation_state(
                 claim_to_cycle[cid] for cid in wave_claim_ids if cid in claim_to_cycle
             ]
 
-            w_needs_review = []
-            w_incomplete = []
-            w_done = []
-
-            for cycle_name in wave_cycle_names:
-                for cs in by_cycle.get(cycle_name, []):
-                    action = cs["state"].get("action", "")
-                    if action.startswith("complete_"):
-                        w_done.append(cs)
-                    elif action in ("dispatch_reviewer", "post_verdict"):
-                        w_needs_review.append(cs)
-                    else:
-                        w_incomplete.append(cs)
+            wave_cs = [cs for cycle_name in wave_cycle_names for cs in by_cycle.get(cycle_name, [])]
+            w_needs_review, w_incomplete, _w_done = _classify_cycle_states(wave_cs)
 
             if w_needs_review:
                 nr = w_needs_review[0]
@@ -1200,17 +1214,7 @@ def detect_investigation_state(
                     "cycle_state": ic["state"],
                 }
     else:
-        incomplete = []
-        needs_review = []
-
-        for cs in cycle_states:
-            action = cs["state"].get("action", "")
-            if action.startswith("complete_"):
-                pass
-            elif action in ("dispatch_reviewer", "post_verdict"):
-                needs_review.append(cs)
-            else:
-                incomplete.append(cs)
+        needs_review, incomplete, _ = _classify_cycle_states(cycle_states)
 
         if needs_review:
             nr = needs_review[0]
