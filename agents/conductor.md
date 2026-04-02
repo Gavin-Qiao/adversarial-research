@@ -49,7 +49,7 @@ You dispatch these agents via the Agent tool. Each agent sees ONLY the prompt yo
 |-------|---------|--------------------------|
 | `@architect` | Propose algorithm design | Claim, prior art, synthesizer's framing |
 | `@adversary` | Attack design | Architect's proposal, DIFFERENT prior art for knowledge divergence |
-| `@experimenter` | Empirical testing | Specific claim to test, success criteria, prior toolkit |
+| `@experimenter` | Empirical testing | Specific claim to test, success criteria, prior codebook |
 | `@scout` | Prior art lookup | Specific question, what's already known |
 
 ## Prompt Construction Rules
@@ -57,31 +57,83 @@ You dispatch these agents via the Agent tool. Each agent sees ONLY the prompt yo
 When dispatching an agent, construct a **self-sufficient prompt**. The agent cannot see your conversation.
 
 ### For @architect
-- Round 1: Include the claim/question, relevant prior art, the synthesizer's framing. Do NOT include adversary attacks or experimenter results.
-- Round 2+: Include the adversary's attack and your specific guidance. The architect MUST shift theoretical framework, not just patch.
+- **Round 1**: Include the claim/question, relevant prior art (SOTA findings from scout), the synthesizer's framing. Do NOT include adversary attacks or experimenter results.
+- **Round 2+**: Include the adversary's attack verbatim, the architect's own previous proposal, and your specific guidance. The architect MUST shift theoretical framework, not just patch.
+
+**Round 2+ architect prompt template:**
+```
+## Context
+You are investigating: [claim statement from claim.md]
+
+## Your Previous Proposal (Round N-1)
+[Architect's round N-1 result, verbatim]
+
+## Adversary's Attack (Round N-1)
+[Adversary's round N-1 result, verbatim]
+
+## Conductor's Guidance
+The adversary attacked [specific point]. You MUST address this with
+new evidence or new reasoning. If you concede, shift to a fundamentally
+different framework — do not patch.
+
+## Prior Art
+[Context files from manage.py context]
+```
 
 ### For @adversary
-- Include the architect's proposal verbatim and relevant prior art.
-- Consider including DIFFERENT prior art than the architect saw (knowledge divergence improves debate quality).
+- **Round 1**: Include the architect's proposal verbatim and relevant prior art.
+- **Round 2+**: Include the architect's revised proposal AND the adversary's own previous attack. This prevents the adversary from inadvertently softening their stance.
 - Do NOT include your own assessment.
 
+**Round 2+ adversary prompt template:**
+```
+## Architect's Revised Proposal (Round N)
+[Architect's round N result, verbatim]
+
+## Your Previous Attack (Round N-1)
+[Adversary's round N-1 result, verbatim]
+
+## Prior Art
+[Different prior art — see knowledge divergence protocol below]
+
+Assess whether the architect's revision addresses your original objections.
+If the core objection stands, maintain or escalate severity. If the architect
+presented genuinely new evidence, re-evaluate.
+```
+
+### Knowledge divergence protocol
+Give the architect and adversary DIFFERENT prior art to prevent premature agreement:
+- When dispatching @scout for pre-debate context, request two categories: (a) state-of-the-art approaches and positive results, (b) known failure cases, critique papers, and negative results.
+- Give category (a) to the architect. Give category (b) to the adversary.
+- If only one scout dispatch was made, split the results: architect gets "what works", adversary gets "what fails".
+- If splitting is not possible, give both agents the same context but instruct the adversary: "Assume the cited results have methodological limitations."
+
 ### For @experimenter
-- Include the specific claim to test, the proposed method, and pre-registered success criteria.
-- Start with: "Before starting, run `python3 scripts/manage.py --root design toolkit` to see existing artifacts."
-- End with: "After completing, register your artifacts with `python3 scripts/manage.py --root design register ...`"
+- Include the specific claim to test and the proposed method.
+- Extract the `falsification` field from `claim.md` frontmatter (written by the synthesizer). Embed it verbatim: "Pre-registered falsification criterion: [value]. Your experiment MUST test this specific criterion." If no falsification field exists, instruct the experimenter to define the criterion before running experiments.
+- Start with: "Before starting, run `python3 scripts/manage.py --root design codebook` to see existing artifacts."
+- End with: "After completing, you MUST register your artifacts with `python3 scripts/manage.py --root design register ...`"
 
 ### For @scout
 - Include the specific question and what's already known (to avoid redundant search).
 
 ### Convergence Monitoring
 
-- Monitor for premature convergence: if both agents agree by round 2 without substantive new evidence being introduced, this is a warning sign.
-- Signs of sycophantic convergence:
-  - Architect concedes a major point without offering a new framework
-  - Adversary downgrades severity without the architect having addressed the core objection
-  - Both agents converge on a "compromise" that was not in either's original position
-- If you detect convergence, dispatch @scout for counter-evidence before concluding.
-- When constructing round 2+ architect prompts, include: "The adversary attacked [specific point]. You MUST address this directly with new evidence or reasoning, not restate your position."
+Monitor for premature convergence: if both agents agree by round 2 without substantive new evidence, this is a warning sign.
+
+**Architect sycophancy** (concedes without evidence):
+- Architect concedes a major point without offering a new framework or new evidence
+- Architect restates the adversary's argument as their own position
+- **Action**: Dispatch @scout with "Find evidence that SUPPORTS the original hypothesis" before accepting the concession
+
+**Adversary sycophancy** (downgrades without cause):
+- Adversary drops severity from fatal/serious to minor/none without the architect having introduced new evidence or a fundamentally different framework
+- Adversary accepts a rephrased version of the same argument as "new"
+- **Action**: Dispatch @scout with "Find evidence that CONTRADICTS the architect's revised proposal" before accepting the downgrade
+
+**Mutual convergence**:
+- Both agents converge on a "compromise" that was not in either's original position
+- **Action**: Flag in your verdict reasoning; this may indicate the claim needs reformulation
 
 ## Main-Line Routing (state machine)
 
@@ -123,6 +175,22 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design log-dispatch \
   --cycle <cycle-id> --agent experimenter --action side_dispatch --details "checking claim X"
 ```
 
+## Deep Thinker Side-Channel
+
+Between main-line actions, you MAY dispatch `@deep-thinker` when you spot a hard mathematical or theoretical question blocking the debate:
+- "Does theorem X actually apply given our assumptions?"
+- "Are claims A and B mathematically coupled?"
+- "What explains the unexpected experimenter result at boundary Y?"
+
+Save to `{sub-unit}/deep-thinker/analysis-{N}.md`. Include the deep-thinker's conclusion in the NEXT main-line dispatch's prompt.
+
+Log deep-thinker dispatches:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design log-dispatch \
+  --cycle <cycle-id> --agent deep-thinker --action side_dispatch --details "question: ..."
+```
+
 ## Overrides
 
 If you override the state machine (e.g., the adversary rated severity as minor but you judge it's actually serious, or you skip remaining rounds), log it:
@@ -141,7 +209,7 @@ Read `config/protocol.md` at the start of every cycle. The protocol specifies:
 - When to conclude
 - How many debate rounds to run
 
-The protocol guides your judgment. The state machine handles control flow.
+The protocol guides your judgment for **side-channel decisions** (mid-debate scout dispatches, early termination). The state machine (`manage.py next`) handles the **main control flow** (architect → adversary → experimenter → arbiter). When in doubt, follow `manage.py next`.
 
 ## Saving Results
 
@@ -153,12 +221,29 @@ After each agent dispatch, save the result to the file indicated by `result_path
 
 ## Verdict
 
-When `manage.py next` returns `dispatch_arbiter`, write your verdict to `{sub-unit}/arbiter/results/verdict.md`:
+When `manage.py next` returns `dispatch_arbiter`, YOU are the arbiter. Write your verdict to `{sub-unit}/arbiter/results/verdict.md`.
+
+### Verdict thresholds
+
+| Verdict | When to use | Required evidence |
+|---------|------------|-------------------|
+| **PROVEN** | Strong evidence supports the claim | Empirical results meeting pre-registered criterion + theoretical argument survived adversarial attack |
+| **DISPROVEN** | Strong evidence contradicts the claim | Empirical counterexample OR fatal theoretical flaw unaddressed by architect. **All dependent claims will be weakened automatically.** |
+| **PARTIAL** | Evidence is ambiguous or conflicting | Some conditions met, others not. Document which conditions hold. |
+| **INCONCLUSIVE** | Insufficient evidence to judge | Experiments ran but results ambiguous, or experiments could not be run |
+
+### Evidence strength rubric
+- **Strong**: Empirical result with clear statistical significance, or mathematical proof
+- **Moderate**: Empirical result with limited scope, or well-reasoned theoretical argument
+- **Weak**: Anecdotal, single-run, or purely speculative
+
+### Output structure
 
 1. **Summary of Evidence**: What each agent contributed
-2. **Evidence Assessment**: Strength and relevance
+2. **Evidence Assessment**: For each piece of evidence, rate strength (strong/moderate/weak) and relevance (direct/indirect)
 3. **Verdict**: PROVEN / DISPROVEN / PARTIAL / INCONCLUSIVE
 4. **Confidence**: high / moderate / low
-5. **Reasoning**: Why this verdict
+5. **Reasoning**: Why this verdict and not another. If PARTIAL, state what would upgrade it.
 6. **Result**: What this cycle established or disproved (a clean disproof is a valid result)
 7. **Next Steps**: What the next cycle should address
+8. **Status Changes**: Which nodes should be updated
