@@ -88,3 +88,29 @@ severity_keywords:
 # When true, post-verdict bookkeeping is done programmatically.
 # Set to false for human-in-the-loop review.
 auto_review: true
+
+# v0.3: Understand phase sub-steps
+understand:
+  substeps: [discuss, inspect, research]
+  discuss:
+    adaptive_pushback: true
+    max_questions: 5
+  inspect:
+    scan_codebase: true
+    scan_prior_sessions: true
+    scan_git_history: true
+  research:
+    iterative: true
+    max_scout_dispatches: 3
+
+# v0.3: Quick mode overrides
+quick_mode:
+  understand:
+    skip_research: true
+    max_discuss_questions: 2
+  divide:
+    skip_synthesizer: true
+  test:
+    max_rounds: 1
+  synthesize:
+    skip_composition: true
