@@ -2203,6 +2203,49 @@ def cmd_results(args: argparse.Namespace) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Paste validation
+# ---------------------------------------------------------------------------
+
+# Agent-specific required sections for paste validation
+_PASTE_REQUIREMENTS: dict[str, list[str]] = {
+    "architect": [],  # No strict format requirements
+    "adversary": ["severity"],
+    "experimenter": ["result"],
+    "arbiter": ["verdict", "confidence"],
+    "scout": ["key findings", "sources"],
+    "synthesizer": [],
+    "deep-thinker": ["analysis"],
+}
+
+
+def cmd_validate_paste(args: argparse.Namespace) -> None:
+    """Validate a pasted external agent result."""
+    agent = args.agent
+    file_path = Path(args.file)
+
+    if not file_path.exists():
+        print(f"ERROR: File not found: {file_path}")
+        sys.exit(1)
+
+    content = file_path.read_text(encoding="utf-8").strip()
+
+    if not content or len(content) < 50:
+        print("ERROR: Result appears empty or truncated (minimum 50 characters).")
+        sys.exit(1)
+
+    required = _PASTE_REQUIREMENTS.get(agent, [])
+    content_lower = content.lower()
+    missing = [s for s in required if s not in content_lower]
+
+    if missing:
+        print(f"ERROR: Missing expected section(s) for {agent}: {', '.join(missing)}")
+        print(f"The {agent} result must contain: {', '.join(required)}")
+        sys.exit(1)
+
+    print(f"OK: Valid {agent} result ({len(content)} characters).")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -2353,6 +2396,11 @@ def main() -> None:
     p_pv = sub.add_parser("post-verdict")  # automated post-verdict bookkeeping
     p_pv.add_argument("path")
     p_pv.set_defaults(func=cmd_post_verdict)
+
+    p_vp = sub.add_parser("validate-paste")  # validate pasted agent result
+    p_vp.add_argument("--agent", required=True, choices=list(_PASTE_REQUIREMENTS.keys()))
+    p_vp.add_argument("--file", required=True, help="Path to file containing pasted result")
+    p_vp.set_defaults(func=cmd_validate_paste)
 
     args = parser.parse_args()
     init_paths(args.root)

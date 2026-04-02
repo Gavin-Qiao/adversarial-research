@@ -817,3 +817,46 @@ class TestBreadcrumb:
         assert rc == 0
         state = json.loads(out)
         assert "Topology-preserving" in state["breadcrumb"]
+
+
+class TestValidatePaste:
+    def test_valid_adversary_paste(self, research_dir, tmp_path):
+        paste_file = tmp_path / "paste.md"
+        paste_file.write_text("# Attack\n\nThe proposal has a flaw.\n\n**Severity**: Serious\n\nDetails here.")
+        rc, out, _ = run_manage(research_dir, "validate-paste", "--agent", "adversary", "--file", str(paste_file))
+        assert rc == 0
+        assert "valid" in out.lower() or "ok" in out.lower()
+
+    def test_invalid_adversary_missing_severity(self, research_dir, tmp_path):
+        paste_file = tmp_path / "paste.md"
+        paste_file.write_text(
+            "# Attack\n\nSome text without the required rating field"
+            " that is long enough to pass length check."
+        )
+        rc, out, _ = run_manage(research_dir, "validate-paste", "--agent", "adversary", "--file", str(paste_file))
+        assert rc != 0
+        assert "severity" in out.lower()
+
+    def test_empty_paste_rejected(self, research_dir, tmp_path):
+        paste_file = tmp_path / "paste.md"
+        paste_file.write_text("")
+        rc, out, _ = run_manage(research_dir, "validate-paste", "--agent", "architect", "--file", str(paste_file))
+        assert rc != 0
+        assert "empty" in out.lower() or "truncated" in out.lower()
+
+    def test_valid_scout_paste(self, research_dir, tmp_path):
+        paste_file = tmp_path / "paste.md"
+        paste_file.write_text(
+            "# Survey\n\n## Key Findings\n\n- Finding 1\n\n## Sources\n\n- Paper A (2024)\n"
+        )
+        rc, _out, _ = run_manage(research_dir, "validate-paste", "--agent", "scout", "--file", str(paste_file))
+        assert rc == 0
+
+    def test_valid_arbiter_paste(self, research_dir, tmp_path):
+        paste_file = tmp_path / "paste.md"
+        paste_file.write_text(
+            "# Verdict Assessment\n\n**Verdict**: PROVEN\n"
+            "**Confidence**: high\n\n## Reasoning\nDetails here with enough text.\n"
+        )
+        rc, _out, _ = run_manage(research_dir, "validate-paste", "--agent", "arbiter", "--file", str(paste_file))
+        assert rc == 0
