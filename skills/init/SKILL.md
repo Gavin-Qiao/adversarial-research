@@ -19,25 +19,35 @@ Bootstrap a new principia algorithm design project in the current working direct
    ├── claims/          # Flat claim directories (claim-N-name/)
    ├── context/         # Background surveys, tracked assumptions
    │   └── assumptions/
+   ├── deep-thinker/    # Deep thinker analysis (ambient, cross-claim)
    └── .db/             # SQLite database (auto-generated)
    ```
 
-2. Run the initial build:
+2. If the user provided a project title or principle, create `design/.north-star.md`:
+   ```markdown
+   # [User's principle or title]
+
+   [If the user provided a description, include it here. Otherwise leave blank for the Understand phase to fill in.]
+   ```
+
+   If no title/principle was provided, do NOT create `.north-star.md` — the Understand phase will create it through discussion.
+
+3. Do NOT create `design/.context.md` — the Understand phase's inspection sub-step creates this.
+
+4. Run the initial build:
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design build
    ```
 
-3. Generate initial PROGRESS.md and FOUNDATIONS.md:
+5. Generate initial PROGRESS.md and FOUNDATIONS.md:
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design status
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design assumptions
    ```
 
-4. If the user provided a project title, add it as context in `design/context/project.md` with appropriate frontmatter.
+6. Add `design/.db/` to `.gitignore` if not already present.
 
-5. Add `design/.db/` to `.gitignore` if not already present.
-
-6. Save default config to `design/.config.md`:
+7. Save default config to `design/.config.md`. This file controls **agent dispatch mode only** (internal = subagent, external = prompt file for copy/paste). It does NOT control workflow behavior -- that's in `config/orchestration.yaml`.
    ```markdown
    # Design Configuration
 
@@ -48,12 +58,15 @@ Bootstrap a new principia algorithm design project in the current working direct
    - Experimenter: internal
    - Arbiter: internal
    - Synthesizer: internal
+   - Deep Thinker: internal
    ```
 
 ## After initialization
 
 Inform the user:
-- Use `/principia:design "<principle>"` to run a full design process
+- Use `/principia:design "<principle>"` to run a full 4-phase design process (Understand > Divide > Test > Synthesize)
 - Use `/principia:step` to advance manually, one agent at a time
 - Use `/principia:status` to see progress
 - Edit `design/.config.md` to change agent dispatch preferences (internal vs external)
+- For external dispatch: set an agent to `external` in `.config.md`, and the system will generate a self-contained prompt you can paste into any LLM
+- Workflow behavior (round limits, severity thresholds) is in `config/orchestration.yaml`
