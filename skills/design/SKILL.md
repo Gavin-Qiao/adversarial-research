@@ -1,7 +1,7 @@
 ---
 name: design
-description: Run a full principia design process. Takes an algorithm design question, uses the design state machine to drive each phase. Reports results. Use when the user wants comprehensive automated algorithm design from first principles.
-argument-hint: "<algorithm design question> [--quick]"
+description: Run a full principia design process through 4 phases (Understand > Divide > Test > Synthesize). Takes an algorithm design principle, uses the investigation state machine to drive each phase. Use when the user wants comprehensive automated algorithm design from first principles.
+argument-hint: "<algorithm design principle> [--quick]"
 allowed-tools:
   - Bash
   - Read
@@ -14,20 +14,25 @@ allowed-tools:
 
 # Full Principia Design Process
 
-Run a comprehensive design process from principle to algorithm, driven by the state machine.
+Run a 4-phase design process from principle to algorithm.
+
+```
+Understand  ->  Divide  ->  Test  ->  Synthesize
+```
 
 ## Quick Mode
 
 If the user's input contains `--quick` or the question is a single focused claim:
 
-1. Skip scout survey and synthesizer blueprint phases
-2. Scaffold a single claim directly:
+1. **Understand**: Skip Research (no scout). Brief discussion (1-2 questions max). Inspection runs.
+2. **Divide**: Scaffold single claim directly (skip synthesizer decomposition):
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design scaffold claim <slugified-question>
    ```
-3. Write the user's question as the claim statement into `claim.md`
-4. Use `investigate-next --quick` (limits to 1 debate round)
-5. Proceed directly to verdict, then generate RESULTS.md
+3. **Test**: 1 debate round, then experimenter, then verdict.
+4. **Synthesize**: Generate RESULTS.md directly.
+
+Use `investigate-next --quick` throughout.
 
 ## Steps (Full Mode)
 
@@ -40,67 +45,143 @@ If the user's input contains `--quick` or the question is a single focused claim
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design investigate-next
    ```
+   Print the `breadcrumb` field to show the user where they are.
 
-3. **Handle the state** based on the `action` field in the JSON output:
+3. **Handle the state** based on the `action` field:
 
-   - **`gather_context`**: Dispatch `@scout` with a broad survey prompt: the design principle + "comprehensive literature survey covering existing algorithms, open problems, and key results". Save output to `design/context/survey-<topic>.md`.
-     Report: `[Phase 1/6] Surveying landscape...`
+### Phase 1: Understand
 
-   - **`create_blueprint`**: Dispatch `@synthesizer` with the design principle + all survey files listed in `distillations`. Tell it to produce a blueprint with a claim registry (see synthesizer agent instructions). Save output to `design/blueprint.md`.
-     Report: `[Phase 2/6] Creating blueprint...`
+**Action: `understand`**
 
-   - **`scaffold_cycles`**: The state includes a `claims` list. For each claim, scaffold using the flat hierarchy:
-     ```bash
-     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design scaffold claim <claim-id>
-     ```
-     Write the claim statement to `claim.md`. After scaffolding, run `manage.py build`.
-     Report: `[Phase 3/6] Scaffolding N claims...`
+The state includes a `substeps` list of remaining sub-steps. Handle each in order:
 
-   - **`run_cycle`**: The state includes `cycle` and `sub_unit`. Dispatch `@conductor` with:
-     - The claim path
-     - The claim statement from claim.md (or frontier.md)
-     - A reference to `config/protocol.md`
-     - The assembled context: `manage.py context <path>`
-     Report: `[Phase 4/6] Testing claim: <name> — dispatching @conductor`
+**Sub-step: `discuss`** — Adaptive pushback on the user's principle.
+- Read the user's principle (from the argument or existing context)
+- Adapt to confidence level:
+  - **Certain**: Challenge — "What about X? Have you considered Y?"
+  - **Exploratory**: Collaborate — "Interesting. Let me check what exists..."
+  - **Vague**: Focus — "Better how? Accuracy? Speed? Robustness?"
+- May dispatch `@scout` to verify user's claims or map the space
+- May dispatch `@deep-thinker` if hard mathematical relationships are involved
+- Write refined principle to `design/.north-star.md`
+- Report: `[Understand > Discussion] Refining principle...`
 
-   - **`review_cycle`**: Run automated post-verdict bookkeeping:
-     ```bash
-     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design post-verdict <path>
-     ```
-     Report: `[Phase 4/6] Recording verdict for <name>`
+**Sub-step: `inspect`** — Scan codebase and prior sessions.
+- Use Read/Glob/Grep/Bash directly (no agent dispatch):
+  - Current codebase for relevant implementations
+  - Prior principia sessions (`design/` directories from past runs)
+  - Git history for related work
+- Write findings to `design/.context.md`
+- Report: `[Understand > Inspection] Scanning codebase...`
 
-   - **`compose`**: The state includes `proven_claims`. Dispatch `@experimenter` with all proven claim artifacts. Tell it to compose them into a single cohesive algorithm. Save to `design/composition.md`.
-     Report: `[Phase 5/6] Composing algorithm from N proven claims...`
+**Sub-step: `research`** — Deep literature review.
+- Dispatch `@scout` with: principle + context + "comprehensive literature survey"
+- Read scout output. Identify follow-up questions.
+- Dispatch `@scout` again for follow-ups (iterative).
+- May dispatch `@deep-thinker` if papers reveal hard theoretical questions.
+- Save to `design/context/survey-<topic>.md` and `design/context/comparison-<topic>.md`
+- Report: `[Understand > Research] Surveying literature...`
 
-   - **`synthesize`**: Dispatch `@synthesizer` with all cycle results and verdicts for cross-claim synthesis. Save to `design/synthesis.md`. Tell it to omit the claim registry (synthesis mode, not blueprint mode).
-     Report: `[Phase 6/6] Synthesizing final design...`
+**Phase transition**: After all sub-steps complete, ask the user:
+"Ready to decompose into testable claims, or want to research more?"
+If user wants more research, dispatch `@scout` again. When user confirms, run `investigate-next` to get the next state.
 
-   - **`complete`**: Generate RESULTS.md and report:
-     ```bash
-     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design results
-     ```
-     Read `design/RESULTS.md` and present the final design to the user.
+### Phase 2: Divide
 
-4. **After each dispatch**, run `manage.py investigate-next` again and go to step 3. Continue until `complete`.
+**Action: `divide`**
+- Dispatch `@synthesizer` with all files in `context_files` from the state JSON
+- Tell synthesizer to produce `blueprint.md` with a claim registry (3-7 claims)
+- Verify registry parses:
+  ```bash
+  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design parse-framework
+  ```
+- If decomposition involves hard math, dispatch `@deep-thinker`, then re-dispatch `@synthesizer` with the analysis
+- Report: `[Divide] Decomposing into testable claims...`
+
+**Action: `scaffold`**
+- For each claim in the `claims` list, scaffold:
+  ```bash
+  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design scaffold claim <claim-id>
+  ```
+- Write the claim statement to `claim.md`
+- After scaffolding, run `manage.py build`
+- For each claim, show the user: claim statement, maturity, dependencies, falsification criterion
+- Ask: "Investigate deeper (spawn sub-investigation) or treat as atomic?"
+- If deeper: spawn child principia (see Recursive Structure below)
+- Report: `[Divide > Scaffold] Scaffolding N claims...`
+
+### Phase 3: Test
+
+**Action: `test_claim`**
+- The state includes `cycle` (claim name) and `sub_unit` (path)
+- Read `.config.md` to check dispatch mode for the conductor
+- If **internal**: Dispatch `@conductor` with the claim path, claim statement, and reference to `config/protocol.md`
+- If **external**: Generate conductor prompt with `manage.py prompt <path>` and tell user to paste result
+- Report: `[Test > <claim>] Dispatching @conductor`
+
+**Action: `record_verdict`**
+- Run post-verdict bookkeeping:
+  ```bash
+  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design post-verdict <path>
+  ```
+- Report the verdict to the user with breadcrumb
+- Report: `[Test > <claim>] Verdict: <VERDICT> (confidence: <level>)`
+
+### Phase 4: Synthesize
+
+**Action: `synthesize`**
+- The state includes `completed_cycles` and `proven_claims`
+- If proven claims exist:
+  1. Dispatch `@synthesizer` with all verdicts, debate transcripts, experimental results, and north star
+  2. Synthesizer produces `design/composition.md` (algorithm) and `design/synthesis.md` (cross-claim analysis)
+  3. If conflicting verdicts need mathematical reconciliation, dispatch `@deep-thinker`, then re-dispatch `@synthesizer`
+- If no proven claims:
+  1. Dispatch `@synthesizer` to produce only `design/synthesis.md` (analysis of what was disproven and why)
+- Generate RESULTS.md:
+  ```bash
+  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design results
+  ```
+- Read `design/RESULTS.md` and present the final design to the user
+- Report: `[Synthesize] Composing final design from N proven claims...`
+
+**Action: `complete`**
+- Read and present `design/RESULTS.md`
+- Report: `[Complete] Design process finished. See RESULTS.md.`
+
+4. **After each action**, run `manage.py investigate-next` again and go to step 3. Continue until `complete`.
+
+## Dispatch Mode
+
+Read `design/.config.md` before each agent dispatch. For each agent:
+- **internal**: Dispatch as Claude Code subagent via `@agent-name`
+- **external**: Run `manage.py prompt <path>` to generate a self-contained prompt. Tell user: "Prompt written to `<path>`. Copy it to your preferred tool, then paste the result back."
+
+When user pastes a result for external dispatch:
+1. Validate with: `manage.py validate-paste --agent <name> --file <path>`
+2. If valid: save to the correct `result_path` and continue
+3. If invalid: tell the user what's wrong and ask to re-paste
+
+## Recursive Structure
+
+When a claim in the Divide phase is marked as complex (user chooses "investigate deeper"):
+1. Create a child investigation: `design/claims/claim-N-name/design/`
+2. Copy parent's `.north-star.md` and `.context.md` into the child `design/` directory
+3. The child runs through all 4 phases independently
+4. Child's verdict feeds back into parent's Test phase for that claim
 
 ## Progress Reporting
 
-After each state transition, output a progress line to the user:
-- `[Phase N/6] <phase_name>: <description>`
-- `[Claim M/K] <claim_name>: <action>`
-- `[Verdict] <claim>: PROVEN / DISPROVEN / PARTIAL (confidence)`
-- `[Complete] Design process finished. See RESULTS.md.`
-
-## Claim Registry Verification
-
-After `create_blueprint`, verify the claim registry parses correctly:
-```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design parse-framework
+After each state transition, output the breadcrumb from the JSON state:
 ```
-If this fails, the synthesizer's output is missing the `# CLAIM_REGISTRY` YAML block. Read `design/blueprint.md` and manually extract claims, or re-dispatch the synthesizer with explicit instructions to include the registry.
+[Phase > Sub-location] What happened.
+  Next: <next action>
+  North star: "<principle>"
+```
 
 ## Notes
 
-- The conductor follows `config/protocol.md` for routing rules.
-- All dispatches are logged. View with: `manage.py dispatch-log`
-- A clean disproval is a valid, productive result.
+- The conductor follows `config/protocol.md` for routing rules
+- All dispatches are logged via `manage.py log-dispatch`
+- A clean disproval is a valid, productive result
+- Deep Thinker is available in ALL phases but only for specific mathematical/theoretical questions
+- Scout and Experimenter are available in Understand and Test phases only
