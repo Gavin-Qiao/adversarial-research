@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 from manage import init_paths
-from orchestration import DEFAULT_CONFIG, detect_state, suggest_next
+from orchestration import DEFAULT_CONFIG, detect_investigation_state, detect_state, suggest_next
 
 WORKFLOW_MD = Path(__file__).resolve().parent.parent / "skills" / "methodology" / "references" / "workflow.md"
 
@@ -355,3 +355,88 @@ class TestContractCompleteness:
         assert "<!-- CONTRACT:STATE_TABLE_END -->" in text, "Missing STATE_TABLE_END marker in workflow.md"
         assert "<!-- CONTRACT:VERDICT_TABLE_START -->" in text, "Missing VERDICT_TABLE_START marker in workflow.md"
         assert "<!-- CONTRACT:VERDICT_TABLE_END -->" in text, "Missing VERDICT_TABLE_END marker in workflow.md"
+        assert "<!-- CONTRACT:INVESTIGATION_TABLE_START -->" in text, "Missing INVESTIGATION_TABLE_START marker in workflow.md"
+        assert "<!-- CONTRACT:INVESTIGATION_TABLE_END -->" in text, "Missing INVESTIGATION_TABLE_END marker in workflow.md"
+
+
+# ---------------------------------------------------------------------------
+# Investigation-level contract tests
+# ---------------------------------------------------------------------------
+
+
+def _load_investigation_contracts() -> list[dict[str, str]]:
+    text = WORKFLOW_MD.read_text(encoding="utf-8")
+    return _extract_table(
+        text,
+        "<!-- CONTRACT:INVESTIGATION_TABLE_START -->",
+        "<!-- CONTRACT:INVESTIGATION_TABLE_END -->",
+    )
+
+
+class TestInvestigationContracts:
+    """Validate investigation-level state transitions against documented table."""
+
+    @pytest.fixture
+    def inv_dir(self, tmp_path):
+        for d in ["context/assumptions", "claims", ".db"]:
+            (tmp_path / d).mkdir(parents=True, exist_ok=True)
+        return tmp_path
+
+    def _setup_condition(self, inv_dir, condition_id):
+        """Set up filesystem state matching a contract condition."""
+        if condition_id in ("I2", "I3", "I4", "I5", "I6", "I7", "I8", "I9"):
+            (inv_dir / ".north-star.md").write_text("# Principle\n")
+        if condition_id in ("I3", "I4", "I5", "I6", "I7", "I8", "I9"):
+            (inv_dir / ".context.md").write_text("# Context\n")
+        if condition_id in ("I4", "I5", "I6", "I7", "I8", "I9"):
+            (inv_dir / "context" / "survey-topic.md").write_text("# Survey\n")
+        if condition_id in ("I5", "I6", "I7", "I8", "I9"):
+            (inv_dir / "blueprint.md").write_text(
+                "# Blueprint\n\n```yaml\n# CLAIM_REGISTRY\nclaims:\n"
+                '  - id: test-claim\n    statement: "Test"\n```\n'
+            )
+        if condition_id in ("I6", "I7", "I8", "I9"):
+            claim_dir = inv_dir / "claims" / "claim-1-test-claim"
+            for role in ("architect", "adversary", "experimenter", "arbiter"):
+                (claim_dir / role).mkdir(parents=True, exist_ok=True)
+            (claim_dir / "claim.md").write_text(
+                "---\nid: test\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test\n"
+            )
+        if condition_id in ("I7", "I8", "I9"):
+            claim_dir = inv_dir / "claims" / "claim-1-test-claim"
+            for agent, subdir in [("architect", "round-1"), ("adversary", "round-1")]:
+                d = claim_dir / agent / subdir
+                d.mkdir(parents=True, exist_ok=True)
+                sev = "\n\n**Severity**: minor\n" if agent == "adversary" else ""
+                (d / "result.md").write_text(
+                    f"---\nid: t\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# R{sev}"
+                )
+            (claim_dir / "experimenter" / "results").mkdir(parents=True, exist_ok=True)
+            (claim_dir / "experimenter" / "results" / "output.md").write_text("# Evidence\n")
+            (claim_dir / "arbiter" / "results").mkdir(parents=True, exist_ok=True)
+            (claim_dir / "arbiter" / "results" / "verdict.md").write_text(
+                "---\nid: v\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n**Verdict**: PROVEN\n"
+            )
+        if condition_id in ("I8", "I9"):
+            claim_dir = inv_dir / "claims" / "claim-1-test-claim"
+            # Write .post_verdict_done marker (the reliable mechanism)
+            (claim_dir / ".post_verdict_done").write_text("")
+        if condition_id == "I9":
+            (inv_dir / "synthesis.md").write_text("# Synthesis\n")
+
+    @pytest.mark.parametrize(
+        "row",
+        _load_investigation_contracts(),
+        ids=lambda r: r.get("ID", "?"),
+    )
+    def test_investigation_contract(self, inv_dir, row):
+        self._setup_condition(inv_dir, row["ID"])
+        state = detect_investigation_state(inv_dir, DEFAULT_CONFIG)
+        assert state["action"] == row["Expected Action"], (
+            f"Contract {row['ID']}: expected action={row['Expected Action']}, "
+            f"got action={state['action']}"
+        )
+        assert state["phase"] == row["Expected Phase"], (
+            f"Contract {row['ID']}: expected phase={row['Expected Phase']}, "
+            f"got phase={state['phase']}"
+        )

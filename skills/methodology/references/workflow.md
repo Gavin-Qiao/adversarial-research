@@ -126,3 +126,19 @@ When all units in a cycle are resolved:
 - Context file ordering
 
 To change the hardcoded behavior, modify `detect_state()` in `scripts/orchestration.py`.
+
+## Investigation-Level State Table
+
+<!-- CONTRACT:INVESTIGATION_TABLE_START -->
+| ID | Condition | Expected Action | Expected Phase |
+|----|-----------|----------------|----------------|
+| I1 | No .north-star.md | understand | understand |
+| I2 | .north-star.md exists, no .context.md | understand | understand |
+| I3 | .north-star.md + .context.md, no survey-*.md | understand | understand |
+| I4 | .north-star.md + .context.md + survey-*.md, no blueprint.md | divide | divide |
+| I5 | blueprint.md exists, no claim dirs | scaffold | divide |
+| I6 | Claims scaffolded, no architect result | test_claim | test |
+| I7 | Claim has verdict, no post-verdict | record_verdict | test |
+| I8 | All claims complete, no synthesis.md | synthesize | synthesize |
+| I9 | synthesis.md exists | complete | complete |
+<!-- CONTRACT:INVESTIGATION_TABLE_END -->
