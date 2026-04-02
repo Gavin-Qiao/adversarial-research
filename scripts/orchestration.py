@@ -338,8 +338,16 @@ def check_waiting(role_dir: Path, round_num: int) -> str | None:
 
 
 def _check_reviewer_complete(target: Path) -> bool:
-    """Check if post-verdict bookkeeping is done (frontier updated after verdict)."""
-    # Support both principia (arbiter/) and legacy (judge/) directory names
+    """Check if post-verdict bookkeeping is done.
+
+    Uses a marker file (.post_verdict_done) written by cmd_post_verdict.
+    Falls back to mtime comparison for backward compatibility with
+    sub-units processed before the marker file was introduced.
+    """
+    marker = target / ".post_verdict_done"
+    if marker.exists():
+        return True
+    # Fallback: mtime comparison (legacy)
     arbiter_dir = target / "arbiter" if (target / "arbiter").exists() else target / "judge"
     verdict = arbiter_dir / "results" / "verdict.md"
     if not verdict.exists():
@@ -709,6 +717,7 @@ def list_context_files(
     action: str,
     round_num: int | None = None,
     agent: str = "",
+    max_rounds: int = 3,
 ) -> list[str]:
     """List all context files the next agent needs, in reading order.
 
@@ -736,7 +745,7 @@ def list_context_files(
                 files.append(str(f.relative_to(research_dir)))
 
     # All completed architect/adversary (or thinker/refutor) rounds in order
-    for r in range(1, 4):
+    for r in range(1, max_rounds + 1):
         for role_pair in (("architect", "thinker"), ("adversary", "refutor")):
             for role in role_pair:
                 result = target / role / f"round-{r}" / "result.md"
@@ -934,7 +943,7 @@ def parse_framework(framework_path: Path) -> list[dict[str, Any]]:
     # Parse the YAML content using our subset parser
     try:
         parsed, _ = _parse_yaml_lines(yaml_block, 0, 0)
-    except Exception:
+    except (ValueError, IndexError, KeyError, TypeError, AttributeError):
         return []
 
     claims_raw = parsed.get("claims", [])
@@ -979,17 +988,16 @@ def detect_investigation_state(
     the investigation is in. Returns a JSON-serializable dict with
     an ``action`` key and relevant context.
 
-    If *quick* is True, skip context gathering and blueprint creation.
-    Instead, scaffold a single claim directly and run one debate round.
+    v0.3 four-phase model:
+    - understand    -- discuss (.north-star.md), inspect (.context.md), research (survey-*.md)
+    - divide        -- north star + context + surveys exist, no blueprint.md
+    - scaffold      -- blueprint exists, claims not scaffolded
+    - test_claim    -- scaffolded claims need testing
+    - record_verdict-- claim needs post-verdict bookkeeping
+    - synthesize    -- all claims tested, no synthesis.md
+    - complete      -- synthesis.md exists
 
-    States (in order):
-    - gather_context    — no survey files yet
-    - create_blueprint  — survey exists, no blueprint.md
-    - scaffold_cycles   — blueprint exists, cycles not scaffolded
-    - run_cycle         — specific cycle needs conductor
-    - review_cycle      — cycle done, needs post-verdict
-    - synthesize        — all waves complete, need synthesis
-    - complete          — synthesis.md exists
+    If *quick* is True, skip research in understand and synthesizer in divide.
     """
     context_dir = research_dir / "context"
     # Support both principia (blueprint.md) and legacy (framework.md) names
@@ -997,14 +1005,31 @@ def detect_investigation_state(
     if not framework_path.exists():
         framework_path = research_dir / "framework.md"
     synthesis_path = research_dir / "synthesis.md"
-    cycles_dir = research_dir / "cycles"
+    north_star_path = research_dir / ".north-star.md"
+    context_path = research_dir / ".context.md"
 
-    # --- Quick mode: skip context/blueprint, scaffold single claim ---
+    # --- Phase 1: Understand ---
+    # Check which understand sub-steps are complete
+    surveys = sorted(context_dir.glob("survey-*.md")) if context_dir.exists() else []
+    if not surveys:
+        surveys = sorted(context_dir.glob("distillation-*.md")) if context_dir.exists() else []
+
+    substeps: list[str] = []
+    if not north_star_path.exists():
+        substeps.append("discuss")
+    if not context_path.exists():
+        substeps.append("inspect")
+    if not surveys and not quick:
+        substeps.append("research")
+
+    if substeps:
+        return {"action": "understand", "phase": "understand", "substeps": substeps}
+
+    # --- Quick mode: skip blueprint, scaffold single claim ---
     if quick:
         claims_dir = research_dir / "claims"
         if not claims_dir.exists() or not any(claims_dir.iterdir()):
-            return {"action": "scaffold_quick", "phase": "scaffolding"}
-        # Find the single claim and return its state
+            return {"action": "scaffold_quick", "phase": "divide"}
         claim_dirs = sorted(d for d in claims_dir.iterdir() if d.is_dir())
         if claim_dirs:
             sub_path = str(claim_dirs[0].relative_to(research_dir))
@@ -1013,65 +1038,77 @@ def detect_investigation_state(
                 if not synthesis_path.exists():
                     return {
                         "action": "synthesize",
-                        "phase": "synthesis",
+                        "phase": "synthesize",
                         "completed_cycles": [claim_dirs[0].name],
+                        "proven_claims": (
+                            [claim_dirs[0].name]
+                            if state.get("action") == "complete_proven"
+                            else []
+                        ),
                     }
                 return {"action": "complete", "phase": "complete"}
             return {
-                "action": "run_cycle",
-                "phase": "execution",
+                "action": "test_claim",
+                "phase": "test",
                 "cycle": claim_dirs[0].name,
                 "sub_unit": sub_path,
                 "cycle_state": state,
             }
 
-    # --- Phase 1: Context gathering ---
-    # Support both principia (survey-*.md) and legacy (distillation-*.md) names
-    distillations = sorted(context_dir.glob("survey-*.md")) if context_dir.exists() else []
-    if not distillations:
-        distillations = sorted(context_dir.glob("distillation-*.md")) if context_dir.exists() else []
-    if not distillations:
-        return {"action": "gather_context", "phase": "context"}
-
-    # --- Phase 2: Blueprint creation ---
+    # --- Phase 2: Divide ---
     if not framework_path.exists():
+        context_files: list[str] = []
+        if north_star_path.exists():
+            context_files.append(str(north_star_path.relative_to(research_dir)))
+        if context_path.exists():
+            context_files.append(str(context_path.relative_to(research_dir)))
+        context_files.extend(str(d.relative_to(research_dir)) for d in surveys)
         return {
-            "action": "create_blueprint",
-            "phase": "framework",
-            "distillations": [str(d.relative_to(research_dir)) for d in distillations],
+            "action": "divide",
+            "phase": "divide",
+            "context_files": context_files,
         }
 
-    # --- Phase 3: Scaffold cycles/claims ---
+    # --- Phase 3: Scaffold ---
     claims = parse_framework(framework_path)
     claims_dir = research_dir / "claims"
+    cycles_dir = research_dir / "cycles"
     has_cycles = cycles_dir.exists() and any(cycles_dir.iterdir())
     has_claims = claims_dir.exists() and any(claims_dir.iterdir())
     if not has_cycles and not has_claims:
         return {
-            "action": "scaffold_cycles",
-            "phase": "scaffolding",
+            "action": "scaffold",
+            "phase": "divide",
             "claims": claims,
         }
 
-    # Check that each claim has a corresponding directory (in cycles/ or claims/)
+    # Check for unscaffolded claims
     existing_dirs: set[str] = set()
     if cycles_dir.exists():
         existing_dirs |= {d.name for d in cycles_dir.iterdir() if d.is_dir()}
     if claims_dir.exists():
         existing_dirs |= {d.name for d in claims_dir.iterdir() if d.is_dir()}
-    unscaffolded = [c for c in claims if not any(c["id"] in name for name in existing_dirs)]
+
+    def _id_matches_dir(cid: str, dirname: str) -> bool:
+        """Check if claim ID matches a directory name (not just substring)."""
+        # Directory format: claim-N-slug or cycle-N-slug
+        # Match if ID appears as a complete segment delimited by hyphens or at boundaries
+        return cid == dirname or f"-{cid}-" in f"-{dirname}-"
+
+    unscaffolded = [
+        c for c in claims
+        if not any(_id_matches_dir(c["id"], name) for name in existing_dirs)
+    ]
     if unscaffolded:
         return {
-            "action": "scaffold_cycles",
-            "phase": "scaffolding",
+            "action": "scaffold",
+            "phase": "divide",
             "claims": unscaffolded,
         }
 
-    # --- Phase 4+: Wave-based execution ---
-    # Collect all sub-unit/claim states
+    # --- Phase 4: Test ---
     cycle_states: list[dict[str, Any]] = []
 
-    # Scan flat claims/ directory (principia style)
     if claims_dir.exists():
         for claim_dir in sorted(claims_dir.iterdir()):
             if not claim_dir.is_dir() or not claim_dir.name.startswith("claim-"):
@@ -1084,7 +1121,7 @@ def detect_investigation_state(
                 "state": state,
             })
 
-    # Scan legacy cycles/ hierarchy
+    # Legacy cycles/ hierarchy
     if cycles_dir.exists():
         for cycle_dir in sorted(cycles_dir.iterdir()):
             if not cycle_dir.is_dir():
@@ -1105,32 +1142,31 @@ def detect_investigation_state(
 
     if not cycle_states:
         return {
-            "action": "scaffold_cycles",
-            "phase": "scaffolding",
+            "action": "scaffold",
+            "phase": "divide",
             "claims": claims,
         }
 
-    # Try wave-ordered execution if DB has dependency data
+    # Wave-based execution
     waves = compute_waves(research_dir, db_path) if db_path else []
-
-    # Build cycle_dir_name -> [cycle_states] lookup
     by_cycle: dict[str, list[dict[str, Any]]] = {}
     for cs in cycle_states:
         by_cycle.setdefault(cs["cycle"], []).append(cs)
 
-    # Build claim_id -> cycle_dir_name mapping
     claim_to_cycle: dict[str, str] = {}
-    for cycle_dir_item in cycles_dir.iterdir():
-        if cycle_dir_item.is_dir():
-            for claim in claims:
-                if claim["id"] in cycle_dir_item.name:
-                    claim_to_cycle[claim["id"]] = cycle_dir_item.name
+    if cycles_dir.exists():
+        for cycle_dir_item in cycles_dir.iterdir():
+            if cycle_dir_item.is_dir():
+                for claim in claims:
+                    if _id_matches_dir(claim["id"], cycle_dir_item.name):
+                        claim_to_cycle[claim["id"]] = cycle_dir_item.name
 
-    # Wave-ordered routing: process waves sequentially
     if waves and len(waves) > 1:
         for wave in waves:
             wave_claim_ids = [node["id"] for node in wave]
-            wave_cycle_names = [claim_to_cycle[cid] for cid in wave_claim_ids if cid in claim_to_cycle]
+            wave_cycle_names = [
+                claim_to_cycle[cid] for cid in wave_claim_ids if cid in claim_to_cycle
+            ]
 
             w_needs_review = []
             w_incomplete = []
@@ -1149,30 +1185,28 @@ def detect_investigation_state(
             if w_needs_review:
                 nr = w_needs_review[0]
                 return {
-                    "action": "review_cycle",
-                    "phase": "review",
+                    "action": "record_verdict",
+                    "phase": "test",
                     "cycle": nr["cycle"],
                     "sub_unit": nr["sub_unit"],
                 }
             if w_incomplete:
                 ic = w_incomplete[0]
                 return {
-                    "action": "run_cycle",
-                    "phase": "execution",
+                    "action": "test_claim",
+                    "phase": "test",
                     "cycle": ic["cycle"],
                     "sub_unit": ic["sub_unit"],
                     "cycle_state": ic["state"],
                 }
-            # Wave complete — continue to next wave
     else:
-        # Fallback: no wave data or single wave — use alphabetical ordering
         incomplete = []
         needs_review = []
 
         for cs in cycle_states:
             action = cs["state"].get("action", "")
             if action.startswith("complete_"):
-                pass  # done
+                pass
             elif action in ("dispatch_reviewer", "post_verdict"):
                 needs_review.append(cs)
             else:
@@ -1181,41 +1215,31 @@ def detect_investigation_state(
         if needs_review:
             nr = needs_review[0]
             return {
-                "action": "review_cycle",
-                "phase": "review",
+                "action": "record_verdict",
+                "phase": "test",
                 "cycle": nr["cycle"],
                 "sub_unit": nr["sub_unit"],
             }
         if incomplete:
             ic = incomplete[0]
             return {
-                "action": "run_cycle",
-                "phase": "execution",
+                "action": "test_claim",
+                "phase": "test",
                 "cycle": ic["cycle"],
                 "sub_unit": ic["sub_unit"],
                 "cycle_state": ic["state"],
             }
 
-    # All cycles are done
+    # --- Phase 5: Synthesize (merges old compose + synthesize) ---
     done = [cs for cs in cycle_states if cs["state"].get("action", "").startswith("complete_")]
     proven = [cs for cs in done if cs["state"].get("action") == "complete_proven"]
 
-    # --- Phase 5: Compose surviving artifacts into algorithm ---
-    composition_path = research_dir / "composition.md"
-    if proven and not composition_path.exists() and not synthesis_path.exists():
-        return {
-            "action": "compose",
-            "phase": "composition",
-            "proven_claims": [cs["cycle"] for cs in proven],
-            "completed_cycles": [cs["cycle"] for cs in done],
-        }
-
-    # --- Phase 6: Synthesize ---
     if not synthesis_path.exists():
         return {
             "action": "synthesize",
-            "phase": "synthesis",
+            "phase": "synthesize",
             "completed_cycles": [cs["cycle"] for cs in done],
+            "proven_claims": [cs["cycle"] for cs in proven],
         }
 
     return {"action": "complete", "phase": "complete"}

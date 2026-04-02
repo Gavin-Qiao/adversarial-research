@@ -371,12 +371,12 @@ class TestCmdWavesJson:
 
 
 class TestCmdInvestigateNext:
-    def test_empty_research_returns_gather_context(self, research_dir):
+    def test_empty_research_returns_understand(self, research_dir):
         rc, out, _ = run_manage(research_dir, "investigate-next")
         assert rc == 0
         import json
         state = json.loads(out)
-        assert state["action"] == "gather_context"
+        assert state["action"] == "understand"
 
 
 class TestCmdParseFramework:
@@ -596,3 +596,190 @@ class TestCmdValidateJson:
         data = json.loads(out)
         assert data["valid"] is True
         assert data["error_count"] == 0
+
+
+class TestCmdNext:
+    def _make_sub_unit(self, research_dir):
+        """Create a sub-unit with architect dir for testing."""
+        sub = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "sub-1a-probe"
+        sub.mkdir(parents=True)
+        (sub / "frontier.md").write_text(
+            "---\nid: s1a-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Probe\n"
+        )
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+            (sub / role).mkdir()
+        return "cycles/cycle-1/unit-1-test/sub-1a-probe"
+
+    def test_empty_sub_unit_dispatches_architect(self, research_dir):
+        import json
+
+        sub_path = self._make_sub_unit(research_dir)
+        rc, out, _ = run_manage(research_dir, "next", sub_path)
+        assert rc == 0
+        state = json.loads(out)
+        assert state["action"] == "dispatch_architect"
+
+    def test_with_architect_dispatches_adversary(self, research_dir):
+        import json
+
+        sub_path = self._make_sub_unit(research_dir)
+        sub = research_dir / sub_path
+        r1 = sub / "architect" / "round-1"
+        r1.mkdir(parents=True)
+        (r1 / "result.md").write_text(
+            "---\nid: arch-r1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Proposal\n"
+        )
+        rc, out, _ = run_manage(research_dir, "next", sub_path)
+        assert rc == 0
+        state = json.loads(out)
+        assert state["action"] == "dispatch_adversary"
+
+    def test_includes_context_files(self, research_dir):
+        import json
+
+        sub_path = self._make_sub_unit(research_dir)
+        rc, out, _ = run_manage(research_dir, "next", sub_path)
+        assert rc == 0
+        state = json.loads(out)
+        assert "context_files" in state
+        assert isinstance(state["context_files"], list)
+
+    def test_auto_no_sub_units(self, research_dir):
+        rc, out, _ = run_manage(research_dir, "next", "auto")
+        assert rc == 0
+        assert "No active sub-units" in out
+
+
+class TestCmdContext:
+    def test_assembles_context(self, research_dir):
+        # Create a sub-unit with a frontier
+        sub = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "sub-1a-probe"
+        sub.mkdir(parents=True)
+        (sub / "frontier.md").write_text(
+            "---\nid: s1a-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test Question\n"
+        )
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+            (sub / role).mkdir()
+        sub_path = "cycles/cycle-1/unit-1-test/sub-1a-probe"
+
+        rc, out, _ = run_manage(research_dir, "context", sub_path)
+        assert rc == 0
+        assert "Test Question" in out
+
+
+class TestCmdPrompt:
+    def test_generates_prompt_file(self, research_dir):
+        sub = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "sub-1a-probe"
+        sub.mkdir(parents=True)
+        (sub / "frontier.md").write_text(
+            "---\nid: s1a-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Probe\n"
+        )
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+            (sub / role).mkdir()
+        sub_path = "cycles/cycle-1/unit-1-test/sub-1a-probe"
+
+        rc, out, _ = run_manage(research_dir, "prompt", sub_path)
+        assert rc == 0
+        assert "Written:" in out
+        # The prompt file should exist
+        prompt_file = sub / "architect" / "round-1" / "prompt.md"
+        assert prompt_file.exists()
+
+
+class TestCmdPostVerdict:
+    def _make_verdicted_sub_unit(self, research_dir, verdict="PROVEN", confidence="high"):
+        """Create a sub-unit with architect, adversary, experimenter, and arbiter results."""
+        sub = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "sub-1a-probe"
+        sub.mkdir(parents=True)
+        (sub / "frontier.md").write_text(
+            "---\nid: s1a-frontier\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n# Probe\n"
+        )
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+            (sub / role).mkdir()
+
+        # Architect round 1
+        r1 = sub / "architect" / "round-1"
+        r1.mkdir()
+        (r1 / "result.md").write_text(
+            "---\nid: arch-r1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Proposal\n"
+        )
+        # Adversary round 1
+        a1 = sub / "adversary" / "round-1"
+        a1.mkdir()
+        (a1 / "result.md").write_text(
+            "---\nid: adv-r1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Attack\n\n**Severity**: Minor\n"
+        )
+        # Experimenter
+        exp = sub / "experimenter" / "results"
+        exp.mkdir()
+        (exp / "output.md").write_text(
+            "---\nid: exp-out\ntype: evidence\nstatus: active\ndate: 2026-01-01\n---\n\n# Results\nAUROC: 0.92\n"
+        )
+        # Verdict
+        arb = sub / "arbiter" / "results"
+        arb.mkdir()
+        (arb / "verdict.md").write_text(
+            f"---\nid: verdict\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n"
+            f"# Verdict\n\n**Verdict**: {verdict}\n**Confidence**: {confidence}\n"
+        )
+        return "cycles/cycle-1/unit-1-test/sub-1a-probe"
+
+    def test_proven_updates_frontier(self, research_dir):
+        import json
+
+        sub_path = self._make_verdicted_sub_unit(research_dir, verdict="PROVEN")
+        # Build DB first
+        run_manage(research_dir, "build")
+        rc, out, _ = run_manage(research_dir, "post-verdict", sub_path)
+        assert rc == 0
+        result = json.loads(out)
+        assert result["verdict"] == "PROVEN"
+        # Frontier status should be updated
+        from manage import init_paths, parse_frontmatter
+
+        init_paths(research_dir)
+        frontier = research_dir / sub_path / "frontier.md"
+        meta = parse_frontmatter(frontier.read_text())
+        assert meta["status"] == "proven"
+
+    def test_writes_marker_file(self, research_dir):
+        sub_path = self._make_verdicted_sub_unit(research_dir, verdict="PROVEN")
+        run_manage(research_dir, "build")
+        rc, _, _ = run_manage(research_dir, "post-verdict", sub_path)
+        assert rc == 0
+        marker = research_dir / sub_path / ".post_verdict_done"
+        assert marker.exists()
+
+    def test_disproven_cascades(self, research_dir):
+        import json
+
+        sub_path = self._make_verdicted_sub_unit(research_dir, verdict="DISPROVEN")
+        # Add a dependent node
+        dep_dir = research_dir / "context"
+        (dep_dir / "dependent.md").write_text(
+            "---\nid: dependent\ntype: claim\nstatus: active\ndate: 2026-01-01\n"
+            "depends_on: [s1a-frontier]\n---\n\n# Dependent\n"
+        )
+        run_manage(research_dir, "build")
+        rc, out, _ = run_manage(research_dir, "post-verdict", sub_path)
+        assert rc == 0
+        result = json.loads(out)
+        assert result["verdict"] == "DISPROVEN"
+        assert any("Weakened" in c for c in result["changes"])
+
+    def test_partial_sets_status(self, research_dir):
+        import json
+
+        sub_path = self._make_verdicted_sub_unit(research_dir, verdict="PARTIAL")
+        run_manage(research_dir, "build")
+        rc, out, _ = run_manage(research_dir, "post-verdict", sub_path)
+        assert rc == 0
+        result = json.loads(out)
+        assert result["verdict"] == "PARTIAL"
+
+    def test_no_verdict_file_errors(self, research_dir):
+        sub = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "sub-1a-probe"
+        sub.mkdir(parents=True)
+        (sub / "frontier.md").write_text("---\nid: test\n---\n")
+        rc, _, _ = run_manage(research_dir, "post-verdict", "cycles/cycle-1/unit-1-test/sub-1a-probe")
+        assert rc != 0

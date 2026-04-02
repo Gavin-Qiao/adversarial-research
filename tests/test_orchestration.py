@@ -645,37 +645,275 @@ claims:
 
 def _make_investigation_dir(tmp_path):
     """Create base research structure for investigation tests."""
-    for d in ["context/assumptions", "cycles", ".db"]:
+    for d in ["context/assumptions", "claims", ".db"]:
         (tmp_path / d).mkdir(parents=True, exist_ok=True)
     return tmp_path
 
 
 class TestDetectInvestigationState:
-    def test_empty_returns_gather_context(self, tmp_path):
+    def test_empty_returns_understand(self, tmp_path):
         rd = _make_investigation_dir(tmp_path)
         state = detect_investigation_state(rd, DEFAULT_CONFIG)
-        assert state["action"] == "gather_context"
+        assert state["action"] == "understand"
+        assert state["phase"] == "understand"
+        assert "discuss" in state["substeps"]
+        assert "inspect" in state["substeps"]
+        assert "research" in state["substeps"]
 
-    def test_with_distillation_returns_create_blueprint(self, tmp_path):
+    def test_north_star_only_returns_understand_without_discuss(self, tmp_path):
         rd = _make_investigation_dir(tmp_path)
-        (rd / "context" / "distillation-topic.md").write_text("# Literature Survey\n\nContent.")
+        (rd / ".north-star.md").write_text("# Topology-preserving clustering\n")
         state = detect_investigation_state(rd, DEFAULT_CONFIG)
-        assert state["action"] == "create_blueprint"
-        assert "distillation-topic.md" in state["distillations"][0]
+        assert state["action"] == "understand"
+        assert "discuss" not in state["substeps"]
+        assert "inspect" in state["substeps"]
+        assert "research" in state["substeps"]
 
-    def test_with_framework_returns_scaffold_cycles(self, tmp_path):
+    def test_north_star_and_context_returns_understand_research_only(self, tmp_path):
         rd = _make_investigation_dir(tmp_path)
-        (rd / "context" / "distillation-topic.md").write_text("# Survey\n")
-        (rd / "framework.md").write_text(SAMPLE_FRAMEWORK)
+        (rd / ".north-star.md").write_text("# Topology-preserving clustering\n")
+        (rd / ".context.md").write_text("# Context\n\nExisting code survey.\n")
         state = detect_investigation_state(rd, DEFAULT_CONFIG)
-        assert state["action"] == "scaffold_cycles"
+        assert state["action"] == "understand"
+        assert state["substeps"] == ["research"]
+
+    def test_all_understand_outputs_returns_divide(self, tmp_path):
+        rd = _make_investigation_dir(tmp_path)
+        (rd / ".north-star.md").write_text("# Topology-preserving clustering\n")
+        (rd / ".context.md").write_text("# Context\n")
+        (rd / "context" / "survey-topology.md").write_text("# Literature Survey\n\nContent.")
+        state = detect_investigation_state(rd, DEFAULT_CONFIG)
+        assert state["action"] == "divide"
+        assert state["phase"] == "divide"
+        assert ".north-star.md" in state["context_files"][0]
+
+    def test_with_blueprint_returns_scaffold(self, tmp_path):
+        rd = _make_investigation_dir(tmp_path)
+        (rd / ".north-star.md").write_text("# NS\n")
+        (rd / ".context.md").write_text("# C\n")
+        (rd / "context" / "survey-topic.md").write_text("# Survey\n")
+        (rd / "blueprint.md").write_text(SAMPLE_FRAMEWORK)
+        state = detect_investigation_state(rd, DEFAULT_CONFIG)
+        assert state["action"] == "scaffold"
         assert len(state["claims"]) == 2
 
-    def test_scaffolded_returns_run_cycle(self, tmp_path):
+    def test_scaffolded_claims_returns_test_claim(self, tmp_path):
         rd = _make_investigation_dir(tmp_path)
+        (rd / ".north-star.md").write_text("# NS\n")
+        (rd / ".context.md").write_text("# C\n")
+        (rd / "context" / "survey-topic.md").write_text("# Survey\n")
+        (rd / "blueprint.md").write_text(SAMPLE_FRAMEWORK)
+        for claim_id in ["enrichment-bound", "bottleneck-ratio"]:
+            claim_dir = rd / "claims" / f"claim-1-{claim_id}"
+            for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+                (claim_dir / role).mkdir(parents=True, exist_ok=True)
+            (claim_dir / "claim.md").write_text(
+                f"---\nid: h1-claim\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# {claim_id}\n"
+            )
+        state = detect_investigation_state(rd, DEFAULT_CONFIG)
+        assert state["action"] == "test_claim"
+        assert "sub_unit" in state
+
+    def test_claim_done_returns_record_verdict(self, tmp_path):
+        rd = _make_investigation_dir(tmp_path)
+        (rd / ".north-star.md").write_text("# NS\n")
+        (rd / ".context.md").write_text("# C\n")
+        (rd / "context" / "survey-topic.md").write_text("# Survey\n")
+        (rd / "blueprint.md").write_text("""\
+# Blueprint
+
+```yaml
+# CLAIM_REGISTRY
+claims:
+  - id: test-claim
+    statement: "Test"
+    maturity: conjecture
+    confidence: moderate
+    falsification: "Disprove it"
+```
+""")
+        claim_dir = rd / "claims" / "claim-1-test-claim"
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+            (claim_dir / role).mkdir(parents=True, exist_ok=True)
+        (claim_dir / "claim.md").write_text(
+            "---\nid: test\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test\n"
+        )
+        # Add architect + adversary + experimenter + verdict (complete but no post-verdict)
+        a_dir = claim_dir / "architect" / "round-1"
+        a_dir.mkdir(parents=True, exist_ok=True)
+        (a_dir / "result.md").write_text(
+            "---\nid: t\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Proposal\n"
+        )
+        r_dir = claim_dir / "adversary" / "round-1"
+        r_dir.mkdir(parents=True, exist_ok=True)
+        (r_dir / "result.md").write_text(
+            "---\nid: r\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Attack\n\n**Severity**: minor\n"
+        )
+        (claim_dir / "experimenter" / "results").mkdir(parents=True, exist_ok=True)
+        (claim_dir / "experimenter" / "results" / "output.md").write_text(
+            "---\nid: c\ntype: evidence\nstatus: active\ndate: 2026-01-01\n---\n\n# Evidence\n"
+        )
+        (claim_dir / "arbiter" / "results").mkdir(parents=True, exist_ok=True)
+        (claim_dir / "arbiter" / "results" / "verdict.md").write_text(
+            "---\nid: v\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n# Verdict\n\n**Verdict**: PROVEN\n"
+        )
+        state = detect_investigation_state(rd, DEFAULT_CONFIG)
+        assert state["action"] == "record_verdict"
+
+    def test_all_done_returns_synthesize(self, tmp_path):
+        """When all claims complete, returns synthesize (merging old compose+synthesize)."""
+        rd = _make_investigation_dir(tmp_path)
+        (rd / ".north-star.md").write_text("# NS\n")
+        (rd / ".context.md").write_text("# C\n")
+        (rd / "context" / "survey-topic.md").write_text("# Survey\n")
+        (rd / "blueprint.md").write_text("""\
+# Blueprint
+
+```yaml
+# CLAIM_REGISTRY
+claims:
+  - id: done-claim
+    statement: "Done"
+    maturity: supported
+    confidence: high
+    falsification: "N/A"
+```
+""")
+        claim_dir = rd / "claims" / "claim-1-done-claim"
+        for role in ("architect", "adversary", "experimenter", "arbiter"):
+            (claim_dir / role).mkdir(parents=True, exist_ok=True)
+        (claim_dir / "claim.md").write_text(
+            "---\nid: test\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Done\n"
+        )
+        a_dir = claim_dir / "architect" / "round-1"
+        a_dir.mkdir(parents=True, exist_ok=True)
+        (a_dir / "result.md").write_text(
+            "---\nid: t\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# T\n"
+        )
+        r_dir = claim_dir / "adversary" / "round-1"
+        r_dir.mkdir(parents=True, exist_ok=True)
+        (r_dir / "result.md").write_text(
+            "---\nid: r\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# R\n\n**Severity**: minor\n"
+        )
+        (claim_dir / "experimenter" / "results").mkdir(parents=True, exist_ok=True)
+        (claim_dir / "experimenter" / "results" / "output.md").write_text(
+            "---\nid: c\ntype: evidence\nstatus: active\ndate: 2026-01-01\n---\n\n# Evidence\n"
+        )
+        (claim_dir / "arbiter" / "results").mkdir(parents=True, exist_ok=True)
+        (claim_dir / "arbiter" / "results" / "verdict.md").write_text(
+            "---\nid: v\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n# Verdict\n\n**Verdict**: PROVEN\n"
+        )
+        # Mark post-verdict done
+        (claim_dir / ".post_verdict_done").write_text("")
+        state = detect_investigation_state(rd, DEFAULT_CONFIG)
+        # v0.3 merges compose+synthesize into single synthesize action
+        assert state["action"] == "synthesize"
+        assert state["phase"] == "synthesize"
+        assert "proven_claims" in state
+
+    def test_complete_with_synthesis(self, tmp_path):
+        rd = _make_investigation_dir(tmp_path)
+        (rd / ".north-star.md").write_text("# NS\n")
+        (rd / ".context.md").write_text("# C\n")
+        (rd / "context" / "survey-topic.md").write_text("# Survey\n")
+        (rd / "blueprint.md").write_text("""\
+# Blueprint
+
+```yaml
+# CLAIM_REGISTRY
+claims:
+  - id: final-claim
+    statement: "Final"
+    maturity: supported
+    confidence: high
+    falsification: "N/A"
+```
+""")
+        claim_dir = rd / "claims" / "claim-1-final-claim"
+        for role in ("architect", "adversary", "experimenter", "arbiter"):
+            (claim_dir / role).mkdir(parents=True, exist_ok=True)
+        (claim_dir / "claim.md").write_text(
+            "---\nid: test\ntype: verdict\nstatus: settled\ndate: 2026-01-01\n---\n\n# Final\n"
+        )
+        a_dir = claim_dir / "architect" / "round-1"
+        a_dir.mkdir(parents=True, exist_ok=True)
+        (a_dir / "result.md").write_text("---\nid: t\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# T\n")
+        r_dir = claim_dir / "adversary" / "round-1"
+        r_dir.mkdir(parents=True, exist_ok=True)
+        (r_dir / "result.md").write_text(
+            "---\nid: r\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# R\n\n**Severity**: minor\n"
+        )
+        (claim_dir / "experimenter" / "results").mkdir(parents=True, exist_ok=True)
+        (claim_dir / "experimenter" / "results" / "output.md").write_text("# Evidence\n")
+        (claim_dir / "arbiter" / "results").mkdir(parents=True, exist_ok=True)
+        (claim_dir / "arbiter" / "results" / "verdict.md").write_text(
+            "---\nid: v\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n**Verdict**: PROVEN\n"
+        )
+        # Mark post-verdict done
+        (claim_dir / ".post_verdict_done").write_text("")
+        (rd / "synthesis.md").write_text("# Final Synthesis\n")
+        state = detect_investigation_state(rd, DEFAULT_CONFIG)
+        assert state["action"] == "complete"
+        assert state["phase"] == "complete"
+
+    def test_legacy_distillation_still_works(self, tmp_path):
+        """Backward compat: survey-*.md OR distillation-*.md counts as research done."""
+        rd = _make_investigation_dir(tmp_path)
+        (rd / ".north-star.md").write_text("# NS\n")
+        (rd / ".context.md").write_text("# C\n")
         (rd / "context" / "distillation-topic.md").write_text("# Survey\n")
+        state = detect_investigation_state(rd, DEFAULT_CONFIG)
+        assert state["action"] == "divide"
+
+    def test_legacy_framework_still_works(self, tmp_path):
+        """Backward compat: framework.md still detected for divide phase."""
+        rd = _make_investigation_dir(tmp_path)
+        (rd / ".north-star.md").write_text("# NS\n")
+        (rd / ".context.md").write_text("# C\n")
+        (rd / "context" / "survey-topic.md").write_text("# Survey\n")
         (rd / "framework.md").write_text(SAMPLE_FRAMEWORK)
-        # Create cycle dirs matching claim IDs
+        state = detect_investigation_state(rd, DEFAULT_CONFIG)
+        assert state["action"] == "scaffold"
+
+    def test_framework_with_no_claims(self, tmp_path):
+        """Framework exists but has no CLAIM_REGISTRY — should still return scaffold with empty claims."""
+        rd = _make_investigation_dir(tmp_path)
+        (rd / ".north-star.md").write_text("# NS\n")
+        (rd / ".context.md").write_text("# C\n")
+        (rd / "context" / "survey-topic.md").write_text("# Survey\n")
+        (rd / "framework.md").write_text("# Framework\n\nJust prose, no YAML block.\n")
+        state = detect_investigation_state(rd, DEFAULT_CONFIG)
+        assert state["action"] == "scaffold"
+        assert state["claims"] == []
+
+    def test_partially_scaffolded_cycles(self, tmp_path):
+        """Some claims scaffolded, some not — should return scaffold with unscaffolded only."""
+        rd = _make_investigation_dir(tmp_path)
+        (rd / ".north-star.md").write_text("# NS\n")
+        (rd / ".context.md").write_text("# C\n")
+        (rd / "context" / "survey-topic.md").write_text("# Survey\n")
+        (rd / "blueprint.md").write_text(SAMPLE_FRAMEWORK)
+        # Only scaffold the first claim (enrichment-bound), not bottleneck-ratio
+        claim_dir = rd / "claims" / "claim-1-enrichment-bound"
+        claim_dir.mkdir(parents=True)
+        (claim_dir / "claim.md").write_text(
+            "---\nid: h1-claim\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Enrichment\n"
+        )
+        state = detect_investigation_state(rd, DEFAULT_CONFIG)
+        assert state["action"] == "scaffold"
+        # Only the unscaffolded claim should be in the list
+        assert len(state["claims"]) == 1
+        assert state["claims"][0]["id"] == "bottleneck-ratio"
+
+    def test_legacy_cycles_dir_returns_test_claim(self, tmp_path):
+        """Backward compat: legacy cycles/ directory structure still works."""
+        rd = _make_investigation_dir(tmp_path)
+        (rd / ".north-star.md").write_text("# NS\n")
+        (rd / ".context.md").write_text("# C\n")
+        (rd / "context" / "survey-topic.md").write_text("# Survey\n")
+        (rd / "framework.md").write_text(SAMPLE_FRAMEWORK)
+        # Create legacy cycle dirs
+        (rd / "cycles").mkdir(exist_ok=True)
         for claim_id in ["enrichment-bound", "bottleneck-ratio"]:
             cycle_dir = rd / "cycles" / f"cycle-1-{claim_id}"
             unit_dir = cycle_dir / "unit-1-investigation"
@@ -692,13 +930,15 @@ class TestDetectInvestigationState:
                 "---\nid: s1a-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Primary\n"
             )
         state = detect_investigation_state(rd, DEFAULT_CONFIG)
-        assert state["action"] == "run_cycle"
+        assert state["action"] == "test_claim"
         assert "sub_unit" in state
 
-    def test_cycle_done_returns_review_cycle(self, tmp_path):
+    def test_legacy_cycle_done_returns_record_verdict(self, tmp_path):
+        """Backward compat: legacy cycles/ with completed cycle returns record_verdict."""
         rd = _make_investigation_dir(tmp_path)
-        (rd / "context" / "distillation-topic.md").write_text("# Survey\n")
-        # Framework with single claim
+        (rd / ".north-star.md").write_text("# NS\n")
+        (rd / ".context.md").write_text("# C\n")
+        (rd / "context" / "survey-topic.md").write_text("# Survey\n")
         (rd / "framework.md").write_text("""\
 # Framework
 
@@ -712,7 +952,7 @@ claims:
     falsification: "Disprove it"
 ```
 """)
-        # Scaffold the cycle with a verdict (judge done, reviewer not done)
+        (rd / "cycles").mkdir(exist_ok=True)
         cycle_dir = rd / "cycles" / "cycle-1-test-claim"
         unit_dir = cycle_dir / "unit-1-investigation"
         sub_dir = unit_dir / "sub-1a-primary"
@@ -720,7 +960,6 @@ claims:
             (sub_dir / role).mkdir(parents=True, exist_ok=True)
         for p in [cycle_dir / "frontier.md", unit_dir / "frontier.md", sub_dir / "frontier.md"]:
             p.write_text("---\nid: test\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test\n")
-        # Add thinker + refutor + coder + verdict (complete but reviewer not done)
         t_dir = sub_dir / "thinker" / "round-1"
         t_dir.mkdir(parents=True, exist_ok=True)
         (t_dir / "result.md").write_text("---\nid: t\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# T\n")
@@ -738,167 +977,7 @@ claims:
             "---\nid: v\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n# Verdict\n\n**Verdict**: SETTLED\n"
         )
         state = detect_investigation_state(rd, DEFAULT_CONFIG)
-        assert state["action"] == "review_cycle"
-
-    def test_all_done_returns_synthesize(self, tmp_path):
-        rd = _make_investigation_dir(tmp_path)
-        (rd / "context" / "distillation-topic.md").write_text("# Survey\n")
-        (rd / "framework.md").write_text("""\
-# Framework
-
-```yaml
-# CLAIM_REGISTRY
-claims:
-  - id: done-claim
-    statement: "Done"
-    maturity: supported
-    confidence: high
-    falsification: "N/A"
-```
-""")
-        # Create a completed cycle (reviewer done = frontier.md newer than verdict)
-        cycle_dir = rd / "cycles" / "cycle-1-done-claim"
-        unit_dir = cycle_dir / "unit-1-investigation"
-        sub_dir = unit_dir / "sub-1a-primary"
-        for role in ("thinker", "refutor", "coder", "judge", "researcher"):
-            (sub_dir / role).mkdir(parents=True, exist_ok=True)
-        for p in [cycle_dir / "frontier.md", unit_dir / "frontier.md"]:
-            p.write_text("---\nid: test\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test\n")
-        # Create all needed results for complete state
-        t_dir = sub_dir / "thinker" / "round-1"
-        t_dir.mkdir(parents=True, exist_ok=True)
-        (t_dir / "result.md").write_text("---\nid: t\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# T\n")
-        r_dir = sub_dir / "refutor" / "round-1"
-        r_dir.mkdir(parents=True, exist_ok=True)
-        (r_dir / "result.md").write_text(
-            "---\nid: r\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# R\n\n**Severity**: minor\n"
-        )
-        (sub_dir / "coder" / "results").mkdir(parents=True, exist_ok=True)
-        (sub_dir / "coder" / "results" / "output.md").write_text(
-            "---\nid: c\ntype: evidence\nstatus: active\ndate: 2026-01-01\n---\n\n# Coder\n"
-        )
-        (sub_dir / "judge" / "results").mkdir(parents=True, exist_ok=True)
-        import time
-        (sub_dir / "judge" / "results" / "verdict.md").write_text(
-            "---\nid: v\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n# Verdict\n\n**Verdict**: SETTLED\n"
-        )
-        time.sleep(0.1)  # Ensure frontier.md is newer than verdict
-        (sub_dir / "frontier.md").write_text(
-            "---\nid: sf\ntype: verdict\nstatus: settled\ndate: 2026-01-01\n---\n\n# Done\n"
-        )
-        state = detect_investigation_state(rd, DEFAULT_CONFIG)
-        # Composition step fires before synthesis when there are proven claims
-        assert state["action"] == "compose"
-        assert state["phase"] == "composition"
-
-    def test_compose_skipped_when_no_proven(self, tmp_path):
-        """If no claims are proven (all disproven), skip compose → synthesize."""
-        rd = _make_investigation_dir(tmp_path)
-        (rd / "context" / "distillation-topic.md").write_text("# Survey\n")
-        (rd / "framework.md").write_text(
-            "# Framework\n\n```yaml\n# CLAIM_REGISTRY\nclaims:\n  - id: test-claim\n    statement: Test\n```\n"
-        )
-        cycle_dir = rd / "cycles" / "cycle-1-test-claim"
-        sub_dir = cycle_dir / "unit-1-investigation" / "sub-1a-primary"
-        for role in ("thinker", "refutor", "coder", "judge"):
-            (sub_dir / role).mkdir(parents=True, exist_ok=True)
-        (sub_dir / "frontier.md").write_text(
-            "---\nid: sf\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n"
-        )
-        (sub_dir / "thinker" / "round-1").mkdir(parents=True, exist_ok=True)
-        (sub_dir / "thinker" / "round-1" / "result.md").write_text("# Proposal\n")
-        (sub_dir / "refutor" / "round-1").mkdir(parents=True, exist_ok=True)
-        (sub_dir / "refutor" / "round-1" / "result.md").write_text("# Attack\n\n**Severity**: Minor\n")
-        (sub_dir / "coder" / "results").mkdir(parents=True, exist_ok=True)
-        (sub_dir / "coder" / "results" / "output.md").write_text("# Evidence\n")
-        (sub_dir / "judge" / "results").mkdir(parents=True, exist_ok=True)
-        (sub_dir / "judge" / "results" / "verdict.md").write_text(
-            "---\nid: v\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n**Verdict**: FALSIFIED\n"
-        )
-        import time
-        time.sleep(0.1)
-        (sub_dir / "frontier.md").write_text(
-            "---\nid: sf\ntype: verdict\nstatus: falsified\ndate: 2026-01-01\n---\n"
-        )
-        state = detect_investigation_state(rd, DEFAULT_CONFIG)
-        # No proven claims → skip compose, go to synthesize
-        assert state["action"] == "synthesize"
-
-    def test_complete_with_synthesis(self, tmp_path):
-        rd = _make_investigation_dir(tmp_path)
-        (rd / "context" / "distillation-topic.md").write_text("# Survey\n")
-        (rd / "framework.md").write_text("""\
-# Framework
-
-```yaml
-# CLAIM_REGISTRY
-claims:
-  - id: final-claim
-    statement: "Final"
-    maturity: supported
-    confidence: high
-    falsification: "N/A"
-```
-""")
-        # Create a completed cycle
-        cycle_dir = rd / "cycles" / "cycle-1-final-claim"
-        unit_dir = cycle_dir / "unit-1-investigation"
-        sub_dir = unit_dir / "sub-1a-primary"
-        for role in ("thinker", "refutor", "coder", "judge", "researcher"):
-            (sub_dir / role).mkdir(parents=True, exist_ok=True)
-        for p in [cycle_dir / "frontier.md", unit_dir / "frontier.md"]:
-            p.write_text("---\nid: test\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test\n")
-        t_dir = sub_dir / "thinker" / "round-1"
-        t_dir.mkdir(parents=True, exist_ok=True)
-        (t_dir / "result.md").write_text("---\nid: t\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# T\n")
-        r_dir = sub_dir / "refutor" / "round-1"
-        r_dir.mkdir(parents=True, exist_ok=True)
-        (r_dir / "result.md").write_text(
-            "---\nid: r\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# R\n\n**Severity**: minor\n"
-        )
-        (sub_dir / "coder" / "results").mkdir(parents=True, exist_ok=True)
-        (sub_dir / "coder" / "results" / "output.md").write_text(
-            "---\nid: c\ntype: evidence\nstatus: active\ndate: 2026-01-01\n---\n\n# Coder\n"
-        )
-        (sub_dir / "judge" / "results").mkdir(parents=True, exist_ok=True)
-        import time
-        (sub_dir / "judge" / "results" / "verdict.md").write_text(
-            "---\nid: v\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n# Verdict\n\n**Verdict**: SETTLED\n"
-        )
-        time.sleep(0.1)
-        (sub_dir / "frontier.md").write_text(
-            "---\nid: sf\ntype: verdict\nstatus: settled\ndate: 2026-01-01\n---\n\n# Done\n"
-        )
-        # Add synthesis
-        (rd / "synthesis.md").write_text("# Synthesis\n\nFinal results.")
-        state = detect_investigation_state(rd, DEFAULT_CONFIG)
-        assert state["action"] == "complete"
-
-    def test_framework_with_no_claims(self, tmp_path):
-        """Framework exists but has no CLAIM_REGISTRY — should still return scaffold_cycles with empty claims."""
-        rd = _make_investigation_dir(tmp_path)
-        (rd / "context" / "distillation-topic.md").write_text("# Survey\n")
-        (rd / "framework.md").write_text("# Framework\n\nJust prose, no YAML block.\n")
-        state = detect_investigation_state(rd, DEFAULT_CONFIG)
-        assert state["action"] == "scaffold_cycles"
-        assert state["claims"] == []
-
-    def test_partially_scaffolded_cycles(self, tmp_path):
-        """Some claims scaffolded, some not — should return scaffold_cycles with unscaffolded only."""
-        rd = _make_investigation_dir(tmp_path)
-        (rd / "context" / "distillation-topic.md").write_text("# Survey\n")
-        (rd / "framework.md").write_text(SAMPLE_FRAMEWORK)
-        # Only scaffold the first claim (enrichment-bound), not bottleneck-ratio
-        cycle_dir = rd / "cycles" / "cycle-1-enrichment-bound"
-        cycle_dir.mkdir(parents=True)
-        (cycle_dir / "frontier.md").write_text(
-            "---\nid: c1-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Enrichment\n"
-        )
-        state = detect_investigation_state(rd, DEFAULT_CONFIG)
-        assert state["action"] == "scaffold_cycles"
-        # Only the unscaffolded claim should be in the list
-        assert len(state["claims"]) == 1
-        assert state["claims"][0]["id"] == "bottleneck-ratio"
+        assert state["action"] == "record_verdict"
 
 
 # ---------------------------------------------------------------------------
@@ -909,31 +988,36 @@ claims:
 class TestQuickMode:
     """Test --quick investigation mode."""
 
-    def test_quick_no_claims_returns_scaffold_quick(self, tmp_path):
-        rd = tmp_path / "research"
-        rd.mkdir()
+    def test_quick_without_north_star_returns_understand(self, tmp_path):
+        """Quick mode still requires discuss + inspect (just skips research)."""
+        rd = _make_investigation_dir(tmp_path)
+        state = detect_investigation_state(rd, DEFAULT_CONFIG, quick=True)
+        assert state["action"] == "understand"
+        assert "discuss" in state["substeps"]
+        assert "research" not in state["substeps"]  # skipped in quick mode
+
+    def test_quick_with_understand_done_returns_scaffold_quick(self, tmp_path):
+        """Quick mode skips divide (no blueprint), goes straight to scaffold."""
+        rd = _make_investigation_dir(tmp_path)
+        (rd / ".north-star.md").write_text("# Quick test\n")
+        (rd / ".context.md").write_text("# Context\n")
         state = detect_investigation_state(rd, DEFAULT_CONFIG, quick=True)
         assert state["action"] == "scaffold_quick"
+        assert state["phase"] == "divide"
 
-    def test_quick_with_claim_returns_run_cycle(self, tmp_path):
-        rd = tmp_path / "research"
-        claim_dir = rd / "claims" / "claim-1-test"
+    def test_quick_scaffolded_returns_test_claim(self, tmp_path):
+        rd = _make_investigation_dir(tmp_path)
+        (rd / ".north-star.md").write_text("# Quick\n")
+        (rd / ".context.md").write_text("# C\n")
+        claim_dir = rd / "claims" / "claim-1-quick-test"
         for role in ("architect", "adversary", "experimenter", "arbiter"):
             (claim_dir / role).mkdir(parents=True, exist_ok=True)
-        (claim_dir / "claim.md").write_text("---\nid: h1\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n")
-        state = detect_investigation_state(rd, DEFAULT_CONFIG, quick=True)
-        assert state["action"] == "run_cycle"
-        assert state["sub_unit"] == "claims/claim-1-test"
-
-    def test_quick_skips_context_gathering(self, tmp_path):
-        """Quick mode should never return gather_context even without surveys."""
-        rd = tmp_path / "research"
-        claim_dir = rd / "claims" / "claim-1-test"
-        for role in ("architect", "adversary", "experimenter", "arbiter"):
-            (claim_dir / role).mkdir(parents=True, exist_ok=True)
-        (claim_dir / "claim.md").write_text("---\nid: h1\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n")
-        state = detect_investigation_state(rd, DEFAULT_CONFIG, quick=True)
-        assert state["action"] != "gather_context"
+        (claim_dir / "claim.md").write_text(
+            "---\nid: test\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Quick\n"
+        )
+        config = {**DEFAULT_CONFIG, "debate_loop": {**DEFAULT_CONFIG["debate_loop"], "max_rounds": 1}}
+        state = detect_investigation_state(rd, config, quick=True)
+        assert state["action"] == "test_claim"
 
 
 class TestFullCycleIntegration:
@@ -1003,3 +1087,66 @@ class TestFullCycleIntegration:
         write_result(research_dir, f"{sub}/refutor/round-2/result.md", severity="Minor")
         state = detect_state(research_dir, sub, DEFAULT_CONFIG)
         assert state["action"] == "dispatch_experimenter"
+
+
+# ---------------------------------------------------------------------------
+# New Role Name Tests (architect/adversary/experimenter/arbiter)
+# ---------------------------------------------------------------------------
+
+
+def make_new_sub_unit(research_dir, sub_rel="cycles/cycle-1/unit-1-test/sub-1a-direct"):
+    """Create a sub-unit using NEW role names."""
+    sub = research_dir / sub_rel
+    for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+        (sub / role).mkdir(parents=True, exist_ok=True)
+    for frontier_path in [sub.parent / "frontier.md", sub / "frontier.md"]:
+        if not frontier_path.exists():
+            frontier_path.parent.mkdir(parents=True, exist_ok=True)
+            frontier_path.write_text(
+                "---\nid: test-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test\n"
+            )
+    return sub_rel
+
+
+class TestNewRoleNameStateMachine:
+    """Verify the state machine works with architect/adversary/experimenter/arbiter dirs."""
+
+    def test_empty_dispatches_architect(self, research_dir):
+        sub = make_new_sub_unit(research_dir)
+        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
+        assert state["action"] == "dispatch_architect"
+
+    def test_architect_done_dispatches_adversary(self, research_dir):
+        sub = make_new_sub_unit(research_dir)
+        write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
+        assert state["action"] == "dispatch_adversary"
+
+    def test_adversary_fatal_continues_debate(self, research_dir):
+        sub = make_new_sub_unit(research_dir)
+        write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Fatal (blocks the approach)")
+        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
+        assert state["action"] == "dispatch_architect"
+        assert state["round"] == 2
+
+    def test_adversary_minor_exits_to_experimenter(self, research_dir):
+        sub = make_new_sub_unit(research_dir)
+        write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Minor (worth noting)")
+        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
+        assert state["action"] == "dispatch_experimenter"
+
+    def test_experimenter_done_dispatches_arbiter(self, research_dir):
+        sub = make_new_sub_unit(research_dir)
+        write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Minor")
+        write_result(research_dir, f"{sub}/experimenter/results/output.md")
+        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
+        assert state["action"] == "dispatch_arbiter"
+
+    def test_context_files_include_new_names(self, research_dir):
+        sub = make_new_sub_unit(research_dir)
+        write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        files = list_context_files(research_dir, sub, "dispatch_adversary", round_num=1)
+        assert any("architect" in f for f in files)
