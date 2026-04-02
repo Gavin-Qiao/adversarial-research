@@ -355,8 +355,12 @@ class TestContractCompleteness:
         assert "<!-- CONTRACT:STATE_TABLE_END -->" in text, "Missing STATE_TABLE_END marker in workflow.md"
         assert "<!-- CONTRACT:VERDICT_TABLE_START -->" in text, "Missing VERDICT_TABLE_START marker in workflow.md"
         assert "<!-- CONTRACT:VERDICT_TABLE_END -->" in text, "Missing VERDICT_TABLE_END marker in workflow.md"
-        assert "<!-- CONTRACT:INVESTIGATION_TABLE_START -->" in text, "Missing INVESTIGATION_TABLE_START marker in workflow.md"
-        assert "<!-- CONTRACT:INVESTIGATION_TABLE_END -->" in text, "Missing INVESTIGATION_TABLE_END marker in workflow.md"
+        assert "<!-- CONTRACT:INVESTIGATION_TABLE_START -->" in text, (
+            "Missing INVESTIGATION_TABLE_START marker in workflow.md"
+        )
+        assert "<!-- CONTRACT:INVESTIGATION_TABLE_END -->" in text, (
+            "Missing INVESTIGATION_TABLE_END marker in workflow.md"
+        )
 
 
 # ---------------------------------------------------------------------------
