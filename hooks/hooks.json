@@ -1,5 +1,4 @@
 {
-  "description": "Principia plugin hooks",
   "hooks": {
     "SessionStart": [
       {

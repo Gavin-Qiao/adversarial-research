@@ -2262,6 +2262,14 @@ def cmd_validate_paste(args: argparse.Namespace) -> None:
     print(f"OK: Valid {agent} result ({len(content)} characters).")
 
 
+def cmd_autonomy_config(args: argparse.Namespace) -> None:
+    """Output autonomy configuration as JSON."""
+    from orchestration import read_autonomy_config
+
+    result = read_autonomy_config(DEFAULT_ORCH_CONFIG)
+    print(json.dumps(result))
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -2425,6 +2433,9 @@ def main() -> None:
     p_vp.add_argument("--agent", required=True, choices=list(_PASTE_REQUIREMENTS.keys()))
     p_vp.add_argument("--file", required=True, help="Path to file containing pasted result")
     p_vp.set_defaults(func=cmd_validate_paste)
+
+    p_ac = sub.add_parser("autonomy-config")  # output autonomy settings as JSON
+    p_ac.set_defaults(func=cmd_autonomy_config)
 
     args = parser.parse_args()
     init_paths(args.root)

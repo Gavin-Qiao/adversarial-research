@@ -73,8 +73,12 @@ Determine the next step and dispatch the appropriate agent. Supports both intern
 
    - **`complete_proven`**: Report: "Claim proven (confidence: X)." Show suggestion.
    - **`complete_disproven`**: Report: "Claim disproven. Cascade applied." Show what was weakened.
-   - **`complete_partial`**: Present options from state JSON via AskUserQuestion.
-   - **`complete_inconclusive`**: Present options from state JSON via AskUserQuestion.
+   - **`complete_partial`** / **`complete_inconclusive`**: Check autonomy mode:
+     ```bash
+     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design autonomy-config
+     ```
+     - **Checkpoints mode**: Present options from state JSON via AskUserQuestion.
+     - **Yolo mode**: Accept the result automatically. Report the verdict and continue.
 
    - **`severity: unknown`**: Read adversary's result yourself and assess severity. Decide whether to continue debate or proceed to experimenter.
 

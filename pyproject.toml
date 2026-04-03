@@ -1,10 +1,10 @@
 [project]
 name = "principia"
-version = "0.2.0"
+version = "0.3.0"
 requires-python = ">=3.10"
 description = "Design algorithms from first principles through adversarial testing"
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = ["pytest>=8.0", "ruff>=0.9", "mypy>=1.14", "pre-commit>=4.0"]
 
 [tool.pytest.ini_options]

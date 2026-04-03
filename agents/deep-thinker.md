@@ -27,7 +27,7 @@ description: |
 
   Do NOT use the deep-thinker for: proposing designs (architect), decomposing claims (synthesizer), finding literature (scout), running experiments (experimenter), or deciding next actions (conductor).
 model: opus
-color: purple
+color: magenta
 tools:
   - WebSearch
   - WebFetch

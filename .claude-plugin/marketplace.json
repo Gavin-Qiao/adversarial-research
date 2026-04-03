@@ -10,7 +10,7 @@
     {
       "name": "principia",
       "source": "./",
-      "description": "Design algorithms from first principles through structured adversarial debate, empirical testing, and dependency-aware claim tracking",
+      "description": "Turn a philosophical principle into a working algorithm through rigorous adversarial testing. Decomposes ideas into testable claims, stress-tests each through structured debate and empirical experiments, and composes the surviving pieces into a design you can build on.",
       "version": "0.3.0",
       "license": "MIT",
       "keywords": [

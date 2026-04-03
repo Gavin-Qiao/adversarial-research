@@ -27,7 +27,7 @@ description: |
 
   Do NOT use the conductor for one-shot evaluations — use the arbiter for that. The conductor is for running full cycles with multiple agent dispatches.
 model: opus
-color: gold
+color: yellow
 tools:
   - Agent
   - Read

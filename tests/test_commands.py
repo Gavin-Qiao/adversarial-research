@@ -994,3 +994,17 @@ class TestPostVerdictFlatClaim:
         assert "status: proven" in content, (
             f"Expected status: proven but got:\n{content}"
         )
+
+
+class TestAutonomyConfig:
+    """Test autonomy-config CLI command."""
+
+    def test_autonomy_config_outputs_json(self, research_dir):
+        """autonomy-config outputs valid JSON with mode and checkpoint_at."""
+        rc, out, _ = run_manage(research_dir, "autonomy-config")
+        assert rc == 0, f"autonomy-config failed: {out}"
+        import json
+
+        result = json.loads(out)
+        assert result["mode"] == "checkpoints"
+        assert "understand" in result["checkpoint_at"]

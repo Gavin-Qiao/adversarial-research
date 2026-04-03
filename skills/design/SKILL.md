@@ -84,9 +84,11 @@ The state includes a `substeps` list of remaining sub-steps. Handle each in orde
 - Save to `design/context/survey-<topic>.md` and `design/context/comparison-<topic>.md`
 - Report: `[Understand > Research] Surveying literature...`
 
-**Phase transition**: After all sub-steps complete, ask the user:
-"Ready to decompose into testable claims, or want to research more?"
-If user wants more research, dispatch `@scout` again. When user confirms, run `investigate-next` to get the next state.
+**Phase transition**: After all sub-steps complete:
+- **Checkpoints mode**: Ask the user: "Ready to decompose into testable claims, or want to research more?" If user wants more research, dispatch `@scout` again.
+- **Yolo mode**: Report "[Understand] Complete. Proceeding to Divide." and continue automatically.
+
+When ready, run `investigate-next` to get the next state.
 
 ### Phase 2: Divide
 
@@ -108,8 +110,9 @@ If user wants more research, dispatch `@scout` again. When user confirms, run `i
 - Write the claim statement to `claim.md`
 - After scaffolding, run `manage.py build`
 - For each claim, show the user: claim statement, maturity, dependencies, falsification criterion
-- Ask: "Investigate deeper (spawn sub-investigation) or treat as atomic?"
-- If deeper: spawn child principia (see Recursive Structure below)
+- **Checkpoints mode**: Ask: "Investigate deeper (spawn sub-investigation) or treat as atomic?"
+  - If deeper: spawn child principia (see Recursive Structure below)
+- **Yolo mode**: Treat all claims as atomic automatically. Report "[Divide > Scaffold] Treating N claims as atomic."
 - Report: `[Divide > Scaffold] Scaffolding N claims...`
 
 **Action: `scaffold_quick`** (quick mode only)
@@ -124,11 +127,14 @@ If user wants more research, dispatch `@scout` again. When user confirms, run `i
 
 ### Phase 3: Test
 
+**Claim iteration loop**: `investigate-next` returns one claim at a time. After each claim completes, call `investigate-next` again. Repeat until the action is no longer `test_claim` or `record_verdict`.
+
 **Action: `test_claim`**
 - The state includes `cycle` (claim name) and `sub_unit` (path)
 - Read `.config.md` to check dispatch mode for the conductor
 - If **internal**: Dispatch `@conductor` with the claim path, claim statement, and reference to `config/protocol.md`
 - If **external**: Generate conductor prompt with `manage.py prompt <path>` and tell user to paste result
+- After conductor completes, call `investigate-next` again (it will return `record_verdict`)
 - Report: `[Test > <claim>] Dispatching @conductor`
 
 **Action: `record_verdict`**
@@ -137,16 +143,18 @@ If user wants more research, dispatch `@scout` again. When user confirms, run `i
   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design post-verdict <path>
   ```
 - Report the verdict to the user with breadcrumb
+- Call `investigate-next` again — if more claims remain, it returns the next `test_claim`
+- **Continue the loop** until `investigate-next` returns `synthesize` or `complete`
 - Report: `[Test > <claim>] Verdict: <VERDICT> (confidence: <level>)`
 
 **Handling non-terminal verdicts:**
 
 When `investigate-next` returns a claim with `complete_partial` or `complete_inconclusive` action:
-- Present the options from the state JSON's `suggestion.options` via AskUserQuestion:
+- **Checkpoints mode**: Present the options from the state JSON's `suggestion.options` via AskUserQuestion:
   - **PARTIAL**: "Narrow the claim (add conditions)", "Gather more experimental evidence", "Accept partial result and move on"
   - **INCONCLUSIVE**: "Try a different approach", "Gather more evidence", "Defer and move to next claim"
-- Based on user choice: create a narrowed claim (scaffold new claim), re-dispatch experimenter, or mark as accepted and continue.
-- In YOLO mode: accept partial/inconclusive results and continue to next claim.
+  - Based on user choice: create a narrowed claim (scaffold new claim), re-dispatch experimenter, or mark as accepted and continue.
+- **Yolo mode**: Accept partial/inconclusive results automatically. Report the verdict and continue to next claim.
 
 ### Phase 4: Synthesize
 
@@ -156,6 +164,7 @@ When `investigate-next` returns a claim with `complete_partial` or `complete_inc
   1. Dispatch `@synthesizer` with all verdicts, debate transcripts, experimental results, and north star
   2. Synthesizer produces `design/composition.md` (algorithm) and `design/synthesis.md` (cross-claim analysis)
   3. If conflicting verdicts need mathematical reconciliation, dispatch `@deep-thinker`, then re-dispatch `@synthesizer`
+- **Quick mode**: Dispatch `@synthesizer` to produce only `design/synthesis.md` (skip `composition.md`)
 - If no proven claims:
   1. Dispatch `@synthesizer` to produce only `design/synthesis.md` (analysis of what was disproven and why)
 - Generate RESULTS.md:
@@ -171,12 +180,16 @@ When `investigate-next` returns a claim with `complete_partial` or `complete_inc
 
 ### Autonomy
 
-Before transitioning between phases (Understand → Divide → Test → Synthesize), check autonomy config in `design/.config.md`:
+At the start of the design process, check the autonomy mode:
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design autonomy-config
+```
+This returns JSON: `{"mode": "checkpoints", "checkpoint_at": [...]}`. Cache the result for the session.
 
-- **checkpoints mode** (default): At each phase transition listed in `checkpoint_at`, pause and ask the user: "[Phase] complete. Continue to [next phase]?" Show a summary of what was accomplished.
-- **yolo mode**: Report what happened at each phase transition but continue automatically without waiting for user input.
+- **checkpoints** (default): At each phase transition listed in `checkpoint_at`, pause and ask the user: "[Phase] complete. Continue to [next phase]?" Show a summary of what was accomplished. Also ask for user input on claim complexity and non-terminal verdicts.
+- **yolo**: Report what happened at each phase transition but continue automatically without waiting for user input. Treat all claims as atomic. Accept partial/inconclusive verdicts and move on.
 
-To change mode, edit `design/.config.md` and set Mode to `yolo`.
+Throughout this skill, actions marked "Checkpoints mode" or "Yolo mode" depend on this setting. To change mode, edit `config/orchestration.yaml` and set `autonomy.mode` to `yolo`.
 
 4. **After each action**, run `manage.py investigate-next` again and go to step 3. Continue until `complete`.
 

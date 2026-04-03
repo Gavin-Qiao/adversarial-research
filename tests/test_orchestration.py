@@ -21,6 +21,7 @@ from orchestration import (
     list_context_files,
     load_config,
     parse_framework,
+    read_autonomy_config,
     read_dispatch_config,
     suggest_next,
 )
@@ -1188,3 +1189,33 @@ class TestFindActiveSubunitFlatClaims:
         result = find_active_subunit(rd, rd / ".db" / "research.db")
         assert result is not None, "find_active_subunit should find flat claims"
         assert "claims/claim-1-test" in result
+
+
+class TestReadAutonomyConfig:
+    """Tests for read_autonomy_config()."""
+
+    def test_defaults_when_no_file(self):
+        """Without a config file, defaults to checkpoints mode."""
+        result = read_autonomy_config(Path("/nonexistent/config.yaml"))
+        assert result["mode"] == "checkpoints"
+        assert result["checkpoint_at"] == ["understand", "divide", "test", "synthesize"]
+
+    def test_reads_yolo_mode(self, tmp_path):
+        """Reads yolo mode from config file."""
+        config = tmp_path / "config.yaml"
+        config.write_text(
+            "autonomy:\n"
+            "  mode: yolo\n"
+            "  checkpoint_at: [understand, synthesize]\n"
+        )
+        result = read_autonomy_config(config)
+        assert result["mode"] == "yolo"
+        assert result["checkpoint_at"] == ["understand", "synthesize"]
+
+    def test_missing_autonomy_section(self, tmp_path):
+        """Config without autonomy section falls back to defaults."""
+        config = tmp_path / "config.yaml"
+        config.write_text("debate_loop:\n  max_rounds: 3\n")
+        result = read_autonomy_config(config)
+        assert result["mode"] == "checkpoints"
+        assert result["checkpoint_at"] == ["understand", "divide", "test", "synthesize"]

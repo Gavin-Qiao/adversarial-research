@@ -287,6 +287,18 @@ def load_config(config_path: Path | None = None) -> dict[str, Any]:
     return DEFAULT_CONFIG.copy()
 
 
+def read_autonomy_config(config_path: Path | None = None) -> dict[str, Any]:
+    """Read autonomy settings from orchestration config."""
+    config = load_config(config_path)
+    autonomy = config.get("autonomy", {})
+    if not isinstance(autonomy, dict):
+        autonomy = {}
+    return {
+        "mode": autonomy.get("mode", "checkpoints"),
+        "checkpoint_at": autonomy.get("checkpoint_at", ["understand", "divide", "test", "synthesize"]),
+    }
+
+
 def _get_roles_config(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Build a lookup dict from roles list."""
     roles = config.get("roles", [])

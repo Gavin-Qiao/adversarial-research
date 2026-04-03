@@ -1,8 +1,22 @@
+<div align="center">
+
 # principia
 
-Turn a philosophical principle into a working algorithm through rigorous adversarial testing.
+**Turn a philosophical principle into a working algorithm through rigorous adversarial testing.**
+
+[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/Gavin-Qiao/principia/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://img.shields.io/badge/tests-370_passing-brightgreen.svg)]()
+[![Claude Code](https://img.shields.io/badge/Claude_Code-plugin-blueviolet.svg)](https://docs.anthropic.com/en/docs/claude-code)
 
 You start with an insight. Principia decomposes it into testable claims, stress-tests each through structured debate and empirical experiments, and composes the surviving pieces into a design you can build on.
+
+[Installation](#installation) | [Quick Start](#quick-start) | [How It Works](#how-it-works) | [Commands](#commands) | [Configuration](#configuration)
+
+</div>
+
+---
 
 ## Installation
 
@@ -11,6 +25,8 @@ claude plugin install principia
 # or
 claude --plugin-dir /path/to/principia
 ```
+
+Requires **Python 3.10+** (stdlib only -- no pip packages at runtime) and **Claude Code 2.0+**.
 
 ## Quick Start
 
@@ -21,29 +37,58 @@ algorithms discard. An algorithm that preserves topological features during
 hierarchical merging should produce more faithful cluster boundaries."
 ```
 
-That's it. Principia will:
-1. **Understand** the principle and research landscape
-2. **Divide** your principle into testable claims
-3. **Test** each claim: debate (architect vs adversary) then experiment, render verdicts
-4. **Synthesize** surviving claims into a coherent design
+That's it. Principia runs four phases automatically:
 
-## Walkthrough
+1. **Understand** -- refine the principle, survey the research landscape
+2. **Divide** -- decompose into testable claims with dependency ordering
+3. **Test** -- debate (architect vs adversary), then experiment, then verdict -- per claim
+4. **Synthesize** -- compose surviving claims into a coherent algorithm
 
-Here's what a `/principia:design` run looks like end-to-end:
+Add `--quick` to skip research, limit debate to 1 round, and get results fast.
 
-### Phase 1: Understand
+## How It Works
+
+```
+/principia:design "Your philosophical principle here"
+
+Understand:  Discussion refines principle, @scout surveys the landscape
+Divide:      @synthesizer decomposes into testable claims, scaffolds directories
+Test:        For each claim (respecting dependency waves):
+               @architect proposes  ->  @adversary attacks  (1-3 rounds)
+               -> @experimenter tests empirically
+               -> @arbiter renders verdict
+Synthesize:  @synthesizer composes surviving claims into a unified algorithm
+```
+
+After each verdict:
+
+| Verdict | Effect |
+|---------|--------|
+| **PROVEN** | Claim confirmed. Dependents can proceed. |
+| **DISPROVEN** | Hypothesis fails. Dependents are **weakened** via cascade. |
+| **PARTIAL** | Holds under conditions. Narrow or gather more evidence. |
+| **INCONCLUSIVE** | Insufficient evidence. Try a different approach or defer. |
+
+The adversary always gets the last word before experiments. Anti-convergence protocols detect when agents agree too quickly and inject counter-evidence.
+
+### Walkthrough
+
+<details>
+<summary><b>Full walkthrough of a /principia:design run</b></summary>
+
+#### Phase 1: Understand
 ```
 [Phase 1/4] Understanding principle...
 ```
-Discussion refines the principle into a north star. @scout searches for prior art. Outputs: `design/.north-star.md`, `design/.context.md`, `design/context/survey-<topic>.md`.
+Discussion refines the principle into a north star. `@scout` searches for prior art. Outputs: `design/.north-star.md`, `design/.context.md`, `design/context/survey-<topic>.md`.
 
-### Phase 2: Divide
+#### Phase 2: Divide
 ```
 [Phase 2/4] Dividing into testable claims...
 ```
-@synthesizer decomposes your principle into testable claims with dependency ordering and scaffolds claim directories. Output: `design/blueprint.md` containing a claim registry, plus `design/claims/claim-N-name/` directories.
+`@synthesizer` decomposes your principle into testable claims with dependency ordering and scaffolds claim directories. Output: `design/blueprint.md` with a claim registry, plus `design/claims/claim-N-name/` directories.
 
-### Phase 3: Test (repeated per claim)
+#### Phase 3: Test (repeated per claim)
 ```
 [Phase 3/4] Testing claim: enrichment-preserves-topology
   Round 1: @architect proposes design
@@ -56,13 +101,28 @@ Discussion refines the principle into a north star. @scout searches for prior ar
 [Phase 3/4] Testing claim: bottleneck-ratio-bounds...
 ```
 
-### Phase 4: Synthesize
+#### Phase 4: Synthesize
 ```
 [Phase 4/4] Synthesizing final design...
 [Complete] Design process finished. See design/RESULTS.md.
 ```
 
-Use `--quick` to skip research, run a brief discussion, 1 debate round per claim, and generate RESULTS.md directly.
+</details>
+
+## Agents
+
+| Agent | Model | Role |
+|-------|-------|------|
+| `@architect` | Opus | Proposes designs and hypotheses from context |
+| `@adversary` | Opus | Stress-tests: finds flaws, counterexamples, edge cases |
+| `@experimenter` | Sonnet | Tests empirically with code and synthetic data |
+| `@arbiter` | Opus | Evaluates all evidence, renders verdict |
+| `@conductor` | Opus | Orchestrates a full claim cycle autonomously |
+| `@synthesizer` | Opus | Decomposes principles (Divide) and unifies findings (Synthesize) |
+| `@scout` | Sonnet | Surveys the landscape -- prior work, relevant techniques |
+| `@deep-thinker` | Opus | Hard math/theory reasoning, available across all four phases |
+
+The architect and adversary have **no codebase access** -- isolated to prevent anchoring bias. The experimenter has full codebase access. The conductor orchestrates agents as subagents. The deep thinker is dispatched on demand for hard theoretical questions.
 
 ## Commands
 
@@ -77,7 +137,7 @@ Use `--quick` to skip research, run a brief discussion, 1 debate round per claim
 | `/principia:impact <id>` | Preview: what breaks if this claim is disproven? |
 | `/principia:query "<sql>"` | Query the evidence database |
 
-### Internal commands (used by agents and other skills)
+### Internal commands (used by agents and skills)
 
 | Command | What it does |
 |---------|-------------|
@@ -88,64 +148,61 @@ Use `--quick` to skip research, run a brief discussion, 1 debate round per claim
 | `/principia:validate` | Check design log integrity |
 | `/principia:methodology` | Reference: the principia design methodology |
 
-## Agents
+## Configuration
 
-| Agent | Model | Role |
-|-------|-------|------|
-| `@scout` | Sonnet | Surveys the landscape -- prior work, relevant techniques |
-| `@architect` | Opus | Proposes designs and hypotheses from context |
-| `@adversary` | Opus | Stress-tests: finds flaws, counterexamples, edge cases |
-| `@synthesizer` | Opus | Unifies findings across claims into coherent design |
-| `@experimenter` | Sonnet | Tests empirically with code and synthetic data |
-| `@arbiter` | Opus | Evaluates all evidence, renders verdict |
-| `@conductor` | Opus | Orchestrates a full claim cycle autonomously |
-| `@deep-thinker` | opus | Hard math/theory reasoning across all four phases |
+### Autonomy
 
-The architect and adversary have no codebase access -- isolated to prevent anchoring bias. The experimenter has full codebase access. The conductor orchestrates other agents as subagents. The deep thinker is dispatched on demand (like any other agent, available in all phases) with WebSearch and WebFetch.
+By default, Principia pauses at each phase transition for confirmation. Set **yolo mode** to run fully automated:
 
-## How It Works
-
-```
-/principia:design "Your philosophical principle here"
-
-Understand: Discussion refines principle, @scout surveys the landscape
-Divide:     @synthesizer decomposes into testable claims, scaffolds directories
-Test:       For each claim (respecting dependencies):
-            @architect proposes -> @adversary attacks (1-3 rounds)
-            -> @experimenter tests empirically
-            -> @arbiter renders verdict
-Synthesize: @synthesizer composes surviving claims into a design
+```yaml
+# config/orchestration.yaml
+autonomy:
+  mode: yolo               # checkpoints (default) | yolo
+  checkpoint_at: [understand, divide, test, synthesize]
 ```
 
-After each verdict:
-- **PROVEN**: Claim confirmed. Dependents can proceed.
-- **DISPROVEN**: Hypothesis fails. Dependents are **weakened** with reduced confidence.
-- **PARTIAL**: Holds under some conditions. Narrow or gather more evidence.
-- **INCONCLUSIVE**: Not enough evidence. Try a different approach or defer.
+In **checkpoints** mode (default): pauses between phases, asks about claim complexity, prompts on non-terminal verdicts. In **yolo** mode: reports progress and continues automatically, treats all claims as atomic, accepts partial/inconclusive results.
 
-The adversary always gets the last word before experiments. Anti-convergence protocols detect when agents agree too quickly and inject counter-evidence.
+### Workflow tuning: `config/orchestration.yaml`
 
-### State Machine Reference
+Controls debate round limits, severity thresholds, and post-verdict actions.
 
-Investigation-level actions (managed by orchestration.py):
+```yaml
+debate_loop:
+  max_rounds: 3          # cap on debate rounds
+  final_say: adversary   # who gets last word
+
+severity_keywords:
+  fatal: ["fatal", "blocks the approach"]
+  minor: ["minor", "worth noting"]
+
+auto_review: true        # automated post-verdict bookkeeping
+```
+
+See `config/README.md` for the full reference.
+
+### Dispatch mode: `design/.config.md`
+
+Created by `/principia:init`. Controls agent dispatch mode per project:
+
+- **internal** (default): agents run as Claude Code subagents
+- **external**: system generates a self-contained prompt you can paste into any LLM
+
+## State Machine Reference
+
+<details>
+<summary><b>Investigation-level transitions</b></summary>
 
 ```
-understand → divide → scaffold → test_claim/record_verdict → synthesize → complete
+understand -> divide -> scaffold -> test_claim/record_verdict -> synthesize -> complete
 ```
 
-Claim-level actions (`/principia:step` calls `manage.py next <path>`):
+The `test_claim`/`record_verdict` loop repeats for each claim, respecting dependency waves.
 
-| Field | Description |
-|-------|-------------|
-| `action` | What to do next: `dispatch_architect`, `dispatch_adversary`, `dispatch_experimenter`, `dispatch_arbiter`, `post_verdict`, `complete_proven`, `complete_disproven`, `complete_partial`, `complete_inconclusive`, `waiting`, `error` |
-| `phase` | Current phase: `debate`, `experiment`, `verdict`, `recording`, `complete` |
-| `agent` | Which agent to dispatch (present for `dispatch_*` actions) |
-| `round` | Current debate round number |
-| `context_files` | Files to include in the agent's prompt |
-| `result_path` | Where to save the agent's output |
-| `dispatch_mode` | `internal` (subagent) or `external` (prompt file) |
+</details>
 
-Claim-level transitions:
+<details>
+<summary><b>Claim-level transitions</b></summary>
 
 ```
 dispatch_architect(1) -> dispatch_adversary(1)
@@ -154,6 +211,18 @@ dispatch_architect(1) -> dispatch_adversary(1)
     -> dispatch_arbiter -> post_verdict
       -> complete_{proven,disproven,partial,inconclusive}
 ```
+
+| Field | Description |
+|-------|-------------|
+| `action` | `dispatch_architect`, `dispatch_adversary`, `dispatch_experimenter`, `dispatch_arbiter`, `post_verdict`, `complete_*`, `waiting`, `error` |
+| `phase` | `debate`, `experiment`, `verdict`, `recording`, `complete` |
+| `agent` | Which agent to dispatch |
+| `round` | Current debate round number |
+| `context_files` | Files to include in the agent's prompt |
+| `result_path` | Where to save the agent's output |
+| `dispatch_mode` | `internal` (subagent) or `external` (prompt file) |
+
+</details>
 
 ### Step-by-Step Mode
 
@@ -166,33 +235,11 @@ For manual control, use `/principia:step` to advance one agent at a time:
 ...                 # continue to verdict
 ```
 
-## Configuration
-
-### Plugin-level config: `config/orchestration.yaml`
-
-Controls workflow behavior: debate round limits, severity thresholds, post-verdict actions. See `config/README.md` for the full reference.
-
-```yaml
-debate_loop:
-  max_rounds: 3          # cap on debate rounds
-  final_say: adversary   # who gets last word
-
-auto_review: true        # automated post-verdict bookkeeping
-
-severity_keywords:
-  fatal: ["fatal", "blocks the approach"]
-  minor: ["minor", "worth noting"]
-```
-
-### Project-level config: `design/.config.md`
-
-Created by `/principia:init`. Controls only agent dispatch mode (internal vs external) per project. Does not affect workflow logic.
-
 ## Directory Structure
 
 ```
 design/
-├── .north-star.md                  # Refined principle from Discussion
+├── .north-star.md                  # Refined principle
 ├── .context.md                     # Inspection findings
 ├── claims/                         # One directory per testable claim
 │   └── claim-N-name/
@@ -206,9 +253,8 @@ design/
 ├── composition.md                  # Synthesized algorithm
 ├── synthesis.md                    # Cross-claim analysis
 ├── RESULTS.md                      # Final summary
-├── PROGRESS.md                     # Auto-generated progress report
-├── FOUNDATIONS.md                   # Tracked assumptions
-└── TOOLKIT.md                      # Reusable experiment code
+├── PROGRESS.md                     # Auto-generated progress
+└── FOUNDATIONS.md                   # Tracked assumptions
 ```
 
 ## Frontmatter Schema
@@ -231,29 +277,23 @@ confidence: high | moderate | low
 | Term | Definition |
 |------|-----------|
 | **Claim** | A testable assertion decomposed from the user's principle. Each gets its own adversarial cycle. |
-| **Blueprint** | The synthesizer's decomposition of a principle into claims with dependency ordering (`design/blueprint.md`). |
+| **Blueprint** | The synthesizer's decomposition of a principle into claims with dependency ordering. |
 | **Verdict** | The outcome of an adversarial cycle: PROVEN, DISPROVEN, PARTIAL, or INCONCLUSIVE. |
-| **Cascade** | When a claim is disproven, all claims that depend on it have their confidence reduced automatically. |
+| **Cascade** | When a claim is disproven, dependents have their confidence reduced automatically. |
 | **Wave** | A set of claims with no mutual dependencies that can be investigated in parallel. |
-| **Severity** | The adversary's rating of an attack: Fatal, Serious, Minor, or None. Determines whether debate continues. |
-| **Maturity** | How well-established a claim is before testing: theorem-backed, supported, conjecture, or experiment. |
-| **Falsification** | The pre-registered criterion that would disprove a claim. Written by the synthesizer. |
-| **Knowledge divergence** | Deliberately giving the architect and adversary different prior art to prevent premature agreement. |
-| **Anti-convergence** | Protocol to detect and prevent agents from agreeing too quickly without substantive evidence. |
+| **Severity** | The adversary's rating: Fatal, Serious, Minor, or None. Determines debate continuation. |
+| **Maturity** | Claim establishment level: theorem-backed, supported, conjecture, or experiment. |
+| **Falsification** | Pre-registered criterion that would disprove a claim. Written by the synthesizer. |
+| **Anti-convergence** | Protocol to detect and prevent agents from agreeing too quickly. |
 
 ## Development
 
 ```bash
-uv venv && uv pip install pytest ruff mypy
-uv run python -m pytest tests/ -q     # 363 tests
-uv run ruff check scripts/            # lint
-uv run python -m mypy scripts/        # type check
+uv sync --dev                          # install dev dependencies
+uv run python -m pytest tests/ -q      # 370 tests
+uv run ruff check scripts/ tests/      # lint
+uv run python -m mypy scripts/         # type check
 ```
-
-## Requirements
-
-- Python 3.10+ (stdlib only -- no pip packages at runtime)
-- Claude Code 2.0+
 
 ## License
 
