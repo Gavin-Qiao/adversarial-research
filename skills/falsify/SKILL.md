@@ -25,9 +25,9 @@ Examples:
 
 1. The target node's status is set to `disproven` in its frontmatter
 2. If `--by` is provided, a `disproven_by` edge is created
-3. All nodes that transitively `depends_on` or `assumes` the target are set to `partial`
+3. All nodes that transitively `depends_on` or `assumes` the target are set to `weakened`
 4. A ledger entry is recorded for each change
-5. Nodes already `disproven` or `partial` are skipped (no duplicates)
+5. Nodes already `disproven` or `weakened` are skipped (no duplicates)
 
 ## After disproval
 

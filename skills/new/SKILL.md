@@ -19,8 +19,8 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design new "$ARGUMENTS"
 ```
 
 The path should be relative to `design/`. Examples:
-- `cycles/cycle-1/unit-1-enrichment/architect/round-1/prompt.md`
-- `cycles/cycle-1/unit-1-enrichment/experimenter/results/output.md`
+- `claims/claim-1-enrichment/architect/round-1/prompt.md`
+- `claims/claim-1-enrichment/experimenter/results/output.md`
 - `context/assumptions/my-assumption.md`
 
 The `.md` extension is appended automatically if missing.
@@ -28,7 +28,7 @@ The `.md` extension is appended automatically if missing.
 ## Auto-generated frontmatter
 
 The tool infers:
-- **id**: Abbreviated from the path (e.g., `c1-u1-architect-r1-prompt`)
+- **id**: Abbreviated from the path (e.g., `h1-architect-r1-prompt`)
 - **type**: From the role directory (`architect`=claim, `experimenter`=evidence, `arbiter`=verdict, `scout`=reference, prompts=question, `assumptions/`=assumption)
 - **status**: `pending`
 - **date**: Today

@@ -3,15 +3,13 @@
 ## ID Derivation Rules
 
 Paths are abbreviated for compact IDs:
-- `cycles/` prefix stripped
+- `claims/` prefix stripped
 - `context/` prefix stripped
-- `cycle-N` -> `cN`
-- `unit-M-name` -> `uM`
-- `sub-Ma-name` -> `sMa`
+- `claim-N-name` -> `hN`
 - `round-K` -> `rK`
 - `prompts/` and `results/` directories dropped
 
-Example: `cycles/cycle-1/unit-2-enrichment/sub-2a-bottleneck/architect/round-1/result.md` -> `c1-u2-s2a-architect-r1-result`
+Example: `claims/claim-1-enrichment/architect/round-1/result.md` -> `h1-architect-r1-result`
 
 ## Type Inference from Path
 
@@ -27,17 +25,17 @@ Example: `cycles/cycle-1/unit-2-enrichment/sub-2a-bottleneck/architect/round-1/r
 | `scout/` | any | reference |
 | `arbiter/` | any | verdict |
 | `assumptions/` | any | assumption |
-| `progress.md` | - | verdict |
+| `claim.md` | - | claim |
 | (fallback) | any | reference |
 
 ## Architect/Adversary Round Limits
 
-Each role has a maximum of 3 rounds per sub-unit:
+Each role has a maximum of 3 rounds per claim:
 - `round-1/`: Initial proposal or attack
 - `round-2/`: Refinement based on feedback
 - `round-3/`: Final attempt
 
-If 3 rounds are insufficient, escalate to a new sub-unit or redesign.
+If 3 rounds are insufficient, escalate to a new claim or redesign.
 
 ## Edge Types
 
@@ -51,6 +49,20 @@ If 3 rounds are insufficient, escalate to a new sub-unit or redesign.
 
 When a node is disproven:
 1. Its status -> `disproven`
-2. All transitive dependents (via `depends_on` or `assumes`) -> `partial`
-3. Already `disproven` or `partial` nodes are skipped
+2. All transitive dependents (via `depends_on` or `assumes`) -> `weakened`
+3. Already `disproven`, `weakened`, or `inconclusive` nodes are skipped
 4. Each status change is recorded in the audit ledger
+
+## Valid Status Values
+
+- **pending**: Not yet started
+- **active**: Work in progress
+- **proven**: Accepted as established (with evidence)
+- **disproven**: Refuted by evidence
+- **partial**: A dependency was disproven; needs review
+- **weakened**: Supporting evidence was undermined but not fully refuted
+- **inconclusive**: Evidence was ambiguous; no clear verdict
+
+## Legacy
+
+The `cycles/cycle-N/unit-M/sub-Ma/` structure from v0.2 is still supported for backward compatibility. Legacy ID derivation rules: `cycle-N` -> `cN`, `unit-M-name` -> `uM`, `sub-Ma-name` -> `sMa`. Use `scaffold claim` for new work.

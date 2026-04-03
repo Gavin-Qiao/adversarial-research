@@ -14,33 +14,29 @@ Algorithm design proceeds through adversarial cycles where design proposals are 
 
 ```
 design/
-├── cycles/
-│   └── cycle-N/                    # A design cycle
-│       ├── progress.md             # Cycle-level progress
-│       └── unit-M-<name>/          # A design unit (topic)
-│           ├── progress.md         # Unit-level progress
-│           └── sub-Ma-<name>/      # A sub-investigation
-│               ├── progress.md     # Sub-unit progress
-│               ├── architect/      # Design proposals
-│               │   └── round-K/
-│               │       ├── prompt.md
-│               │       └── result.md
-│               ├── adversary/      # Attacks on proposals
-│               │   └── round-K/
-│               │       ├── prompt.md
-│               │       └── result.md
-│               ├── experimenter/   # Empirical validation
-│               │   ├── prompt.md
-│               │   └── results/
-│               │       └── output.md
-│               └── arbiter/        # Verdict
-│                   └── results/
-│                       └── verdict.md
-└── context/
-    ├── survey-*.md                 # Knowledge summaries
-    └── assumptions/                # Tracked assumptions
-        └── assumption-*.md
+├── .north-star.md          # Refined principle (Understand > discuss)
+├── .context.md             # Codebase findings (Understand > inspect)
+├── context/
+│   ├── assumptions/
+│   └── survey-*.md         # Literature (Understand > research)
+├── blueprint.md            # Claim decomposition (Divide)
+├── claims/
+│   ├── claim-1-foo/
+│   │   ├── claim.md        # Frontmatter + statement
+│   │   ├── architect/      # round-{1,2,3}/result.md
+│   │   ├── adversary/      # round-{1,2,3}/result.md
+│   │   ├── experimenter/   # results/output.md
+│   │   ├── arbiter/        # results/verdict.md
+│   │   └── scout/
+│   └── claim-2-bar/
+├── composition.md
+├── synthesis.md
+└── RESULTS.md
 ```
+
+### Legacy: Cycles Hierarchy
+
+The `cycles/cycle-N/unit-M/sub-Ma/` structure from v0.2 is still supported for backward compatibility but is not the primary model for new investigations. Use `scaffold claim` for new work.
 
 ## Roles
 
@@ -63,7 +59,7 @@ The post-verdict step runs after each verdict to update frontmatter statuses, ru
 ---
 id: <auto-derived from path>
 type: claim | assumption | evidence | reference | verdict | question
-status: pending | active | proven | disproven | partial
+status: pending | active | proven | disproven | partial | weakened | inconclusive
 date: YYYY-MM-DD
 depends_on: [<node-id>, ...]
 assumes: [<assumption-id>, ...]
@@ -80,10 +76,12 @@ counterfactual: "<what changes if this is false>" | null
 - **proven**: Accepted as established (with evidence)
 - **disproven**: Refuted by evidence
 - **partial**: A dependency was disproven; needs review
+- **weakened**: Supporting evidence was undermined but not fully refuted
+- **inconclusive**: Evidence was ambiguous; no clear verdict
 
 ## Workflow
 
-1. **Scaffold**: Create cycle/unit/sub-unit structure (`/scaffold`)
+1. **Scaffold**: Create claim structure (`/scaffold`)
 2. **Dialectic** (debate loop, max 3 rounds):
    - **Architect** proposes design solution
    - **Adversary** attacks (rates severity: Fatal / Serious / Minor)

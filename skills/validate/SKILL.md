@@ -20,7 +20,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design validate
 
 - Duplicate node IDs
 - Required fields (id, type, status, date, file_path)
-- Valid status values (pending, active, proven, disproven, partial)
+- Valid status values (pending, active, proven, disproven, partial, weakened, inconclusive)
 - Valid type values (claim, assumption, evidence, reference, verdict, question)
 - Valid attack_type values (undermines, rebuts, undercuts)
 - Self-loops in dependency edges
