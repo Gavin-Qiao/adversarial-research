@@ -5,6 +5,7 @@ node metadata.  It is intentionally dependency-free so it can be imported
 by both ``manage.py`` and ``orchestration.py`` without pulling in the
 other's transitive dependencies.
 """
+
 from __future__ import annotations
 
 import re

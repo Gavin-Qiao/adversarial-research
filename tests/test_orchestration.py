@@ -788,9 +788,7 @@ claims:
         )
         a_dir = claim_dir / "architect" / "round-1"
         a_dir.mkdir(parents=True, exist_ok=True)
-        (a_dir / "result.md").write_text(
-            "---\nid: t\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# T\n"
-        )
+        (a_dir / "result.md").write_text("---\nid: t\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# T\n")
         r_dir = claim_dir / "adversary" / "round-1"
         r_dir.mkdir(parents=True, exist_ok=True)
         (r_dir / "result.md").write_text(
@@ -1057,13 +1055,12 @@ class TestFullCycleIntegration:
 
         # Step 6: Reviewer done (frontier mtime > verdict mtime) → complete
         import time
+
         # Ensure frontier.md mtime > verdict.md mtime (tests the legacy mtime fallback path;
         # the .post_verdict_done marker is the primary mechanism but mtime is kept as fallback)
         time.sleep(0.1)
         frontier = research_dir / sub / "frontier.md"
-        frontier.write_text(
-            "---\nid: done\ntype: claim\nstatus: settled\ndate: 2026-01-01\n---\n\n# Done\n"
-        )
+        frontier.write_text("---\nid: done\ntype: claim\nstatus: settled\ndate: 2026-01-01\n---\n\n# Done\n")
         state = detect_state(research_dir, sub, DEFAULT_CONFIG)
         assert state["action"] == "complete_proven"
         assert state["phase"] == "complete"
@@ -1203,11 +1200,7 @@ class TestReadAutonomyConfig:
     def test_reads_yolo_mode(self, tmp_path):
         """Reads yolo mode from config file."""
         config = tmp_path / "config.yaml"
-        config.write_text(
-            "autonomy:\n"
-            "  mode: yolo\n"
-            "  checkpoint_at: [understand, synthesize]\n"
-        )
+        config.write_text("autonomy:\n  mode: yolo\n  checkpoint_at: [understand, synthesize]\n")
         result = read_autonomy_config(config)
         assert result["mode"] == "yolo"
         assert result["checkpoint_at"] == ["understand", "synthesize"]

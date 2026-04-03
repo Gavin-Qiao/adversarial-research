@@ -131,9 +131,17 @@ def _atomic_write(path: Path, content: str, encoding: str = "utf-8") -> None:
 # ---------------------------------------------------------------------------
 
 VALID_STATUSES = {
-    "pending", "active",
-    "proven", "disproven", "partial", "weakened", "inconclusive",  # principia names
-    "settled", "falsified", "mixed", "undermined",                 # legacy aliases
+    "pending",
+    "active",
+    "proven",
+    "disproven",
+    "partial",
+    "weakened",
+    "inconclusive",  # principia names
+    "settled",
+    "falsified",
+    "mixed",
+    "undermined",  # legacy aliases
 }
 VALID_TYPES = {"claim", "assumption", "evidence", "reference", "verdict", "question"}
 VALID_ATTACK_TYPES = {"undermines", "rebuts", "undercuts", None}
@@ -245,8 +253,14 @@ def infer_type_from_path(rel_path: str) -> str:
         return "assumption"
     # Role-based inference, with prompt vs result distinction
     _prompt_roles = {
-        "thinker", "refutor", "deep-thinker", "researcher",  # legacy
-        "architect", "adversary", "synthesizer", "scout",     # principia
+        "thinker",
+        "refutor",
+        "deep-thinker",
+        "researcher",  # legacy
+        "architect",
+        "adversary",
+        "synthesizer",
+        "scout",  # principia
     }
     for role in ROLE_TYPE_MAP:
         if role in parts:
@@ -444,8 +458,7 @@ def init_db() -> sqlite3.Connection:
         )
     if preserved_dispatches:
         conn.executemany(
-            "INSERT INTO dispatches (timestamp, cycle_id, agent, action, round, details) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO dispatches (timestamp, cycle_id, agent, action, round, details) VALUES (?, ?, ?, ?, ?, ?)",
             preserved_dispatches,
         )
     conn.commit()
@@ -888,9 +901,7 @@ def _update_frontmatter_in_file(fpath: Path, updates: dict) -> bool:
     return True
 
 
-def _find_cascade_targets(
-    conn: sqlite3.Connection, node_id: str
-) -> list[tuple[str, str, str]]:
+def _find_cascade_targets(conn: sqlite3.Connection, node_id: str) -> list[tuple[str, str, str]]:
     """BFS to find all nodes transitively dependent on *node_id*.
 
     Returns a list of ``(dep_id, file_path, current_status)`` tuples for
@@ -903,17 +914,14 @@ def _find_cascade_targets(
     while queue:
         current = queue.popleft()
         dependents = conn.execute(
-            "SELECT DISTINCT source_id FROM edges "
-            "WHERE target_id = ? AND relation IN ('depends_on', 'assumes')",
+            "SELECT DISTINCT source_id FROM edges WHERE target_id = ? AND relation IN ('depends_on', 'assumes')",
             (current,),
         ).fetchall()
         for dep in dependents:
             dep_id = dep["source_id"]
             if dep_id not in visited and dep_id != node_id:
                 visited.add(dep_id)
-                dep_node = conn.execute(
-                    "SELECT * FROM nodes WHERE id = ?", (dep_id,)
-                ).fetchone()
+                dep_node = conn.execute("SELECT * FROM nodes WHERE id = ?", (dep_id,)).fetchone()
                 if dep_node:
                     affected.append((dep_id, dep_node["file_path"], dep_node["status"]))
                     queue.append(dep_id)
@@ -1831,8 +1839,7 @@ def cmd_log_dispatch(args: argparse.Namespace) -> None:
     """Log a dispatch event to the dispatches table."""
     conn = build_db()
     conn.execute(
-        "INSERT INTO dispatches (timestamp, cycle_id, agent, action, round, details) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO dispatches (timestamp, cycle_id, agent, action, round, details) VALUES (?, ?, ?, ?, ?, ?)",
         (
             datetime.now(timezone.utc).isoformat(),
             args.cycle,
@@ -1870,8 +1877,7 @@ def cmd_dispatch_log(args: argparse.Namespace) -> None:
     for r in rows:
         rnd = str(r["round"]) if r["round"] is not None else "—"
         print(
-            f"{r['timestamp']:<28} {r['cycle_id']:<25} {r['agent']:<12} "
-            f"{r['action']:<16} {rnd:<6} {r['details'] or ''}"
+            f"{r['timestamp']:<28} {r['cycle_id']:<25} {r['agent']:<12} {r['action']:<16} {rnd:<6} {r['details'] or ''}"
         )
     print(f"\n({len(rows)} dispatch(es))")
 
@@ -2121,9 +2127,7 @@ def cmd_results(args: argparse.Namespace) -> None:
     claims_dir = RESEARCH_DIR / "claims"
 
     # Gather all verdict nodes
-    verdicts = conn.execute(
-        "SELECT id, status, confidence FROM nodes WHERE type = 'verdict' ORDER BY id"
-    ).fetchall()
+    verdicts = conn.execute("SELECT id, status, confidence FROM nodes WHERE type = 'verdict' ORDER BY id").fetchall()
 
     if verdicts:
         for v in verdicts:
@@ -2181,9 +2185,7 @@ def cmd_results(args: argparse.Namespace) -> None:
     lines.append("## Limitations")
     lines.append("")
 
-    disproven = conn.execute(
-        "SELECT id FROM nodes WHERE status IN ('falsified', 'disproven') ORDER BY id"
-    ).fetchall()
+    disproven = conn.execute("SELECT id FROM nodes WHERE status IN ('falsified', 'disproven') ORDER BY id").fetchall()
     if disproven:
         lines.append("**Disproven claims**:")
         for row in disproven:
@@ -2351,16 +2353,15 @@ def main() -> None:
 
     # scaffold (supports cycle/unit/sub-unit and flat claim)
     p_scaffold = sub.add_parser("scaffold", help="Create directory structure")
-    p_scaffold.add_argument(
-        "level", choices=["cycle", "unit", "sub-unit", "claim"], help="What to scaffold"
-    )
+    p_scaffold.add_argument("level", choices=["cycle", "unit", "sub-unit", "claim"], help="What to scaffold")
     p_scaffold.add_argument("name", help="Slug name (e.g., enrichment, bottleneck)")
     p_scaffold.add_argument(
         "--parent", help="Parent path relative to research/ (required for unit/sub-unit)", default=None
     )
     p_scaffold.add_argument("--falsification", default=None, help="Pre-registered falsification criterion")
     p_scaffold.add_argument(
-        "--maturity", default=None,
+        "--maturity",
+        default=None,
         choices=["theorem-backed", "supported", "conjecture", "experiment"],
     )
     p_scaffold.add_argument("--confidence", default=None, choices=["high", "moderate", "low"])

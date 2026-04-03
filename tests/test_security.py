@@ -58,8 +58,6 @@ class TestPathTraversal:
         """scaffold --parent with path traversal should be rejected."""
         # Create a cycle first so the parent would exist if traversal worked
         run_manage(research_dir, "scaffold", "cycle", "test")
-        rc, out, _ = run_manage(
-            research_dir, "scaffold", "unit", "evil", "--parent", "cycles/../../.."
-        )
+        rc, out, _ = run_manage(research_dir, "scaffold", "unit", "evil", "--parent", "cycles/../../..")
         assert rc != 0
         assert "escapes" in out.lower() or "error" in out.lower()

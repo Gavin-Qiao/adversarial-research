@@ -22,9 +22,9 @@ uv run mypy scripts/
 
 Three Python scripts in `scripts/` (stdlib-only, no pip packages at runtime):
 
-- **manage.py** (2,300 lines) — CLI + SQLite database for claims, evidence, verdicts, cascades
-- **orchestration.py** (1,200 lines) — state machine, context assembly, severity/verdict parsing
-- **frontmatter.py** (150 lines) — dependency-free YAML subset parser shared by both
+- **manage.py** (~2,450 lines) — CLI + SQLite database for claims, evidence, verdicts, cascades
+- **orchestration.py** (~1,280 lines) — state machine, context assembly, severity/verdict parsing
+- **frontmatter.py** (~150 lines) — dependency-free YAML subset parser shared by both
 
 Eight agents in `agents/`, twelve skills in `skills/`, config in `config/orchestration.yaml`.
 

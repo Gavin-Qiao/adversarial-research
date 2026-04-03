@@ -1088,11 +1088,7 @@ def detect_investigation_state(
                         "action": "synthesize",
                         "phase": "synthesize",
                         "completed_cycles": [claim_dirs[0].name],
-                        "proven_claims": (
-                            [claim_dirs[0].name]
-                            if state.get("action") == "complete_proven"
-                            else []
-                        ),
+                        "proven_claims": ([claim_dirs[0].name] if state.get("action") == "complete_proven" else []),
                     }
                 return {"action": "complete", "phase": "complete"}
             return {
@@ -1143,10 +1139,7 @@ def detect_investigation_state(
         # Match if ID appears as a complete segment delimited by hyphens or at boundaries
         return cid == dirname or f"-{cid}-" in f"-{dirname}-"
 
-    unscaffolded = [
-        c for c in claims
-        if not any(_id_matches_dir(c["id"], name) for name in existing_dirs)
-    ]
+    unscaffolded = [c for c in claims if not any(_id_matches_dir(c["id"], name) for name in existing_dirs)]
     if unscaffolded:
         return {
             "action": "scaffold",
@@ -1163,11 +1156,13 @@ def detect_investigation_state(
                 continue
             sub_path = str(claim_dir.relative_to(research_dir))
             state = detect_state(research_dir, sub_path, config)
-            cycle_states.append({
-                "cycle": claim_dir.name,
-                "sub_unit": sub_path,
-                "state": state,
-            })
+            cycle_states.append(
+                {
+                    "cycle": claim_dir.name,
+                    "sub_unit": sub_path,
+                    "state": state,
+                }
+            )
 
     # Legacy cycles/ hierarchy
     if cycles_dir.exists():
@@ -1182,11 +1177,13 @@ def detect_investigation_state(
                         continue
                     sub_path = str(sub_dir.relative_to(research_dir))
                     state = detect_state(research_dir, sub_path, config)
-                    cycle_states.append({
-                        "cycle": cycle_dir.name,
-                        "sub_unit": sub_path,
-                        "state": state,
-                    })
+                    cycle_states.append(
+                        {
+                            "cycle": cycle_dir.name,
+                            "sub_unit": sub_path,
+                            "state": state,
+                        }
+                    )
 
     if not cycle_states:
         return {
@@ -1219,9 +1216,7 @@ def detect_investigation_state(
     if waves and len(waves) > 1:
         for wave in waves:
             wave_claim_ids = [node["id"] for node in wave]
-            wave_cycle_names = [
-                claim_to_cycle[cid] for cid in wave_claim_ids if cid in claim_to_cycle
-            ]
+            wave_cycle_names = [claim_to_cycle[cid] for cid in wave_claim_ids if cid in claim_to_cycle]
 
             wave_cs = [cs for cycle_name in wave_cycle_names for cs in by_cycle.get(cycle_name, [])]
             w_needs_review, w_incomplete, _w_done = _classify_cycle_states(wave_cs)

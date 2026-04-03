@@ -399,8 +399,7 @@ class TestInvestigationContracts:
             (inv_dir / "context" / "survey-topic.md").write_text("# Survey\n")
         if condition_id in ("I5", "I6", "I7", "I8", "I9"):
             (inv_dir / "blueprint.md").write_text(
-                "# Blueprint\n\n```yaml\n# CLAIM_REGISTRY\nclaims:\n"
-                '  - id: test-claim\n    statement: "Test"\n```\n'
+                '# Blueprint\n\n```yaml\n# CLAIM_REGISTRY\nclaims:\n  - id: test-claim\n    statement: "Test"\n```\n'
             )
         if condition_id in ("I6", "I7", "I8", "I9"):
             claim_dir = inv_dir / "claims" / "claim-1-test-claim"
@@ -438,14 +437,13 @@ class TestInvestigationContracts:
     )
     def test_investigation_contract(self, inv_dir, row):
         from orchestration import DEFAULT_CONFIG
+
         self._setup_condition(inv_dir, row["ID"])
         quick = row["ID"] == "I3Q"
         state = detect_investigation_state(inv_dir, DEFAULT_CONFIG, quick=quick)
         assert state["action"] == row["Expected Action"], (
-            f"Contract {row['ID']}: expected action={row['Expected Action']}, "
-            f"got action={state['action']}"
+            f"Contract {row['ID']}: expected action={row['Expected Action']}, got action={state['action']}"
         )
         assert state["phase"] == row["Expected Phase"], (
-            f"Contract {row['ID']}: expected phase={row['Expected Phase']}, "
-            f"got phase={state['phase']}"
+            f"Contract {row['ID']}: expected phase={row['Expected Phase']}, got phase={state['phase']}"
         )

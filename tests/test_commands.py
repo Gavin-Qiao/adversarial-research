@@ -99,33 +99,52 @@ class TestCmdFalsify:
         assume_dir.mkdir(parents=True, exist_ok=True)
         (assume_dir / "a.md").write_text(
             serialise_frontmatter(
-                {"id": "a", "type": "assumption", "status": "active", "date": "2026-01-01",
-                 "depends_on": [], "assumes": []}
-            ) + "\n# A\n"
+                {
+                    "id": "a",
+                    "type": "assumption",
+                    "status": "active",
+                    "date": "2026-01-01",
+                    "depends_on": [],
+                    "assumes": [],
+                }
+            )
+            + "\n# A\n"
         )
         cycles_dir = research_dir / "cycles" / "cycle-1" / "unit-1" / "thinker" / "round-1"
         cycles_dir.mkdir(parents=True)
         (cycles_dir / "result.md").write_text(
             serialise_frontmatter(
-                {"id": "b", "type": "claim", "status": "active", "date": "2026-01-01",
-                 "depends_on": [], "assumes": ["a"]}
-            ) + "\n# B\n"
+                {
+                    "id": "b",
+                    "type": "claim",
+                    "status": "active",
+                    "date": "2026-01-01",
+                    "depends_on": [],
+                    "assumes": ["a"],
+                }
+            )
+            + "\n# B\n"
         )
         coder_dir = research_dir / "cycles" / "cycle-1" / "unit-1" / "coder" / "results"
         coder_dir.mkdir(parents=True)
         (coder_dir / "output.md").write_text(
             serialise_frontmatter(
-                {"id": "c", "type": "evidence", "status": "active", "date": "2026-01-01",
-                 "depends_on": ["b"], "assumes": []}
-            ) + "\n# C\n"
+                {
+                    "id": "c",
+                    "type": "evidence",
+                    "status": "active",
+                    "date": "2026-01-01",
+                    "depends_on": ["b"],
+                    "assumes": [],
+                }
+            )
+            + "\n# C\n"
         )
         rc, out, _ = run_manage(research_dir, "falsify", "a")
         assert rc == 0
         assert "weakened" in out
         # Verify both b and c are weakened via DB query
-        _rc2, out2, _ = run_manage(
-            research_dir, "query", "SELECT id, status FROM nodes WHERE status='weakened'"
-        )
+        _rc2, out2, _ = run_manage(research_dir, "query", "SELECT id, status FROM nodes WHERE status='weakened'")
         assert "b" in out2
         assert "c" in out2
 
@@ -137,26 +156,38 @@ class TestCmdFalsify:
         assume_dir.mkdir(parents=True, exist_ok=True)
         (assume_dir / "base.md").write_text(
             serialise_frontmatter(
-                {"id": "base", "type": "assumption", "status": "active", "date": "2026-01-01",
-                 "depends_on": [], "assumes": []}
-            ) + "\n# Base\n"
+                {
+                    "id": "base",
+                    "type": "assumption",
+                    "status": "active",
+                    "date": "2026-01-01",
+                    "depends_on": [],
+                    "assumes": [],
+                }
+            )
+            + "\n# Base\n"
         )
         cycles_dir = research_dir / "cycles" / "cycle-1" / "unit-1" / "thinker" / "round-1"
         cycles_dir.mkdir(parents=True)
         (cycles_dir / "result.md").write_text(
             serialise_frontmatter(
-                {"id": "dep", "type": "claim", "status": "active", "date": "2026-01-01",
-                 "depends_on": [], "assumes": ["base"], "confidence": "high"}
-            ) + "\n# Dep\n"
+                {
+                    "id": "dep",
+                    "type": "claim",
+                    "status": "active",
+                    "date": "2026-01-01",
+                    "depends_on": [],
+                    "assumes": ["base"],
+                    "confidence": "high",
+                }
+            )
+            + "\n# Dep\n"
         )
         rc, _out, _ = run_manage(research_dir, "falsify", "base")
         assert rc == 0
         # Check that confidence was attenuated: high → moderate
-        _rc2, out2, _ = run_manage(
-            research_dir, "query", "SELECT id, confidence FROM nodes WHERE id='dep'"
-        )
+        _rc2, out2, _ = run_manage(research_dir, "query", "SELECT id, confidence FROM nodes WHERE id='dep'")
         assert "moderate" in out2
-
 
     def test_dry_run_no_changes(self, populated_research):
         """--dry-run should preview cascade without modifying files."""
@@ -164,9 +195,7 @@ class TestCmdFalsify:
         assert rc == 0
         assert "Dry-run" in out
         # Verify the node was NOT actually falsified
-        _rc2, out2, _ = run_manage(
-            populated_research, "query", "SELECT status FROM nodes WHERE id='assumption-a1'"
-        )
+        _rc2, out2, _ = run_manage(populated_research, "query", "SELECT status FROM nodes WHERE id='assumption-a1'")
         assert "falsified" not in out2
 
     def test_dry_run_shows_cascade(self, populated_research):
@@ -278,10 +307,14 @@ class TestCmdLogDispatch:
         rc, out, _ = run_manage(
             research_dir,
             "log-dispatch",
-            "--cycle", "cycle-1-test",
-            "--agent", "thinker",
-            "--action", "dispatch",
-            "--round", "1",
+            "--cycle",
+            "cycle-1-test",
+            "--agent",
+            "thinker",
+            "--action",
+            "dispatch",
+            "--round",
+            "1",
         )
         assert rc == 0
         assert "Logged" in out
@@ -291,10 +324,14 @@ class TestCmdLogDispatch:
         rc, out, _ = run_manage(
             research_dir,
             "log-dispatch",
-            "--cycle", "cycle-1-test",
-            "--agent", "coder",
-            "--action", "side_dispatch",
-            "--details", "checking empirical claim",
+            "--cycle",
+            "cycle-1-test",
+            "--agent",
+            "coder",
+            "--action",
+            "side_dispatch",
+            "--details",
+            "checking empirical claim",
         )
         assert rc == 0
         assert "Logged" in out
@@ -312,10 +349,14 @@ class TestCmdDispatchLog:
         run_manage(
             research_dir,
             "log-dispatch",
-            "--cycle", "cycle-1",
-            "--agent", "thinker",
-            "--action", "dispatch",
-            "--round", "1",
+            "--cycle",
+            "cycle-1",
+            "--agent",
+            "thinker",
+            "--action",
+            "dispatch",
+            "--round",
+            "1",
         )
         rc, out, _ = run_manage(research_dir, "dispatch-log")
         assert rc == 0
@@ -324,14 +365,19 @@ class TestCmdDispatchLog:
 
     def test_json_output(self, research_dir):
         import json
+
         run_manage(research_dir, "build")
         run_manage(
             research_dir,
             "log-dispatch",
-            "--cycle", "cycle-1",
-            "--agent", "refutor",
-            "--action", "dispatch",
-            "--round", "1",
+            "--cycle",
+            "cycle-1",
+            "--agent",
+            "refutor",
+            "--action",
+            "dispatch",
+            "--round",
+            "1",
         )
         rc, out, _ = run_manage(research_dir, "dispatch-log", "--json")
         assert rc == 0
@@ -342,12 +388,24 @@ class TestCmdDispatchLog:
     def test_filter_by_cycle(self, research_dir):
         run_manage(research_dir, "build")
         run_manage(
-            research_dir, "log-dispatch",
-            "--cycle", "cycle-1", "--agent", "thinker", "--action", "dispatch",
+            research_dir,
+            "log-dispatch",
+            "--cycle",
+            "cycle-1",
+            "--agent",
+            "thinker",
+            "--action",
+            "dispatch",
         )
         run_manage(
-            research_dir, "log-dispatch",
-            "--cycle", "cycle-2", "--agent", "refutor", "--action", "dispatch",
+            research_dir,
+            "log-dispatch",
+            "--cycle",
+            "cycle-2",
+            "--agent",
+            "refutor",
+            "--action",
+            "dispatch",
         )
         rc, out, _ = run_manage(research_dir, "dispatch-log", "--cycle", "cycle-1")
         assert rc == 0
@@ -366,6 +424,7 @@ class TestCmdWavesJson:
         rc, out, _ = run_manage(populated_research, "waves", "--json")
         assert rc == 0
         import json
+
         data = json.loads(out)
         assert isinstance(data, list)
 
@@ -375,6 +434,7 @@ class TestCmdInvestigateNext:
         rc, out, _ = run_manage(research_dir, "investigate-next")
         assert rc == 0
         import json
+
         state = json.loads(out)
         assert state["action"] == "understand"
 
@@ -401,6 +461,7 @@ claims:
         rc, out, _ = run_manage(research_dir, "parse-framework")
         assert rc == 0
         import json
+
         claims = json.loads(out)
         assert len(claims) == 1
         assert claims[0]["id"] == "test-claim"
@@ -412,12 +473,18 @@ class TestCmdRegister:
         rc, out, _ = run_manage(
             research_dir,
             "register",
-            "--id", "ring-gen",
-            "--name", "Ring Generator",
-            "--type", "function",
-            "--path", "code/ring.py",
-            "--description", "Generates test rings",
-            "--cycle", "cycle-1",
+            "--id",
+            "ring-gen",
+            "--name",
+            "Ring Generator",
+            "--type",
+            "function",
+            "--path",
+            "code/ring.py",
+            "--description",
+            "Generates test rings",
+            "--cycle",
+            "cycle-1",
         )
         assert rc == 0
         assert "Registered" in out
@@ -426,12 +493,28 @@ class TestCmdRegister:
     def test_register_overwrites(self, research_dir):
         run_manage(research_dir, "build")
         run_manage(
-            research_dir, "register",
-            "--id", "dup", "--name", "V1", "--type", "function", "--path", "v1.py",
+            research_dir,
+            "register",
+            "--id",
+            "dup",
+            "--name",
+            "V1",
+            "--type",
+            "function",
+            "--path",
+            "v1.py",
         )
         rc, out, _ = run_manage(
-            research_dir, "register",
-            "--id", "dup", "--name", "V2", "--type", "script", "--path", "v2.py",
+            research_dir,
+            "register",
+            "--id",
+            "dup",
+            "--name",
+            "V2",
+            "--type",
+            "script",
+            "--path",
+            "v2.py",
         )
         assert rc == 0
         assert "Registered" in out
@@ -447,8 +530,16 @@ class TestCmdArtifacts:
     def test_lists_registered(self, research_dir):
         run_manage(research_dir, "build")
         run_manage(
-            research_dir, "register",
-            "--id", "bench-1", "--name", "Benchmark", "--type", "script", "--path", "bench.py",
+            research_dir,
+            "register",
+            "--id",
+            "bench-1",
+            "--name",
+            "Benchmark",
+            "--type",
+            "script",
+            "--path",
+            "bench.py",
         )
         rc, out, _ = run_manage(research_dir, "artifacts")
         assert rc == 0
@@ -469,9 +560,18 @@ class TestCmdCodebook:
     def test_generates_codebook_with_artifacts(self, research_dir):
         run_manage(research_dir, "build")
         run_manage(
-            research_dir, "register",
-            "--id", "gen-1", "--name", "Generator", "--type", "function",
-            "--path", "gen.py", "--description", "Generates data",
+            research_dir,
+            "register",
+            "--id",
+            "gen-1",
+            "--name",
+            "Generator",
+            "--type",
+            "function",
+            "--path",
+            "gen.py",
+            "--description",
+            "Generates data",
         )
         rc, _out, _ = run_manage(research_dir, "codebook")
         assert rc == 0
@@ -830,8 +930,7 @@ class TestValidatePaste:
     def test_invalid_adversary_missing_severity(self, research_dir, tmp_path):
         paste_file = tmp_path / "paste.md"
         paste_file.write_text(
-            "# Attack\n\nSome text without the required rating field"
-            " that is long enough to pass length check."
+            "# Attack\n\nSome text without the required rating field that is long enough to pass length check."
         )
         rc, out, _ = run_manage(research_dir, "validate-paste", "--agent", "adversary", "--file", str(paste_file))
         assert rc != 0
@@ -846,9 +945,7 @@ class TestValidatePaste:
 
     def test_valid_scout_paste(self, research_dir, tmp_path):
         paste_file = tmp_path / "paste.md"
-        paste_file.write_text(
-            "# Survey\n\n## Key Findings\n\n- Finding 1\n\n## Sources\n\n- Paper A (2024)\n"
-        )
+        paste_file.write_text("# Survey\n\n## Key Findings\n\n- Finding 1\n\n## Sources\n\n- Paper A (2024)\n")
         rc, _out, _ = run_manage(research_dir, "validate-paste", "--agent", "scout", "--file", str(paste_file))
         assert rc == 0
 
@@ -881,13 +978,10 @@ class TestCmdNextArbiterConfidence:
         r_dir = claim_dir / "adversary" / "round-1"
         r_dir.mkdir(parents=True)
         (r_dir / "result.md").write_text(
-            "---\nid: r\ntype: claim\nstatus: active\ndate: 2026-01-01\n"
-            "---\n\n# Attack\n\n**Severity**: minor\n"
+            "---\nid: r\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Attack\n\n**Severity**: minor\n"
         )
         (claim_dir / "experimenter" / "results").mkdir(parents=True)
-        (claim_dir / "experimenter" / "results" / "output.md").write_text(
-            "# Evidence\n"
-        )
+        (claim_dir / "experimenter" / "results" / "output.md").write_text("# Evidence\n")
         # Write verdict with confidence in ARBITER dir
         (claim_dir / "arbiter" / "results").mkdir(parents=True, exist_ok=True)
         (claim_dir / "arbiter" / "results" / "verdict.md").write_text(
@@ -900,9 +994,7 @@ class TestCmdNextArbiterConfidence:
         import json
 
         state = json.loads(out)
-        assert state.get("confidence") == "high", (
-            f"Expected 'high' but got {state.get('confidence')}"
-        )
+        assert state.get("confidence") == "high", f"Expected 'high' but got {state.get('confidence')}"
 
 
 class TestScaffoldClaimMetadata:
@@ -932,13 +1024,9 @@ class TestScaffoldClaimMetadata:
 
     def test_scaffold_without_metadata(self, research_dir):
         """Scaffold claim still works without optional flags."""
-        rc, _out, _ = run_manage(
-            research_dir, "scaffold", "claim", "basic-claim"
-        )
+        rc, _out, _ = run_manage(research_dir, "scaffold", "claim", "basic-claim")
         assert rc == 0
-        claim_md = (
-            research_dir / "claims" / "claim-1-basic-claim" / "claim.md"
-        )
+        claim_md = research_dir / "claims" / "claim-1-basic-claim" / "claim.md"
         content = claim_md.read_text()
         assert "falsification" not in content
 
@@ -991,9 +1079,7 @@ class TestPostVerdictFlatClaim:
 
         # Verify claim.md was updated
         content = (claim_dir / "claim.md").read_text()
-        assert "status: proven" in content, (
-            f"Expected status: proven but got:\n{content}"
-        )
+        assert "status: proven" in content, f"Expected status: proven but got:\n{content}"
 
 
 class TestAutonomyConfig:
