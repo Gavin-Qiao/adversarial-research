@@ -55,19 +55,24 @@ The post-verdict step runs after each verdict to update frontmatter statuses, ru
 
 ## Frontmatter Schema
 
-```yaml
----
-id: <auto-derived from path>
-type: claim | assumption | evidence | reference | verdict | question
-status: pending | active | proven | disproven | partial | weakened | inconclusive
-date: YYYY-MM-DD
-depends_on: [<node-id>, ...]
-assumes: [<assumption-id>, ...]
-attack_type: undermines | rebuts | undercuts | null
-falsified_by: <evidence-id> | null
-counterfactual: "<what changes if this is false>" | null
----
-```
+Every `.md` node file starts with YAML frontmatter:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `id` | Yes | Unique node identifier, derived from file path |
+| `type` | Yes | `claim`, `assumption`, `evidence`, `verdict`, `reference`, `question` |
+| `status` | Yes | `pending`, `active`, `proven`, `disproven`, `partial`, `weakened`, `inconclusive` |
+| `date` | Yes | Creation date (YYYY-MM-DD) |
+| `depends_on` | No | List of node IDs this depends on (drives wave ordering) |
+| `assumes` | No | List of assumption node IDs |
+| `attack_type` | No | For adversary results: `weakens`, `rebuts`, `undercuts` |
+| `falsified_by` | No | Node ID of evidence that disproved this |
+| `counterfactual` | No | What would be true if this assumption is wrong |
+| `maturity` | No | Claim maturity: `theorem-backed`, `supported`, `conjecture`, `experiment` |
+| `confidence` | No | `high`, `moderate`, `low` |
+| `wave` | No | Execution wave number (computed by dependency sort) |
+| `cycle_status` | No | Per-cycle status tracking |
+| `falsification` | No | Pre-registered falsification criterion from claim registry |
 
 ## Status Tags
 
@@ -75,8 +80,8 @@ counterfactual: "<what changes if this is false>" | null
 - **active**: Work in progress
 - **proven**: Accepted as established (with evidence)
 - **disproven**: Refuted by evidence
-- **partial**: A dependency was disproven; needs review
-- **weakened**: Supporting evidence was undermined but not fully refuted
+- **partial**: Arbiter verdict — claim holds under some conditions but not universally
+- **weakened**: A dependency was disproven; confidence reduced but claim not directly disproven
 - **inconclusive**: Evidence was ambiguous; no clear verdict
 
 ## Workflow

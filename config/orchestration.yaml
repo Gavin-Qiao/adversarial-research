@@ -2,6 +2,8 @@
 # Modify this file to change the algorithm design workflow.
 # Changes take effect immediately — no restart needed.
 
+# --- State machine configuration (read by orchestration.py) ---
+
 # The debate loop: architect proposes, adversary attacks
 debate_loop:
   sequence: [architect, adversary]
@@ -88,6 +90,10 @@ severity_keywords:
 # When true, post-verdict bookkeeping is done programmatically.
 # Set to false for human-in-the-loop review.
 auto_review: true
+
+# --- Skill-layer configuration (read by skills, not by orchestration.py) ---
+# These sections document behavior for the design/step skills.
+# The Python state machine does not read them.
 
 # v0.3: Understand phase sub-steps
 understand:

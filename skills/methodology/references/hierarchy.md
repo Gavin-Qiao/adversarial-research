@@ -59,8 +59,8 @@ When a node is disproven:
 - **active**: Work in progress
 - **proven**: Accepted as established (with evidence)
 - **disproven**: Refuted by evidence
-- **partial**: A dependency was disproven; needs review
-- **weakened**: Supporting evidence was undermined but not fully refuted
+- **partial**: Arbiter verdict — claim holds under some conditions but not universally
+- **weakened**: A dependency was disproven; confidence reduced but claim not directly disproven
 - **inconclusive**: Evidence was ambiguous; no clear verdict
 
 ## Legacy
