@@ -5,6 +5,8 @@ Modify this file to change the workflow. The conductor reads this at the start o
 
 ## Routing by Claim Maturity
 
+> **Note:** These routing guidelines inform the conductor's side-channel decisions (when to dispatch scout, experimenter, or deep-thinker between main-line steps). The main-line sequence (architect → adversary → experimenter → arbiter) is controlled by the state machine and cannot be changed here. The maturity level affects the conductor's judgment about debate depth and side-channel dispatches.
+
 The synthesizer assigns a maturity level to each claim. Route accordingly:
 
 ### theorem-backed

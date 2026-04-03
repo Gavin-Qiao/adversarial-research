@@ -51,6 +51,7 @@ You dispatch these agents via the Agent tool. Each agent sees ONLY the prompt yo
 | `@adversary` | Attack design | Architect's proposal, DIFFERENT prior art for knowledge divergence |
 | `@experimenter` | Empirical testing | Specific claim to test, success criteria, prior codebook |
 | `@scout` | Prior art lookup | Specific question, what's already known |
+| `@deep-thinker` | Hard math/theory reasoning | Side-channel only (never main-line) |
 
 ## Prompt Construction Rules
 

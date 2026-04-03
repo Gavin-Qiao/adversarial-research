@@ -99,9 +99,9 @@ Use `--quick` to skip research, run a brief discussion, 1 debate round per claim
 | `@experimenter` | Sonnet | Tests empirically with code and synthetic data |
 | `@arbiter` | Opus | Evaluates all evidence, renders verdict |
 | `@conductor` | Opus | Orchestrates a full claim cycle autonomously |
-| `@deep-thinker` | -- (always ambient) | Hard math/theory reasoning across all four phases |
+| `@deep-thinker` | opus | Hard math/theory reasoning across all four phases |
 
-The architect and adversary have no codebase access -- isolated to prevent anchoring bias. The experimenter has full codebase access. The conductor orchestrates other agents as subagents. The deep thinker is always ambient (WebSearch only).
+The architect and adversary have no codebase access -- isolated to prevent anchoring bias. The experimenter has full codebase access. The conductor orchestrates other agents as subagents. The deep thinker is dispatched on demand (like any other agent, available in all phases) with WebSearch and WebFetch.
 
 ## How It Works
 
