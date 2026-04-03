@@ -256,8 +256,10 @@ def infer_type_from_path(rel_path: str) -> str:
             return ROLE_TYPE_MAP[role]
     # frontier/claim files
     basename = os.path.basename(rel_path)
-    if basename in ("frontier.md", "claim.md"):
+    if basename == "frontier.md":
         return "verdict"
+    if basename == "claim.md":
+        return "claim"
     return "reference"
 
 
@@ -1113,6 +1115,8 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
 
     # Determine the claim node ID from the sub-unit frontier
     frontier = target / "frontier.md"
+    if not frontier.exists():
+        frontier = target / "claim.md"
     node_id: str | None = None
     if frontier.exists():
         meta = parse_frontmatter(frontier.read_text(encoding="utf-8"))
@@ -1312,7 +1316,7 @@ def cmd_scaffold(args: argparse.Namespace) -> None:
     today = date.today().isoformat()
     meta: dict[str, str | list[str] | None] = {
         "id": node_id,
-        "type": "verdict",
+        "type": "claim" if level == "claim" else "verdict",
         "status": "pending",
         "date": today,
         "depends_on": [],

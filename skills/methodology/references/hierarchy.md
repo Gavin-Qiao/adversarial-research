@@ -43,7 +43,7 @@ If 3 rounds are insufficient, escalate to a new claim or redesign.
 |----------|---------|
 | depends_on | This node builds on the target |
 | assumes | This node relies on the target assumption |
-| disproven_by | This node was refuted by the target evidence |
+| falsified_by | This node was refuted by the target evidence |
 
 ## Cascade Rules
 

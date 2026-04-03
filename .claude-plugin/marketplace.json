@@ -11,7 +11,7 @@
       "name": "principia",
       "source": "./",
       "description": "Design algorithms from first principles through structured adversarial debate, empirical testing, and dependency-aware claim tracking",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "license": "MIT",
       "keywords": [
         "algorithm-design",

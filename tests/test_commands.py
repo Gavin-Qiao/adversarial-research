@@ -941,3 +941,56 @@ class TestScaffoldClaimMetadata:
         )
         content = claim_md.read_text()
         assert "falsification" not in content
+
+
+class TestClaimTypeInference:
+    def test_scaffold_claim_type_is_claim(self, research_dir):
+        """scaffold claim should create claim.md with type: claim, not verdict."""
+        rc, _out, _ = run_manage(research_dir, "scaffold", "claim", "test-type")
+        assert rc == 0
+        claim_md = research_dir / "claims" / "claim-1-test-type" / "claim.md"
+        content = claim_md.read_text()
+        assert "type: claim" in content, f"Expected type: claim but got:\n{content}"
+        assert "type: verdict" not in content
+
+
+class TestPostVerdictFlatClaim:
+    def test_post_verdict_updates_flat_claim(self, research_dir):
+        """post-verdict should update claim.md status for flat claims."""
+        # Scaffold a flat claim
+        run_manage(research_dir, "scaffold", "claim", "pv-test")
+        claim_dir = research_dir / "claims" / "claim-1-pv-test"
+
+        # Create minimal debate + verdict
+        a_dir = claim_dir / "architect" / "round-1"
+        a_dir.mkdir(parents=True)
+        (a_dir / "result.md").write_text(
+            "---\nid: a\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Proposal\n"
+        )
+        r_dir = claim_dir / "adversary" / "round-1"
+        r_dir.mkdir(parents=True)
+        (r_dir / "result.md").write_text(
+            "---\nid: r\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Attack\n\n**Severity**: minor\n"
+        )
+        (claim_dir / "experimenter" / "results").mkdir(parents=True)
+        (claim_dir / "experimenter" / "results" / "output.md").write_text(
+            "---\nid: e\ntype: evidence\nstatus: active\ndate: 2026-01-01\n---\n\n# Evidence\n"
+        )
+        (claim_dir / "arbiter" / "results").mkdir(parents=True, exist_ok=True)
+        (claim_dir / "arbiter" / "results" / "verdict.md").write_text(
+            "---\nid: v\ntype: verdict\nstatus: active\n"
+            "date: 2026-01-01\n---\n\n**Verdict**: PROVEN\n**Confidence**: high\n"
+        )
+
+        # Run build to populate DB
+        run_manage(research_dir, "build")
+
+        # Run post-verdict
+        rc, out, _ = run_manage(research_dir, "post-verdict", "claims/claim-1-pv-test")
+        assert rc == 0, f"post-verdict failed: {out}"
+
+        # Verify claim.md was updated
+        content = (claim_dir / "claim.md").read_text()
+        assert "status: proven" in content, (
+            f"Expected status: proven but got:\n{content}"
+        )

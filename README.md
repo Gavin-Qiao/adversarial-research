@@ -245,7 +245,7 @@ confidence: high | moderate | low
 
 ```bash
 uv venv && uv pip install pytest ruff mypy
-uv run python -m pytest tests/ -q     # 350 tests
+uv run python -m pytest tests/ -q     # 363 tests
 uv run ruff check scripts/            # lint
 uv run python -m mypy scripts/        # type check
 ```

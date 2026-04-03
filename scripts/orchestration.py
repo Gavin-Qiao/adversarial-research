@@ -353,6 +353,8 @@ def _check_reviewer_complete(target: Path) -> bool:
     if not verdict.exists():
         return False
     frontier = target / "frontier.md"
+    if not frontier.exists():
+        frontier = target / "claim.md"
     return frontier.exists() and frontier.stat().st_mtime >= verdict.stat().st_mtime
 
 

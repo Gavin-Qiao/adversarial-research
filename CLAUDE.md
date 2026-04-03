@@ -26,7 +26,7 @@ Three Python scripts in `scripts/` (stdlib-only, no pip packages at runtime):
 - **orchestration.py** (1,200 lines) — state machine, context assembly, severity/verdict parsing
 - **frontmatter.py** (150 lines) — dependency-free YAML subset parser shared by both
 
-Seven agents in `agents/`, twelve skills in `skills/`, config in `config/orchestration.yaml`.
+Eight agents in `agents/`, twelve skills in `skills/`, config in `config/orchestration.yaml`.
 
 ## Conventions
 

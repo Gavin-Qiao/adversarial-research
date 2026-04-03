@@ -64,7 +64,7 @@ date: YYYY-MM-DD
 depends_on: [<node-id>, ...]
 assumes: [<assumption-id>, ...]
 attack_type: undermines | rebuts | undercuts | null
-disproven_by: <evidence-id> | null
+falsified_by: <evidence-id> | null
 counterfactual: "<what changes if this is false>" | null
 ---
 ```
