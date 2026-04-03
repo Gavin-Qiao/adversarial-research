@@ -684,12 +684,21 @@ def find_active_subunit(research_dir: Path, db_path: Path | None = None) -> str 
         try:
             conn = sqlite3.connect(str(db_path))
             conn.row_factory = sqlite3.Row
+            # Check nested sub-units first
             row = conn.execute(
                 "SELECT file_path FROM nodes "
                 "WHERE status IN ('pending', 'active') "
                 "AND file_path LIKE '%/sub-%/frontier.md' "
                 "ORDER BY file_path LIMIT 1"
             ).fetchone()
+            if not row:
+                # Also check flat claims in claims/ directory
+                row = conn.execute(
+                    "SELECT file_path FROM nodes "
+                    "WHERE status IN ('pending', 'active') "
+                    "AND file_path LIKE 'claims/claim-%/claim.md' "
+                    "ORDER BY file_path LIMIT 1"
+                ).fetchone()
             conn.close()
             if row:
                 return str(Path(row["file_path"]).parent)
@@ -698,11 +707,18 @@ def find_active_subunit(research_dir: Path, db_path: Path | None = None) -> str 
 
     # Fallback: scan directories for sub-unit dirs
     cycles_dir = research_dir / "cycles"
-    if not cycles_dir.exists():
-        return None
-    for sub_dir in sorted(cycles_dir.rglob("sub-*")):
-        if sub_dir.is_dir():
-            return str(sub_dir.relative_to(research_dir))
+    if cycles_dir.exists():
+        for sub_dir in sorted(cycles_dir.rglob("sub-*")):
+            if sub_dir.is_dir():
+                return str(sub_dir.relative_to(research_dir))
+
+    # Fallback: scan claims/ directory for flat claims
+    claims_dir = research_dir / "claims"
+    if claims_dir.exists():
+        for claim_dir in sorted(claims_dir.iterdir()):
+            if claim_dir.is_dir() and claim_dir.name.startswith("claim-"):
+                return str(claim_dir.relative_to(research_dir))
+
     return None
 
 

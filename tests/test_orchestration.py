@@ -1152,3 +1152,39 @@ class TestNewRoleNameStateMachine:
         write_result(research_dir, f"{sub}/architect/round-1/result.md")
         files = list_context_files(research_dir, sub, "dispatch_adversary", round_num=1)
         assert any("architect" in f for f in files)
+
+
+class TestFindActiveSubunitFlatClaims:
+    def test_finds_flat_claim(self, tmp_path):
+        """find_active_subunit finds claims in claims/ directory."""
+        from manage import build_db, init_paths, serialise_frontmatter
+
+        rd = tmp_path
+        for d in ["claims", "context/assumptions", ".db"]:
+            (rd / d).mkdir(parents=True, exist_ok=True)
+        init_paths(rd)
+
+        # Create a flat claim
+        claim_dir = rd / "claims" / "claim-1-test"
+        for role in ("architect", "adversary", "experimenter", "arbiter"):
+            (claim_dir / role).mkdir(parents=True)
+        (claim_dir / "claim.md").write_text(
+            serialise_frontmatter(
+                {
+                    "id": "h1-claim",
+                    "type": "verdict",
+                    "status": "pending",
+                    "date": "2026-01-01",
+                }
+            )
+            + "\n\n# Test\n"
+        )
+
+        # Build DB so the node exists
+        build_db()
+
+        from orchestration import find_active_subunit
+
+        result = find_active_subunit(rd, rd / ".db" / "research.db")
+        assert result is not None, "find_active_subunit should find flat claims"
+        assert "claims/claim-1-test" in result

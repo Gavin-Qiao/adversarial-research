@@ -860,3 +860,84 @@ class TestValidatePaste:
         )
         rc, _out, _ = run_manage(research_dir, "validate-paste", "--agent", "arbiter", "--file", str(paste_file))
         assert rc == 0
+
+
+class TestCmdNextArbiterConfidence:
+    def test_confidence_from_arbiter_dir(self, research_dir):
+        """cmd_next extracts confidence from arbiter/ (not just judge/)."""
+        # Create a flat claim with arbiter verdict
+        claim_dir = research_dir / "claims" / "claim-1-test"
+        for role in ("architect", "adversary", "experimenter", "arbiter"):
+            (claim_dir / role).mkdir(parents=True, exist_ok=True)
+        (claim_dir / "claim.md").write_text(
+            "---\nid: test\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test\n"
+        )
+        # Complete the debate minimally
+        a_dir = claim_dir / "architect" / "round-1"
+        a_dir.mkdir(parents=True)
+        (a_dir / "result.md").write_text(
+            "---\nid: t\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Proposal\n"
+        )
+        r_dir = claim_dir / "adversary" / "round-1"
+        r_dir.mkdir(parents=True)
+        (r_dir / "result.md").write_text(
+            "---\nid: r\ntype: claim\nstatus: active\ndate: 2026-01-01\n"
+            "---\n\n# Attack\n\n**Severity**: minor\n"
+        )
+        (claim_dir / "experimenter" / "results").mkdir(parents=True)
+        (claim_dir / "experimenter" / "results" / "output.md").write_text(
+            "# Evidence\n"
+        )
+        # Write verdict with confidence in ARBITER dir
+        (claim_dir / "arbiter" / "results").mkdir(parents=True, exist_ok=True)
+        (claim_dir / "arbiter" / "results" / "verdict.md").write_text(
+            "---\nid: v\ntype: verdict\nstatus: active\ndate: 2026-01-01\n"
+            "---\n\n**Verdict**: PROVEN\n**Confidence**: high\n"
+        )
+        (claim_dir / ".post_verdict_done").write_text("")
+        rc, out, _ = run_manage(research_dir, "next", "claims/claim-1-test")
+        assert rc == 0
+        import json
+
+        state = json.loads(out)
+        assert state.get("confidence") == "high", (
+            f"Expected 'high' but got {state.get('confidence')}"
+        )
+
+
+class TestScaffoldClaimMetadata:
+    def test_scaffold_with_falsification(self, research_dir):
+        rc, _out, _ = run_manage(
+            research_dir,
+            "scaffold",
+            "claim",
+            "test-claim",
+            "--falsification",
+            "If AUROC < 0.7 on nested rings",
+            "--maturity",
+            "conjecture",
+            "--confidence",
+            "moderate",
+            "--statement",
+            "Persistent homology preserves topology.",
+        )
+        assert rc == 0
+        claim_md = research_dir / "claims" / "claim-1-test-claim" / "claim.md"
+        assert claim_md.exists()
+        content = claim_md.read_text()
+        assert "falsification: If AUROC < 0.7 on nested rings" in content
+        assert "maturity: conjecture" in content
+        assert "confidence: moderate" in content
+        assert "Persistent homology preserves topology." in content
+
+    def test_scaffold_without_metadata(self, research_dir):
+        """Scaffold claim still works without optional flags."""
+        rc, _out, _ = run_manage(
+            research_dir, "scaffold", "claim", "basic-claim"
+        )
+        assert rc == 0
+        claim_md = (
+            research_dir / "claims" / "claim-1-basic-claim" / "claim.md"
+        )
+        content = claim_md.read_text()
+        assert "falsification" not in content

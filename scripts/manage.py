@@ -1321,7 +1321,18 @@ def cmd_scaffold(args: argparse.Namespace) -> None:
         "falsified_by": None,
         "counterfactual": None,
     }
-    content = serialise_frontmatter(meta) + "\n\n# " + name.replace("-", " ").title() + "\n"
+    # Add optional claim registry metadata
+    if getattr(args, "falsification", None):
+        meta["falsification"] = args.falsification
+    if getattr(args, "maturity", None):
+        meta["maturity"] = args.maturity
+    if getattr(args, "confidence", None):
+        meta["confidence"] = args.confidence
+    title = name.replace("-", " ").title()
+    body = f"\n\n# {title}\n"
+    if getattr(args, "statement", None):
+        body = f"\n\n# {title}\n\n{args.statement}\n"
+    content = serialise_frontmatter(meta) + body
     frontier.write_text(content, encoding="utf-8")
     print(f"Created: {target}")
     print(f"  {frontier_name} (id: {node_id})")
@@ -1903,7 +1914,9 @@ def cmd_next(args: argparse.Namespace) -> None:
 
     # Enrich complete states with verdict confidence
     if state["action"].startswith("complete_"):
-        verdict_path = RESEARCH_DIR / sub_path / "judge" / "results" / "verdict.md"
+        verdict_path = RESEARCH_DIR / sub_path / "arbiter" / "results" / "verdict.md"
+        if not verdict_path.exists():
+            verdict_path = RESEARCH_DIR / sub_path / "judge" / "results" / "verdict.md"
         state["confidence"] = extract_confidence(verdict_path)
 
     print(json.dumps(state, indent=2))
@@ -2333,6 +2346,13 @@ def main() -> None:
     p_scaffold.add_argument(
         "--parent", help="Parent path relative to research/ (required for unit/sub-unit)", default=None
     )
+    p_scaffold.add_argument("--falsification", default=None, help="Pre-registered falsification criterion")
+    p_scaffold.add_argument(
+        "--maturity", default=None,
+        choices=["theorem-backed", "supported", "conjecture", "experiment"],
+    )
+    p_scaffold.add_argument("--confidence", default=None, choices=["high", "moderate", "low"])
+    p_scaffold.add_argument("--statement", default=None, help="Claim statement text")
     p_scaffold.set_defaults(func=cmd_scaffold)
 
     # results — generate RESULTS.md
