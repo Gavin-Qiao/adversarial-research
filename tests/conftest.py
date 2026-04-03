@@ -188,7 +188,7 @@ class ResearchBuilder:
         (sub_dir / "frontier.md").write_text(
             f"---\nid: s1{letter}-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# {name.title()}\n"
         )
-        for role in ("thinker", "refutor", "coder", "judge", "researcher"):
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
             (sub_dir / role).mkdir()
         self._sub_units.append(str(sub_dir.relative_to(self.root)))
         return self
@@ -224,20 +224,23 @@ class ResearchBuilder:
         path.write_text(serialise_frontmatter(meta) + f"\n\n# {node_id}\n")
         return self
 
-    def with_thinker_result(
+    def with_architect_result(
         self, sub_unit: str | None = None, *, round_num: int = 1, content: str = "# Hypothesis\n\nProposal."
     ) -> ResearchBuilder:
-        """Create a thinker result file."""
+        """Create an architect result file."""
         sub = self._resolve_sub_unit(sub_unit)
-        path = self.root / sub / "thinker" / f"round-{round_num}"
+        path = self.root / sub / "architect" / f"round-{round_num}"
         path.mkdir(parents=True, exist_ok=True)
         (path / "result.md").write_text(
-            f"---\nid: thinker-r{round_num}\ntype: claim\nstatus: active\ndate: 2026-01-01\n"
+            f"---\nid: architect-r{round_num}\ntype: claim\nstatus: active\ndate: 2026-01-01\n"
             f"depends_on: []\nassumes: []\n---\n\n{content}"
         )
         return self
 
-    def with_refutor_result(
+    # Alias for backward compat with existing tests
+    with_thinker_result = with_architect_result
+
+    def with_adversary_result(
         self,
         sub_unit: str | None = None,
         *,
@@ -245,36 +248,42 @@ class ResearchBuilder:
         severity: str = "Minor (worth noting)",
         content: str | None = None,
     ) -> ResearchBuilder:
-        """Create a refutor result file with specified severity."""
+        """Create an adversary result file with specified severity."""
         sub = self._resolve_sub_unit(sub_unit)
-        path = self.root / sub / "refutor" / f"round-{round_num}"
+        path = self.root / sub / "adversary" / f"round-{round_num}"
         path.mkdir(parents=True, exist_ok=True)
         body = content or f"# Attack\n\nCritique.\n\n**Severity**: {severity}\n"
         (path / "result.md").write_text(
-            f"---\nid: refutor-r{round_num}\ntype: claim\nstatus: active\ndate: 2026-01-01\n"
+            f"---\nid: adversary-r{round_num}\ntype: claim\nstatus: active\ndate: 2026-01-01\n"
             f"depends_on: []\nassumes: []\n---\n\n{body}"
         )
         return self
 
-    def with_coder_result(
+    # Alias for backward compat with existing tests
+    with_refutor_result = with_adversary_result
+
+    def with_experimenter_result(
         self, sub_unit: str | None = None, *, content: str = "# Results\n\nAUROC: 0.85"
     ) -> ResearchBuilder:
-        """Create a coder output file."""
+        """Create an experimenter output file."""
         sub = self._resolve_sub_unit(sub_unit)
-        path = self.root / sub / "coder" / "results"
+        path = self.root / sub / "experimenter" / "results"
         path.mkdir(parents=True, exist_ok=True)
         (path / "output.md").write_text(
-            f"---\nid: coder-output\ntype: evidence\nstatus: active\ndate: 2026-01-01\n"
+            f"---\nid: experimenter-output\ntype: evidence\nstatus: active\ndate: 2026-01-01\n"
             f"depends_on: []\nassumes: []\n---\n\n{content}"
         )
         return self
 
+    # Alias for backward compat with existing tests
+    with_coder_result = with_experimenter_result
+
     def with_verdict(
-        self, sub_unit: str | None = None, *, verdict: str = "SETTLED", confidence: str = "high"
+        self, sub_unit: str | None = None, *, verdict: str = "PROVEN", confidence: str = "high"
     ) -> ResearchBuilder:
-        """Create a judge verdict file."""
+        """Create an arbiter verdict file."""
         sub = self._resolve_sub_unit(sub_unit)
-        path = self.root / sub / "judge" / "results"
+        path = self.root / sub / "arbiter" / "results"
         path.mkdir(parents=True, exist_ok=True)
         (path / "verdict.md").write_text(
             f"---\nid: verdict\ntype: verdict\nstatus: active\ndate: 2026-01-01\n"

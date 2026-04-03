@@ -63,7 +63,7 @@ Structure your response as:
 2. **Attack Type**: Weakens / Rebuts / Undercuts
 3. **The Attack**: Your specific counterargument or counterexample
 4. **Evidence**: Why your attack holds (mathematical, empirical, or logical)
-5. **Severity**: Fatal (blocks the approach) / Serious (requires modification) / Minor (worth noting)
+5. **Severity**: Fatal (blocks the approach) / Serious (requires modification) / Minor (worth noting) / None (no genuine flaws)
 6. **Constructive Suggestion**: If the attack is fatal, what direction might survive it?
 
-If you find no genuine flaws, say so honestly. Do not manufacture criticism.
+If you find no genuine flaws, use **Severity: None** and say so honestly. Do not manufacture criticism.

@@ -114,3 +114,8 @@ quick_mode:
     max_rounds: 1
   synthesize:
     skip_composition: true
+
+# Autonomy: where the system pauses for human input
+autonomy:
+  mode: checkpoints          # checkpoints | yolo
+  checkpoint_at: [understand, divide, test, synthesize]

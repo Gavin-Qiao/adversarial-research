@@ -1,6 +1,6 @@
 """Markdown frontmatter parser and serialiser (no PyYAML dependency).
 
-This module handles the ``---``-delimited YAML subset used for research
+This module handles the ``---``-delimited YAML subset used for design
 node metadata.  It is intentionally dependency-free so it can be imported
 by both ``manage.py`` and ``orchestration.py`` without pulling in the
 other's transitive dependencies.

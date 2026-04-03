@@ -36,6 +36,8 @@ Use `investigate-next --quick` throughout.
 
 ## Steps (Full Mode)
 
+0. **Pre-check**: If `design/` directory does not exist, tell the user: "No design project found. Run `/principia:init` first to set up the project structure."
+
 1. **Initialize** (if not already done):
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design build
@@ -110,6 +112,16 @@ If user wants more research, dispatch `@scout` again. When user confirms, run `i
 - If deeper: spawn child principia (see Recursive Structure below)
 - Report: `[Divide > Scaffold] Scaffolding N claims...`
 
+**Action: `scaffold_quick`** (quick mode only)
+- Scaffold a single claim directly from the principle:
+  ```bash
+  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design scaffold claim <slugified-principle> \
+    --statement "<principle>" --falsification "<user-provided or auto-generated>"
+  ```
+- Write the principle as the claim statement
+- Skip blueprint creation entirely
+- Report: `[Divide > Quick Scaffold] Single claim created`
+
 ### Phase 3: Test
 
 **Action: `test_claim`**
@@ -126,6 +138,15 @@ If user wants more research, dispatch `@scout` again. When user confirms, run `i
   ```
 - Report the verdict to the user with breadcrumb
 - Report: `[Test > <claim>] Verdict: <VERDICT> (confidence: <level>)`
+
+**Handling non-terminal verdicts:**
+
+When `investigate-next` returns a claim with `complete_partial` or `complete_inconclusive` action:
+- Present the options from the state JSON's `suggestion.options` via AskUserQuestion:
+  - **PARTIAL**: "Narrow the claim (add conditions)", "Gather more experimental evidence", "Accept partial result and move on"
+  - **INCONCLUSIVE**: "Try a different approach", "Gather more evidence", "Defer and move to next claim"
+- Based on user choice: create a narrowed claim (scaffold new claim), re-dispatch experimenter, or mark as accepted and continue.
+- In YOLO mode: accept partial/inconclusive results and continue to next claim.
 
 ### Phase 4: Synthesize
 
@@ -147,6 +168,15 @@ If user wants more research, dispatch `@scout` again. When user confirms, run `i
 **Action: `complete`**
 - Read and present `design/RESULTS.md`
 - Report: `[Complete] Design process finished. See RESULTS.md.`
+
+### Autonomy
+
+Before transitioning between phases (Understand → Divide → Test → Synthesize), check autonomy config in `design/.config.md`:
+
+- **checkpoints mode** (default): At each phase transition listed in `checkpoint_at`, pause and ask the user: "[Phase] complete. Continue to [next phase]?" Show a summary of what was accomplished.
+- **yolo mode**: Report what happened at each phase transition but continue automatically without waiting for user input.
+
+To change mode, edit `design/.config.md` and set Mode to `yolo`.
 
 4. **After each action**, run `manage.py investigate-next` again and go to step 3. Continue until `complete`.
 

@@ -59,6 +59,10 @@ Bootstrap a new principia algorithm design project in the current working direct
    - Arbiter: internal
    - Synthesizer: internal
    - Deep Thinker: internal
+
+   ## Autonomy
+   - Mode: checkpoints
+   - Checkpoint at: understand, divide, test, synthesize
    ```
 
 ## After initialization

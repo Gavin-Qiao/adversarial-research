@@ -4,7 +4,7 @@
     "name": "Mohan"
   },
   "metadata": {
-    "description": "Turn a philosophical principle into a working algorithm through rigorous adversarial testing"
+    "description": "Turn a philosophical principle into a working algorithm through rigorous adversarial testing. Decomposes ideas into testable claims, stress-tests each through structured debate and empirical experiments, and composes the surviving pieces into a design you can build on."
   },
   "plugins": [
     {

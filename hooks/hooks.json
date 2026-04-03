@@ -1,5 +1,5 @@
 {
-  "description": "Adversarial research plugin hooks",
+  "description": "Principia plugin hooks",
   "hooks": {
     "SessionStart": [
       {
@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if [ -d research/cycles ] || [ -d research/context ]; then python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/manage.py\" --root research build 2>&1 | tail -5; fi",
+            "command": "if [ -d design/claims ] || [ -d design/context ]; then python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/manage.py\" --root design build 2>&1 | tail -5; fi",
             "timeout": 10
           }
         ]

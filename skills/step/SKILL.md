@@ -17,6 +17,8 @@ Determine the next step and dispatch the appropriate agent. Supports both intern
 
 ## Steps
 
+0. **Pre-check**: If `design/` directory does not exist, tell the user: "No design project found. Run `/principia:init` first to set up the project structure."
+
 1. **Determine scope**: If arguments reference a specific claim path, use per-claim mode. Otherwise, use investigation-level mode.
 
    **Investigation-level** (no specific claim):

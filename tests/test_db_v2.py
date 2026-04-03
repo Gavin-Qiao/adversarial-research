@@ -260,7 +260,7 @@ class TestResearchBuilder:
         # Find the sub-unit
         sub_dirs = list((root / "cycles").rglob("sub-*"))
         assert len(sub_dirs) == 1
-        for role in ("thinker", "refutor", "coder", "judge", "researcher"):
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
             assert (sub_dirs[0] / role).exists()
 
     def test_with_claim(self, research):
@@ -274,16 +274,16 @@ class TestResearchBuilder:
         root = (
             research.with_cycle("test")
             .with_sub_unit("direct")
-            .with_thinker_result(round_num=1)
-            .with_refutor_result(round_num=1, severity="Fatal")
+            .with_architect_result(round_num=1)
+            .with_adversary_result(round_num=1, severity="Fatal")
             .build()
         )
         # Verify files exist
         sub = next(iter((root / "cycles").rglob("sub-*")))
-        assert (sub / "thinker" / "round-1" / "result.md").exists()
-        assert (sub / "refutor" / "round-1" / "result.md").exists()
-        # Verify severity is in the refutor output
-        text = (sub / "refutor" / "round-1" / "result.md").read_text()
+        assert (sub / "architect" / "round-1" / "result.md").exists()
+        assert (sub / "adversary" / "round-1" / "result.md").exists()
+        # Verify severity is in the adversary output
+        text = (sub / "adversary" / "round-1" / "result.md").read_text()
         assert "Fatal" in text
 
     def test_with_artifact(self, research):

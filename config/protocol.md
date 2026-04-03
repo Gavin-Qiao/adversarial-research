@@ -71,12 +71,17 @@ A clean disproval with clear reasoning is as valuable as proving a claim.
 
 ### Anti-Convergence Protocol
 
-If the architect concedes in round 2 without new evidence AND the adversary's severity was fatal/serious:
+**Architect concession detection**: If the architect concedes in round 2 without new evidence AND the adversary's severity was fatal/serious:
 1. Before proceeding to experimenter, dispatch @scout with: "Find evidence that SUPPORTS the original hypothesis. The adversary found [attack]. Is there evidence the adversary is wrong?"
 2. If the scout finds supporting evidence, re-dispatch the architect with that evidence for one more round.
 3. If the scout finds nothing, the concession stands — proceed to experimenter.
 
-This prevents premature convergence when both agents draw from the same implicit knowledge base.
+**Adversary downgrade detection**: If the adversary downgrades severity from fatal/serious to minor/none in round 2+ WITHOUT the architect having introduced new evidence or a new framework:
+1. Before proceeding to experimenter, dispatch @scout with: "Find evidence that CONTRADICTS the architect's revised proposal. The adversary initially found [original attack] but downgraded. Is there evidence the original attack was correct?"
+2. If the scout finds contradicting evidence, re-dispatch the adversary with that evidence.
+3. If the scout finds nothing, the downgrade stands — proceed to experimenter.
+
+This prevents premature convergence in both directions when agents draw from the same implicit knowledge base.
 
 ## What Makes a Good Result
 
