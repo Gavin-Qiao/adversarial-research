@@ -57,12 +57,14 @@ Use `investigate-next --quick` throughout.
 
 The state includes a `substeps` list of remaining sub-steps. Handle each in order:
 
-**Sub-step: `discuss`** — Adaptive pushback on the user's principle.
+**Sub-step: `discuss`** — Interactive refinement of the user's principle.
 - Read the user's principle (from the argument or existing context)
+- **Keep discussing until the principle is specific enough to decompose into testable claims.** Do not write `.north-star.md` until you have a clear, falsifiable direction.
 - Adapt to confidence level:
   - **Certain**: Challenge — "What about X? Have you considered Y?"
   - **Exploratory**: Collaborate — "Interesting. Let me check what exists..."
-  - **Vague**: Focus — "Better how? Accuracy? Speed? Robustness?"
+  - **Vague**: Focus — ask pointed questions: "What property are you trying to preserve?", "What would convince you this doesn't work?", "What's the mechanism — why should this be true?"
+- A principle is ready when it identifies: a **mechanism** (how/why it works), a **context** (where it applies), and a **direction that could be wrong** (falsifiable).
 - May dispatch `@scout` to verify user's claims or map the space
 - May dispatch `@deep-thinker` if hard mathematical relationships are involved
 - Write refined principle to `design/.north-star.md`

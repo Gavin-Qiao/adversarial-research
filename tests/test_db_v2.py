@@ -44,7 +44,7 @@ def _insert_artifact(
 class TestMigrations:
     def test_fresh_db_gets_current_version(self, research_dir):
         conn = _get_or_create_db()
-        assert _get_schema_version(conn) == 2
+        assert _get_schema_version(conn) == 3
 
     def test_v2_has_new_tables(self, research_dir):
         conn = _get_or_create_db()
@@ -67,7 +67,7 @@ class TestMigrations:
         """Running migration twice should not error."""
         conn = _get_or_create_db()
         _migrate_db(conn)  # Run again
-        assert _get_schema_version(conn) == 2
+        assert _get_schema_version(conn) == 3
 
     def test_v1_to_v2_migration(self, tmp_path):
         """Create a v1-style DB and verify migration adds new columns."""
@@ -97,7 +97,7 @@ class TestMigrations:
         _migrate_db(conn)
 
         # Verify new columns exist
-        assert _get_schema_version(conn) == 2
+        assert _get_schema_version(conn) == 3
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(nodes)").fetchall()}
         assert "maturity" in cols
         assert "confidence" in cols

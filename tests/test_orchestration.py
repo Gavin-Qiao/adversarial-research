@@ -1212,3 +1212,48 @@ class TestReadAutonomyConfig:
         result = read_autonomy_config(config)
         assert result["mode"] == "checkpoints"
         assert result["checkpoint_at"] == ["understand", "divide", "test", "synthesize"]
+
+
+class TestExtendDebate:
+    """Tests for conductor extend-debate override."""
+
+    def test_override_extends_rounds(self, research_dir):
+        """A .max_rounds_override file extends debate past config max_rounds."""
+        sub_rel = make_sub_unit(research_dir)
+        sub_path = research_dir / sub_rel
+        config = DEFAULT_CONFIG.copy()
+        config["debate_loop"] = {"max_rounds": 2, "sequence": ["architect", "adversary"]}
+
+        # Create 2 rounds of debate (hits max_rounds=2)
+        for r in range(1, 3):
+            (sub_path / "architect" / f"round-{r}").mkdir(parents=True, exist_ok=True)
+            (sub_path / "architect" / f"round-{r}" / "result.md").write_text(f"Design {r}")
+            (sub_path / "adversary" / f"round-{r}").mkdir(parents=True, exist_ok=True)
+            (sub_path / "adversary" / f"round-{r}" / "result.md").write_text("Severity: Fatal\n")
+
+        # Without override: should dispatch experimenter (max_rounds hit)
+        state = detect_state(research_dir, sub_rel, config)
+        assert state["action"] == "dispatch_experimenter"
+
+        # With override: should continue debate
+        (sub_path / ".max_rounds_override").write_text("5")
+        state = detect_state(research_dir, sub_rel, config)
+        assert state["action"] == "dispatch_architect"
+        assert state["round"] == 3
+
+    def test_invalid_override_ignored(self, research_dir):
+        """A malformed override file falls back to config max_rounds."""
+        sub_rel = make_sub_unit(research_dir)
+        sub_path = research_dir / sub_rel
+        config = DEFAULT_CONFIG.copy()
+        config["debate_loop"] = {"max_rounds": 1, "sequence": ["architect", "adversary"]}
+
+        (sub_path / "architect" / "round-1").mkdir(parents=True, exist_ok=True)
+        (sub_path / "architect" / "round-1" / "result.md").write_text("Design")
+        (sub_path / "adversary" / "round-1").mkdir(parents=True, exist_ok=True)
+        (sub_path / "adversary" / "round-1" / "result.md").write_text("Severity: Fatal\n")
+
+        # Invalid override content
+        (sub_path / ".max_rounds_override").write_text("not-a-number")
+        state = detect_state(research_dir, sub_rel, config)
+        assert state["action"] == "dispatch_experimenter"

@@ -192,9 +192,35 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design log-dispatch \
   --cycle <cycle-id> --agent deep-thinker --action side_dispatch --details "question: ..."
 ```
 
-## Overrides
+## Extending Debate
 
-If you override the state machine (e.g., the adversary rated severity as minor but you judge it's actually serious, or you skip remaining rounds), log it:
+If the adversary is still finding **fatal** or **serious** flaws near the round limit and the debate is making progress (architect is genuinely shifting frameworks, not just patching), extend the debate:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design extend-debate <sub-unit-path> --to <N>
+```
+
+This overrides `max_rounds` for this specific claim. The state machine will continue the debate loop instead of forcing the experimenter.
+
+**When to extend:**
+- Severity is still `fatal`/`serious` at the penultimate round AND architect is producing genuinely new frameworks
+- A deep-thinker side-channel revealed a new angle that needs debate
+
+**When NOT to extend:**
+- Debate is going in circles (same arguments rephrased)
+- Architect is just patching instead of shifting framework
+- You've already extended once — if 6 rounds can't resolve it, the claim likely needs reformulation
+
+Log the extension:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design log-dispatch \
+  --cycle <cycle-id> --agent self --action override --details "extended debate to N rounds: <reason>"
+```
+
+## Other Overrides
+
+If you override the state machine for other reasons (e.g., the adversary rated severity as minor but you judge it's actually serious, or you skip remaining rounds), log it:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design log-dispatch \

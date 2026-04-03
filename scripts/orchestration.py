@@ -7,6 +7,7 @@ and testable — the fuzzy LLM layer lives in the /step skill, not here.
 
 from __future__ import annotations
 
+import contextlib
 import re
 import sqlite3
 from pathlib import Path
@@ -588,6 +589,12 @@ def detect_state(research_dir: Path, sub_path: str, config: dict[str, Any]) -> d
     debate_config = config.get("debate_loop", DEFAULT_CONFIG["debate_loop"])
     roles_config = _get_roles_config(config)
     max_rounds = debate_config.get("max_rounds", 3)
+
+    # Conductor can override max_rounds per claim via extend-debate
+    override_file = target / ".max_rounds_override"
+    if override_file.exists():
+        with contextlib.suppress(ValueError, OSError):
+            max_rounds = int(override_file.read_text().strip())
 
     # Scan existing files (support both principia and legacy directory names)
     thinker_dir = target / "architect" if (target / "architect").exists() else target / "thinker"

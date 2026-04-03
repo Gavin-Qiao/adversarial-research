@@ -19,7 +19,10 @@ class TestInitDb:
 
     def test_preserves_ledger(self, research_dir):
         conn = init_db()
-        conn.execute("INSERT INTO ledger VALUES ('2026-01-01', 'test', 'node-1', 'test entry')")
+        conn.execute(
+            "INSERT INTO ledger (timestamp, event, node_id, details) VALUES (?, ?, ?, ?)",
+            ("2026-01-01", "test", "node-1", "test entry"),
+        )
         conn.commit()
         conn.close()
         # Rebuild

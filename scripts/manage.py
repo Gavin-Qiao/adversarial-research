@@ -304,7 +304,7 @@ def rel_path_from_root(p: Path) -> str:
 # ---------------------------------------------------------------------------
 
 
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 
 SCHEMA_V1 = """\
 CREATE TABLE IF NOT EXISTS nodes (
@@ -405,6 +405,12 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
                 conn.execute(f"ALTER TABLE nodes ADD COLUMN {col} {col_type}")
         conn.executescript(SCHEMA_V2_NEW_TABLES)
         _set_schema_version(conn, 2)
+        version = 2
+
+    if version < 3:
+        if not _has_column(conn, "ledger", "agent"):
+            conn.execute("ALTER TABLE ledger ADD COLUMN agent TEXT")
+        _set_schema_version(conn, 3)
 
 
 def _get_or_create_db() -> sqlite3.Connection:
@@ -427,8 +433,9 @@ def init_db() -> sqlite3.Connection:
         try:
             old = sqlite3.connect(str(DB_PATH))
             old.row_factory = sqlite3.Row
+            has_agent_col = _has_column(old, "ledger", "agent")
             preserved_ledger = [
-                (r["timestamp"], r["event"], r["node_id"], r["details"])
+                (r["timestamp"], r["event"], r["node_id"], r["details"], r["agent"] if has_agent_col else None)
                 for r in old.execute("SELECT * FROM ledger").fetchall()
             ]
             if _get_schema_version(old) >= 2:
@@ -446,7 +453,7 @@ def init_db() -> sqlite3.Connection:
 
     if preserved_ledger:
         conn.executemany(
-            "INSERT INTO ledger (timestamp, event, node_id, details) VALUES (?, ?, ?, ?)",
+            "INSERT INTO ledger (timestamp, event, node_id, details, agent) VALUES (?, ?, ?, ?, ?)",
             preserved_ledger,
         )
     if preserved_artifacts:
@@ -651,6 +658,19 @@ def _ensure_list(val: Any) -> list[str]:
     return list(val)
 
 
+def _post_build_check(conn: sqlite3.Connection) -> None:
+    """Lightweight integrity check after build. Warns on stderr, never fails."""
+    orphans = conn.execute(
+        "SELECT source_id, target_id, relation FROM edges "
+        "WHERE source_id NOT IN (SELECT id FROM nodes) OR target_id NOT IN (SELECT id FROM nodes)"
+    ).fetchall()
+    if orphans:
+        print(f"WARNING: {len(orphans)} orphan edge(s) found. Run 'validate' for details.", file=sys.stderr)
+    loops = conn.execute("SELECT source_id FROM edges WHERE source_id = target_id").fetchall()
+    if loops:
+        print(f"WARNING: {len(loops)} self-loop(s) found. Run 'validate' for details.", file=sys.stderr)
+
+
 def build_db(force: bool = False) -> sqlite3.Connection:
     """Build the database. Incremental by default — only re-parses changed files.
 
@@ -694,8 +714,13 @@ def build_db(force: bool = False) -> sqlite3.Connection:
     deleted = 0
     for tracked_path in list(tracked.keys()):
         if tracked_path not in current_paths:
+            # Delete edges FROM and TO deleted nodes to prevent orphans
             conn.execute(
                 "DELETE FROM edges WHERE source_id IN (SELECT id FROM nodes WHERE file_path = ?)",
+                (tracked_path,),
+            )
+            conn.execute(
+                "DELETE FROM edges WHERE target_id IN (SELECT id FROM nodes WHERE file_path = ?)",
                 (tracked_path,),
             )
             conn.execute("DELETE FROM nodes WHERE file_path = ?", (tracked_path,))
@@ -716,6 +741,7 @@ def build_db(force: bool = False) -> sqlite3.Connection:
         f"({len(new_files)} new, {len(changed)} changed, {unchanged} unchanged, {deleted} deleted).",
         file=sys.stderr,
     )
+    _post_build_check(conn)
     return conn
 
 
@@ -730,6 +756,7 @@ def _full_build(conn: sqlite3.Connection) -> sqlite3.Connection:
     conn.commit()
     total = conn.execute("SELECT COUNT(*) as c FROM nodes").fetchone()["c"]
     print(f"Built database: {total} nodes from {len(files)} files.", file=sys.stderr)
+    _post_build_check(conn)
     return conn
 
 
@@ -1023,8 +1050,8 @@ def cmd_falsify(args: argparse.Namespace) -> None:
         if new_status == "disproven" and evidence_id:
             detail += f" by {evidence_id}"
         conn.execute(
-            "INSERT INTO ledger (timestamp, event, node_id, details) VALUES (?, ?, ?, ?)",
-            (today, event, nid, detail),
+            "INSERT INTO ledger (timestamp, event, node_id, details, agent) VALUES (?, ?, ?, ?, ?)",
+            (today, event, nid, detail, "user"),
         )
 
     try:
@@ -1079,8 +1106,8 @@ def cmd_settle(args: argparse.Namespace) -> None:
     # Ledger entry
     today = date.today().isoformat()
     conn.execute(
-        "INSERT INTO ledger (timestamp, event, node_id, details) VALUES (?, ?, ?, ?)",
-        (today, "proven", node_id, "Set to proven"),
+        "INSERT INTO ledger (timestamp, event, node_id, details, agent) VALUES (?, ?, ?, ?, ?)",
+        (today, "proven", node_id, "Set to proven", "user"),
     )
     conn.commit()
 
@@ -1169,9 +1196,16 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
 
     # Ledger entry
     today = date.today().isoformat()
+    verdict_rel = str(verdict_file.relative_to(RESEARCH_DIR)) if verdict_file.exists() else ""
     conn.execute(
-        "INSERT INTO ledger (timestamp, event, node_id, details) VALUES (?, ?, ?, ?)",
-        (today, "post_verdict", node_id or "unknown", f"Verdict: {verdict}, Confidence: {confidence}"),
+        "INSERT INTO ledger (timestamp, event, node_id, details, agent) VALUES (?, ?, ?, ?, ?)",
+        (
+            today,
+            "post_verdict",
+            node_id or "unknown",
+            f"Verdict: {verdict}, Confidence: {confidence}, File: {verdict_rel}",
+            "arbiter",
+        ),
     )
     try:
         conn.commit()
@@ -2272,6 +2306,18 @@ def cmd_autonomy_config(args: argparse.Namespace) -> None:
     print(json.dumps(result))
 
 
+def cmd_extend_debate(args: argparse.Namespace) -> None:
+    """Extend max debate rounds for a specific claim."""
+    target = RESEARCH_DIR / args.path
+    if not target.exists():
+        print(f"ERROR: Path not found: {target}")
+        sys.exit(1)
+
+    override_file = target / ".max_rounds_override"
+    override_file.write_text(str(args.to), encoding="utf-8")
+    print(f"Debate extended to {args.to} rounds for {args.path}")
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -2437,6 +2483,11 @@ def main() -> None:
 
     p_ac = sub.add_parser("autonomy-config")  # output autonomy settings as JSON
     p_ac.set_defaults(func=cmd_autonomy_config)
+
+    p_ed = sub.add_parser("extend-debate")  # conductor extends debate rounds for a claim
+    p_ed.add_argument("path", help="Claim sub-unit path")
+    p_ed.add_argument("--to", type=int, required=True, help="New max rounds")
+    p_ed.set_defaults(func=cmd_extend_debate)
 
     args = parser.parse_args()
     init_paths(args.root)

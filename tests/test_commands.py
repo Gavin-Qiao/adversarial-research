@@ -1094,3 +1094,21 @@ class TestAutonomyConfig:
         result = json.loads(out)
         assert result["mode"] == "checkpoints"
         assert "understand" in result["checkpoint_at"]
+
+
+class TestExtendDebate:
+    """Test extend-debate CLI command."""
+
+    def test_extend_debate_writes_override(self, research_dir):
+        """extend-debate creates .max_rounds_override in claim directory."""
+        claim_dir = research_dir / "claims" / "claim-1-test"
+        claim_dir.mkdir(parents=True)
+        (claim_dir / "claim.md").write_text("---\nid: h1-test\ntype: claim\nstatus: active\n---\n")
+
+        rc, out, _ = run_manage(research_dir, "extend-debate", "claims/claim-1-test", "--to", "6")
+        assert rc == 0, f"extend-debate failed: {out}"
+        assert "6 rounds" in out
+
+        override = claim_dir / ".max_rounds_override"
+        assert override.exists()
+        assert override.read_text().strip() == "6"
