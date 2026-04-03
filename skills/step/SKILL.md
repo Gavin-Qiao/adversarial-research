@@ -61,6 +61,11 @@ Determine the next step and dispatch the appropriate agent. Supports both intern
      4. Dispatch `@arbiter` with: "Read the brief at `<path>`, then read individual evidence files if needed."
      5. Save verdict to `result_path`
 
+   - **`dispatch_reviewer`** (only when `auto_review: false` in orchestration.yaml): The system expects manual review before post-verdict bookkeeping. Review the verdict at `<sub_unit>/arbiter/results/verdict.md` (or `judge/results/verdict.md`), then run post-verdict manually:
+     ```bash
+     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design post-verdict <sub_unit>
+     ```
+
    - **`post_verdict`**: Run bookkeeping:
      ```bash
      python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design post-verdict <sub_unit>

@@ -388,6 +388,9 @@ class TestInvestigationContracts:
 
     def _setup_condition(self, inv_dir, condition_id):
         """Set up filesystem state matching a contract condition."""
+        if condition_id == "I3Q":
+            (inv_dir / ".north-star.md").write_text("# Principle\n")
+            (inv_dir / ".context.md").write_text("# Context\n")
         if condition_id in ("I2", "I3", "I4", "I5", "I6", "I7", "I8", "I9"):
             (inv_dir / ".north-star.md").write_text("# Principle\n")
         if condition_id in ("I3", "I4", "I5", "I6", "I7", "I8", "I9"):
@@ -434,8 +437,10 @@ class TestInvestigationContracts:
         ids=lambda r: r.get("ID", "?"),
     )
     def test_investigation_contract(self, inv_dir, row):
+        from orchestration import DEFAULT_CONFIG
         self._setup_condition(inv_dir, row["ID"])
-        state = detect_investigation_state(inv_dir, DEFAULT_CONFIG)
+        quick = row["ID"] == "I3Q"
+        state = detect_investigation_state(inv_dir, DEFAULT_CONFIG, quick=quick)
         assert state["action"] == row["Expected Action"], (
             f"Contract {row['ID']}: expected action={row['Expected Action']}, "
             f"got action={state['action']}"

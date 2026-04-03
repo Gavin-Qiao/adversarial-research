@@ -59,11 +59,9 @@ Bootstrap a new principia algorithm design project in the current working direct
    - Arbiter: internal
    - Synthesizer: internal
    - Deep Thinker: internal
-
-   ## Autonomy
-   - Mode: checkpoints
-   - Checkpoint at: understand, divide, test, synthesize
    ```
+
+   Autonomy settings (checkpoints vs yolo mode) are in `config/orchestration.yaml`, not here.
 
 ## After initialization
 

@@ -51,7 +51,7 @@ A structured brief is prepared summarizing:
 - Empirical evidence and whether pre-registered criteria were met
 - Unresolved points
 
-The arbiter reads the brief (and can dig into individual files) and renders: PROVEN / DISPROVEN / PARTIAL.
+The arbiter reads the brief (and can dig into individual files) and renders: PROVEN / DISPROVEN / PARTIAL / INCONCLUSIVE.
 
 ### Phase 4: Recording
 
@@ -135,6 +135,7 @@ To change the hardcoded behavior, modify `detect_state()` in `scripts/orchestrat
 | I1 | No .north-star.md | understand | understand |
 | I2 | .north-star.md exists, no .context.md | understand | understand |
 | I3 | .north-star.md + .context.md, no survey-*.md | understand | understand |
+| I3Q | .north-star.md + .context.md, no survey-*.md, quick=True | scaffold_quick | divide |
 | I4 | .north-star.md + .context.md + survey-*.md, no blueprint.md | divide | divide |
 | I5 | blueprint.md exists, no claim dirs | scaffold | divide |
 | I6 | Claims scaffolded, no architect result | test_claim | test |
