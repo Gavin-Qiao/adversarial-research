@@ -31,19 +31,15 @@ from orchestration import (
 # ---------------------------------------------------------------------------
 
 
-def make_sub_unit(research_dir, sub_rel="cycles/cycle-1/unit-1-test/sub-1a-direct"):
-    """Create a sub-unit directory structure."""
-    sub = research_dir / sub_rel
-    for role in ("thinker", "refutor", "coder", "judge", "researcher"):
-        (sub / role).mkdir(parents=True, exist_ok=True)
-    # Create frontier files
-    for frontier_path in [sub.parent / "frontier.md", sub / "frontier.md"]:
-        if not frontier_path.exists():
-            frontier_path.parent.mkdir(parents=True, exist_ok=True)
-            frontier_path.write_text(
-                "---\nid: test-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test\n"
-            )
-    return sub_rel
+def make_claim(research_dir, claim_rel="claims/claim-1-test"):
+    """Create a claim directory structure with canonical role names."""
+    claim = research_dir / claim_rel
+    for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+        (claim / role).mkdir(parents=True, exist_ok=True)
+    claim_md = claim / "claim.md"
+    if not claim_md.exists():
+        claim_md.write_text("---\nid: h1-test\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test\n")
+    return claim_rel
 
 
 def write_result(research_dir, rel_path, content="# Result\n\nTest content.", severity=None, verdict=None):
@@ -64,158 +60,107 @@ def write_result(research_dir, rel_path, content="# Result\n\nTest content.", se
 
 
 class TestDetectState:
-    def test_empty_subunit(self, research_dir):
+    def test_empty_claim(self, research_dir):
         """No files -> dispatch_architect round 1"""
-        sub = make_sub_unit(research_dir)
+        sub = make_claim(research_dir)
         config = DEFAULT_CONFIG
         state = detect_state(research_dir, sub, config)
         assert state["action"] == "dispatch_architect"
         assert state["round"] == 1
         assert state["phase"] == "debate"
 
-    def test_thinker_r1_done(self, research_dir):
-        """Thinker R1 exists -> dispatch_adversary round 1"""
-        sub = make_sub_unit(research_dir)
-        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
+    def test_architect_r1_done(self, research_dir):
+        """Architect R1 exists -> dispatch_adversary round 1"""
+        sub = make_claim(research_dir)
+        write_result(research_dir, f"{sub}/architect/round-1/result.md")
         state = detect_state(research_dir, sub, DEFAULT_CONFIG)
         assert state["action"] == "dispatch_adversary"
         assert state["round"] == 1
 
-    def test_refutor_fatal_continues(self, research_dir):
-        """Fatal refutor -> dispatch_architect round 2"""
-        sub = make_sub_unit(research_dir)
-        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
-        write_result(research_dir, f"{sub}/refutor/round-1/result.md", severity="Fatal (blocks the approach)")
+    def test_adversary_fatal_continues(self, research_dir):
+        """Fatal adversary -> dispatch_architect round 2"""
+        sub = make_claim(research_dir)
+        write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Fatal (blocks the approach)")
         state = detect_state(research_dir, sub, DEFAULT_CONFIG)
         assert state["action"] == "dispatch_architect"
         assert state["round"] == 2
 
-    def test_refutor_serious_continues(self, research_dir):
-        sub = make_sub_unit(research_dir)
-        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
-        write_result(research_dir, f"{sub}/refutor/round-1/result.md", severity="Serious (requires modification)")
+    def test_adversary_serious_continues(self, research_dir):
+        sub = make_claim(research_dir)
+        write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Serious (requires modification)")
         state = detect_state(research_dir, sub, DEFAULT_CONFIG)
         assert state["action"] == "dispatch_architect"
         assert state["round"] == 2
 
-    def test_refutor_minor_exits(self, research_dir):
-        """Minor refutor -> dispatch_experimenter"""
-        sub = make_sub_unit(research_dir)
-        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
-        write_result(research_dir, f"{sub}/refutor/round-1/result.md", severity="Minor (worth noting)")
+    def test_adversary_minor_exits(self, research_dir):
+        """Minor adversary -> dispatch_experimenter"""
+        sub = make_claim(research_dir)
+        write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Minor (worth noting)")
         state = detect_state(research_dir, sub, DEFAULT_CONFIG)
         assert state["action"] == "dispatch_experimenter"
         assert state["phase"] == "experiment"
 
-    def test_refutor_none_exits(self, research_dir):
-        sub = make_sub_unit(research_dir)
-        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
-        write_result(research_dir, f"{sub}/refutor/round-1/result.md", content="No genuine flaws found.")
+    def test_adversary_none_exits(self, research_dir):
+        sub = make_claim(research_dir)
+        write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        write_result(research_dir, f"{sub}/adversary/round-1/result.md", content="No genuine flaws found.")
         state = detect_state(research_dir, sub, DEFAULT_CONFIG)
         assert state["action"] == "dispatch_experimenter"
 
-    def test_refutor_unknown_defaults_continue(self, research_dir):
-        """Unknown severity with default=continue -> thinker R2"""
-        sub = make_sub_unit(research_dir)
-        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
-        write_result(research_dir, f"{sub}/refutor/round-1/result.md", content="Some vague criticism.")
+    def test_adversary_unknown_defaults_continue(self, research_dir):
+        """Unknown severity with default=continue -> architect R2"""
+        sub = make_claim(research_dir)
+        write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        write_result(research_dir, f"{sub}/adversary/round-1/result.md", content="Some vague criticism.")
         state = detect_state(research_dir, sub, DEFAULT_CONFIG)
         assert state["action"] == "dispatch_architect"
         assert state.get("severity") == "unknown"
 
-    def test_round_3_forces_coder(self, research_dir):
-        """After round 3, always dispatch coder regardless of severity"""
-        sub = make_sub_unit(research_dir)
+    def test_round_3_forces_experimenter(self, research_dir):
+        """After round 3, always dispatch experimenter regardless of severity"""
+        sub = make_claim(research_dir)
         for r in range(1, 4):
-            write_result(research_dir, f"{sub}/thinker/round-{r}/result.md")
-            write_result(research_dir, f"{sub}/refutor/round-{r}/result.md", severity="Fatal")
+            write_result(research_dir, f"{sub}/architect/round-{r}/result.md")
+            write_result(research_dir, f"{sub}/adversary/round-{r}/result.md", severity="Fatal")
         state = detect_state(research_dir, sub, DEFAULT_CONFIG)
         assert state["action"] == "dispatch_experimenter"
-
-    def test_coder_done_dispatches_judge(self, research_dir):
-        sub = make_sub_unit(research_dir)
-        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
-        write_result(research_dir, f"{sub}/refutor/round-1/result.md", severity="Minor")
-        write_result(research_dir, f"{sub}/coder/results/output.md")
-        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
-        assert state["action"] == "dispatch_arbiter"
-        assert state["phase"] == "verdict"
-
-    def test_verdict_dispatches_post_verdict(self, research_dir):
-        sub = make_sub_unit(research_dir)
-        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
-        write_result(research_dir, f"{sub}/refutor/round-1/result.md", severity="Minor")
-        write_result(research_dir, f"{sub}/coder/results/output.md")
-        write_result(research_dir, f"{sub}/judge/results/verdict.md", verdict="SETTLED")
-        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
-        assert state["action"] == "post_verdict"
-        assert state["phase"] == "recording"
-
-    def test_verdict_dispatches_reviewer_when_auto_review_false(self, research_dir):
-        sub = make_sub_unit(research_dir)
-        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
-        write_result(research_dir, f"{sub}/refutor/round-1/result.md", severity="Minor")
-        write_result(research_dir, f"{sub}/coder/results/output.md")
-        write_result(research_dir, f"{sub}/judge/results/verdict.md", verdict="SETTLED")
-        config = {**DEFAULT_CONFIG, "auto_review": False}
-        state = detect_state(research_dir, sub, config)
-        assert state["action"] == "dispatch_reviewer"
-        assert state["phase"] == "recording"
-
-    def test_nonexistent_subunit(self, research_dir):
-        state = detect_state(research_dir, "cycles/nonexistent/sub-1a", DEFAULT_CONFIG)
-        assert state["action"] == "error"
-
-
-# ---------------------------------------------------------------------------
-# Flat Claim Tests (principia hierarchy)
-# ---------------------------------------------------------------------------
-
-
-class TestFlatClaimDetectState:
-    """Test detect_state with claims/claim-N-name/ directories (new principia layout)."""
-
-    def _make_claim(self, research_dir, name="enrichment"):
-        """Create a flat claim directory with principia role names."""
-        claim_dir = research_dir / "claims" / f"claim-1-{name}"
-        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
-            (claim_dir / role).mkdir(parents=True, exist_ok=True)
-        claim_md = claim_dir / "claim.md"
-        claim_md.write_text(
-            "---\nid: h1-claim\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test Claim\n"
-        )
-        # Parent frontier (claims/ level)
-        return f"claims/claim-1-{name}"
-
-    def test_empty_claim_dispatches_architect(self, research_dir):
-        sub = self._make_claim(research_dir)
-        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
-        assert state["action"] == "dispatch_architect"
-        assert state["round"] == 1
-        assert state["phase"] == "debate"
-
-    def test_architect_done_dispatches_adversary(self, research_dir):
-        sub = self._make_claim(research_dir)
-        write_result(research_dir, f"{sub}/architect/round-1/result.md")
-        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
-        assert state["action"] == "dispatch_adversary"
-
-    def test_adversary_minor_dispatches_experimenter(self, research_dir):
-        sub = self._make_claim(research_dir)
-        write_result(research_dir, f"{sub}/architect/round-1/result.md")
-        write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Minor")
-        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
-        assert state["action"] == "dispatch_experimenter"
-        assert state["phase"] == "experiment"
 
     def test_experimenter_done_dispatches_arbiter(self, research_dir):
-        sub = self._make_claim(research_dir)
+        sub = make_claim(research_dir)
         write_result(research_dir, f"{sub}/architect/round-1/result.md")
         write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Minor")
         write_result(research_dir, f"{sub}/experimenter/results/output.md")
         state = detect_state(research_dir, sub, DEFAULT_CONFIG)
         assert state["action"] == "dispatch_arbiter"
         assert state["phase"] == "verdict"
+
+    def test_verdict_dispatches_post_verdict(self, research_dir):
+        sub = make_claim(research_dir)
+        write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Minor")
+        write_result(research_dir, f"{sub}/experimenter/results/output.md")
+        write_result(research_dir, f"{sub}/arbiter/results/verdict.md", verdict="PROVEN")
+        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
+        assert state["action"] == "post_verdict"
+        assert state["phase"] == "recording"
+
+    def test_verdict_dispatches_reviewer_when_auto_review_false(self, research_dir):
+        sub = make_claim(research_dir)
+        write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Minor")
+        write_result(research_dir, f"{sub}/experimenter/results/output.md")
+        write_result(research_dir, f"{sub}/arbiter/results/verdict.md", verdict="PROVEN")
+        config = {**DEFAULT_CONFIG, "auto_review": False}
+        state = detect_state(research_dir, sub, config)
+        assert state["action"] == "dispatch_reviewer"
+        assert state["phase"] == "recording"
+
+    def test_nonexistent_claim(self, research_dir):
+        state = detect_state(research_dir, "claims/nonexistent", DEFAULT_CONFIG)
+        assert state["action"] == "error"
 
 
 # ---------------------------------------------------------------------------
@@ -259,19 +204,19 @@ class TestExtractSeverity:
 
 
 class TestExtractVerdict:
-    def test_settled(self, tmp_path):
+    def test_proven(self, tmp_path):
         f = tmp_path / "verdict.md"
-        f.write_text("**Verdict**: SETTLED\n")
+        f.write_text("**Verdict**: PROVEN\n")
         assert extract_verdict(f, DEFAULT_CONFIG) == "PROVEN"
 
-    def test_falsified(self, tmp_path):
+    def test_disproven(self, tmp_path):
         f = tmp_path / "verdict.md"
-        f.write_text("**Verdict**: FALSIFIED\n")
+        f.write_text("**Verdict**: DISPROVEN\n")
         assert extract_verdict(f, DEFAULT_CONFIG) == "DISPROVEN"
 
-    def test_mixed(self, tmp_path):
+    def test_partial(self, tmp_path):
         f = tmp_path / "verdict.md"
-        f.write_text("**Verdict**: MIXED\n")
+        f.write_text("**Verdict**: PARTIAL\n")
         assert extract_verdict(f, DEFAULT_CONFIG) == "PARTIAL"
 
     def test_malformed(self, tmp_path):
@@ -346,34 +291,34 @@ class TestAttenuateConfidence:
 
 
 class TestContextFiles:
-    def test_round_1_thinker(self, research_dir):
-        """Round 1 thinker needs only frontiers"""
-        sub = make_sub_unit(research_dir)
+    def test_round_1_architect(self, research_dir):
+        """Round 1 architect needs only claim.md"""
+        sub = make_claim(research_dir)
         files = list_context_files(research_dir, sub, "dispatch_architect", 1)
-        assert any("frontier.md" in f for f in files)
-        assert not any("thinker" in f for f in files)
+        assert any("claim.md" in f for f in files)
+        assert not any("architect" in f and "round" in f for f in files)
 
-    def test_round_1_refutor(self, research_dir):
-        """Round 1 refutor needs frontiers + thinker R1"""
-        sub = make_sub_unit(research_dir)
-        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
+    def test_round_1_adversary(self, research_dir):
+        """Round 1 adversary needs claim.md + architect R1"""
+        sub = make_claim(research_dir)
+        write_result(research_dir, f"{sub}/architect/round-1/result.md")
         files = list_context_files(research_dir, sub, "dispatch_adversary", 1)
-        assert any("thinker/round-1/result.md" in f for f in files)
+        assert any("architect/round-1/result.md" in f for f in files)
 
-    def test_coder_gets_all_rounds(self, research_dir):
-        """Coder gets frontiers + all debate rounds"""
-        sub = make_sub_unit(research_dir)
-        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
-        write_result(research_dir, f"{sub}/refutor/round-1/result.md")
-        write_result(research_dir, f"{sub}/thinker/round-2/result.md")
-        write_result(research_dir, f"{sub}/refutor/round-2/result.md")
+    def test_experimenter_gets_all_rounds(self, research_dir):
+        """Experimenter gets claim.md + all debate rounds"""
+        sub = make_claim(research_dir)
+        write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        write_result(research_dir, f"{sub}/adversary/round-1/result.md")
+        write_result(research_dir, f"{sub}/architect/round-2/result.md")
+        write_result(research_dir, f"{sub}/adversary/round-2/result.md")
         files = list_context_files(research_dir, sub, "dispatch_experimenter", None)
-        assert len([f for f in files if "thinker" in f or "refutor" in f]) == 4
+        assert len([f for f in files if "architect" in f or "adversary" in f]) == 4
 
     def test_reviewer_gets_verdict(self, research_dir):
-        """Reviewer context includes judge verdict"""
-        sub = make_sub_unit(research_dir)
-        write_result(research_dir, f"{sub}/judge/results/verdict.md")
+        """Reviewer context includes arbiter verdict"""
+        sub = make_claim(research_dir)
+        write_result(research_dir, f"{sub}/arbiter/results/verdict.md")
         files = list_context_files(research_dir, sub, "dispatch_reviewer", None)
         assert any("verdict.md" in f for f in files)
 
@@ -395,18 +340,18 @@ class TestConfig:
 
     def test_custom_max_rounds(self, research_dir):
         """Modified max_rounds should affect state machine"""
-        sub = make_sub_unit(research_dir)
+        sub = make_claim(research_dir)
         config = DEFAULT_CONFIG.copy()
         config["debate_loop"] = {**config["debate_loop"], "max_rounds": 1}
-        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
-        write_result(research_dir, f"{sub}/refutor/round-1/result.md", severity="Fatal")
+        write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Fatal")
         state = detect_state(research_dir, sub, config)
-        # With max_rounds=1, even fatal severity goes to coder
+        # With max_rounds=1, even fatal severity goes to experimenter
         assert state["action"] == "dispatch_experimenter"
 
     def test_max_rounds_zero_skips_debate(self, research_dir):
-        """max_rounds=0 should skip debate entirely and go to coder"""
-        sub = make_sub_unit(research_dir)
+        """max_rounds=0 should skip debate entirely and go to experimenter"""
+        sub = make_claim(research_dir)
         config = DEFAULT_CONFIG.copy()
         config["debate_loop"] = {**config["debate_loop"], "max_rounds": 0}
         state = detect_state(research_dir, sub, config)
@@ -420,18 +365,18 @@ class TestConfig:
 
 
 class TestComputePaths:
-    def test_thinker_round(self):
-        paths = compute_paths("cycles/c1/unit-1/sub-1a", "thinker", 2)
-        assert "thinker/round-2/prompt.md" in paths["prompt_path"]
-        assert "thinker/round-2/result.md" in paths["result_path"]
+    def test_architect_round(self):
+        paths = compute_paths("claims/claim-1-test", "architect", 2)
+        assert "architect/round-2/prompt.md" in paths["prompt_path"]
+        assert "architect/round-2/result.md" in paths["result_path"]
 
-    def test_coder(self):
-        paths = compute_paths("cycles/c1/unit-1/sub-1a", "coder", None)
-        assert "coder/results/output.md" in paths["result_path"]
+    def test_experimenter(self):
+        paths = compute_paths("claims/claim-1-test", "experimenter", None)
+        assert "experimenter/results/output.md" in paths["result_path"]
 
-    def test_judge(self):
-        paths = compute_paths("cycles/c1/unit-1/sub-1a", "judge", None)
-        assert "judge/results/verdict.md" in paths["result_path"]
+    def test_arbiter(self):
+        paths = compute_paths("claims/claim-1-test", "arbiter", None)
+        assert "arbiter/results/verdict.md" in paths["result_path"]
 
 
 # ---------------------------------------------------------------------------
@@ -442,14 +387,14 @@ class TestComputePaths:
 class TestDispatchConfig:
     def test_defaults(self, research_dir):
         config = read_dispatch_config(research_dir)
-        assert config["thinker"] == "internal"
-        assert config["judge"] == "internal"
+        assert config["architect"] == "internal"
+        assert config["arbiter"] == "internal"
 
     def test_reads_config(self, research_dir):
-        (research_dir / ".config.md").write_text("# Config\n- Thinker: external\n- Refutor: internal\n")
+        (research_dir / ".config.md").write_text("# Config\n- Architect: external\n- Adversary: internal\n")
         config = read_dispatch_config(research_dir)
-        assert config["thinker"] == "external"
-        assert config["refutor"] == "internal"
+        assert config["architect"] == "external"
+        assert config["adversary"] == "internal"
 
 
 # ---------------------------------------------------------------------------
@@ -832,7 +777,7 @@ claims:
         for role in ("architect", "adversary", "experimenter", "arbiter"):
             (claim_dir / role).mkdir(parents=True, exist_ok=True)
         (claim_dir / "claim.md").write_text(
-            "---\nid: test\ntype: verdict\nstatus: settled\ndate: 2026-01-01\n---\n\n# Final\n"
+            "---\nid: test\ntype: verdict\nstatus: proven\ndate: 2026-01-01\n---\n\n# Final\n"
         )
         a_dir = claim_dir / "architect" / "round-1"
         a_dir.mkdir(parents=True, exist_ok=True)
@@ -855,8 +800,8 @@ claims:
         assert state["action"] == "complete"
         assert state["phase"] == "complete"
 
-    def test_legacy_distillation_still_works(self, tmp_path):
-        """Backward compat: survey-*.md OR distillation-*.md counts as research done."""
+    def test_distillation_glob_counts_as_research(self, tmp_path):
+        """survey-*.md OR distillation-*.md counts as research done."""
         rd = _make_investigation_dir(tmp_path)
         (rd / ".north-star.md").write_text("# NS\n")
         (rd / ".context.md").write_text("# C\n")
@@ -864,23 +809,13 @@ claims:
         state = detect_investigation_state(rd, DEFAULT_CONFIG)
         assert state["action"] == "divide"
 
-    def test_legacy_framework_still_works(self, tmp_path):
-        """Backward compat: framework.md still detected for divide phase."""
+    def test_blueprint_with_no_claims(self, tmp_path):
+        """Blueprint exists but has no CLAIM_REGISTRY — should still return scaffold with empty claims."""
         rd = _make_investigation_dir(tmp_path)
         (rd / ".north-star.md").write_text("# NS\n")
         (rd / ".context.md").write_text("# C\n")
         (rd / "context" / "survey-topic.md").write_text("# Survey\n")
-        (rd / "framework.md").write_text(SAMPLE_FRAMEWORK)
-        state = detect_investigation_state(rd, DEFAULT_CONFIG)
-        assert state["action"] == "scaffold"
-
-    def test_framework_with_no_claims(self, tmp_path):
-        """Framework exists but has no CLAIM_REGISTRY — should still return scaffold with empty claims."""
-        rd = _make_investigation_dir(tmp_path)
-        (rd / ".north-star.md").write_text("# NS\n")
-        (rd / ".context.md").write_text("# C\n")
-        (rd / "context" / "survey-topic.md").write_text("# Survey\n")
-        (rd / "framework.md").write_text("# Framework\n\nJust prose, no YAML block.\n")
+        (rd / "blueprint.md").write_text("# Blueprint\n\nJust prose, no YAML block.\n")
         state = detect_investigation_state(rd, DEFAULT_CONFIG)
         assert state["action"] == "scaffold"
         assert state["claims"] == []
@@ -903,80 +838,6 @@ claims:
         # Only the unscaffolded claim should be in the list
         assert len(state["claims"]) == 1
         assert state["claims"][0]["id"] == "bottleneck-ratio"
-
-    def test_legacy_cycles_dir_returns_test_claim(self, tmp_path):
-        """Backward compat: legacy cycles/ directory structure still works."""
-        rd = _make_investigation_dir(tmp_path)
-        (rd / ".north-star.md").write_text("# NS\n")
-        (rd / ".context.md").write_text("# C\n")
-        (rd / "context" / "survey-topic.md").write_text("# Survey\n")
-        (rd / "framework.md").write_text(SAMPLE_FRAMEWORK)
-        # Create legacy cycle dirs
-        (rd / "cycles").mkdir(exist_ok=True)
-        for claim_id in ["enrichment-bound", "bottleneck-ratio"]:
-            cycle_dir = rd / "cycles" / f"cycle-1-{claim_id}"
-            unit_dir = cycle_dir / "unit-1-investigation"
-            sub_dir = unit_dir / "sub-1a-primary"
-            for role in ("thinker", "refutor", "coder", "judge", "researcher"):
-                (sub_dir / role).mkdir(parents=True, exist_ok=True)
-            (cycle_dir / "frontier.md").write_text(
-                f"---\nid: c1-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# {claim_id}\n"
-            )
-            (unit_dir / "frontier.md").write_text(
-                "---\nid: u1-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Investigation\n"
-            )
-            (sub_dir / "frontier.md").write_text(
-                "---\nid: s1a-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Primary\n"
-            )
-        state = detect_investigation_state(rd, DEFAULT_CONFIG)
-        assert state["action"] == "test_claim"
-        assert "sub_unit" in state
-
-    def test_legacy_cycle_done_returns_record_verdict(self, tmp_path):
-        """Backward compat: legacy cycles/ with completed cycle returns record_verdict."""
-        rd = _make_investigation_dir(tmp_path)
-        (rd / ".north-star.md").write_text("# NS\n")
-        (rd / ".context.md").write_text("# C\n")
-        (rd / "context" / "survey-topic.md").write_text("# Survey\n")
-        (rd / "framework.md").write_text("""\
-# Framework
-
-```yaml
-# CLAIM_REGISTRY
-claims:
-  - id: test-claim
-    statement: "Test"
-    maturity: conjecture
-    confidence: moderate
-    falsification: "Disprove it"
-```
-""")
-        (rd / "cycles").mkdir(exist_ok=True)
-        cycle_dir = rd / "cycles" / "cycle-1-test-claim"
-        unit_dir = cycle_dir / "unit-1-investigation"
-        sub_dir = unit_dir / "sub-1a-primary"
-        for role in ("thinker", "refutor", "coder", "judge", "researcher"):
-            (sub_dir / role).mkdir(parents=True, exist_ok=True)
-        for p in [cycle_dir / "frontier.md", unit_dir / "frontier.md", sub_dir / "frontier.md"]:
-            p.write_text("---\nid: test\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test\n")
-        t_dir = sub_dir / "thinker" / "round-1"
-        t_dir.mkdir(parents=True, exist_ok=True)
-        (t_dir / "result.md").write_text("---\nid: t\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# T\n")
-        r_dir = sub_dir / "refutor" / "round-1"
-        r_dir.mkdir(parents=True, exist_ok=True)
-        (r_dir / "result.md").write_text(
-            "---\nid: r\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# R\n\n**Severity**: minor\n"
-        )
-        (sub_dir / "coder" / "results").mkdir(parents=True, exist_ok=True)
-        (sub_dir / "coder" / "results" / "output.md").write_text(
-            "---\nid: c\ntype: evidence\nstatus: active\ndate: 2026-01-01\n---\n\n# Coder\n"
-        )
-        (sub_dir / "judge" / "results").mkdir(parents=True, exist_ok=True)
-        (sub_dir / "judge" / "results" / "verdict.md").write_text(
-            "---\nid: v\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n# Verdict\n\n**Verdict**: SETTLED\n"
-        )
-        state = detect_investigation_state(rd, DEFAULT_CONFIG)
-        assert state["action"] == "record_verdict"
 
 
 # ---------------------------------------------------------------------------
@@ -1020,136 +881,67 @@ class TestQuickMode:
 
 
 class TestFullCycleIntegration:
-    """Walk the complete state machine: thinker → refutor → coder → judge → post_verdict → complete."""
+    """Walk the complete state machine through all phases to completion."""
 
     def test_full_cycle_minor_severity(self, research_dir):
-        """A simple 1-round debate with Minor severity goes straight to coder."""
-        sub = make_sub_unit(research_dir)
+        """A simple 1-round debate with Minor severity goes straight to experimenter."""
+        sub = make_claim(research_dir)
 
-        # Step 1: Empty sub-unit → dispatch_architect
+        # Step 1: Empty claim -> dispatch_architect
         state = detect_state(research_dir, sub, DEFAULT_CONFIG)
         assert state["action"] == "dispatch_architect"
         assert state["round"] == 1
 
-        # Step 2: Thinker done → dispatch_adversary
-        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
+        # Step 2: Architect done -> dispatch_adversary
+        write_result(research_dir, f"{sub}/architect/round-1/result.md")
         state = detect_state(research_dir, sub, DEFAULT_CONFIG)
         assert state["action"] == "dispatch_adversary"
         assert state["round"] == 1
 
-        # Step 3: Refutor (Minor) → dispatch_experimenter (exits debate)
-        write_result(research_dir, f"{sub}/refutor/round-1/result.md", severity="Minor")
+        # Step 3: Adversary (Minor) -> dispatch_experimenter (exits debate)
+        write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Minor")
         state = detect_state(research_dir, sub, DEFAULT_CONFIG)
         assert state["action"] == "dispatch_experimenter"
 
-        # Step 4: Coder done → dispatch_arbiter
-        write_result(research_dir, f"{sub}/coder/results/output.md")
+        # Step 4: Experimenter done -> dispatch_arbiter
+        write_result(research_dir, f"{sub}/experimenter/results/output.md")
         state = detect_state(research_dir, sub, DEFAULT_CONFIG)
         assert state["action"] == "dispatch_arbiter"
 
-        # Step 5: Judge verdict → post_verdict
-        write_result(research_dir, f"{sub}/judge/results/verdict.md", verdict="SETTLED")
+        # Step 5: Arbiter verdict -> post_verdict
+        write_result(research_dir, f"{sub}/arbiter/results/verdict.md", verdict="PROVEN")
         state = detect_state(research_dir, sub, DEFAULT_CONFIG)
         assert state["action"] == "post_verdict"
         assert state["phase"] == "recording"
 
-        # Step 6: Reviewer done (frontier mtime > verdict mtime) → complete
-        import time
-
-        # Ensure frontier.md mtime > verdict.md mtime (tests the legacy mtime fallback path;
-        # the .post_verdict_done marker is the primary mechanism but mtime is kept as fallback)
-        time.sleep(0.1)
-        frontier = research_dir / sub / "frontier.md"
-        frontier.write_text("---\nid: done\ntype: claim\nstatus: settled\ndate: 2026-01-01\n---\n\n# Done\n")
+        # Step 6: Mark post-verdict done
+        (research_dir / sub / ".post_verdict_done").write_text("")
         state = detect_state(research_dir, sub, DEFAULT_CONFIG)
         assert state["action"] == "complete_proven"
         assert state["phase"] == "complete"
 
     def test_full_cycle_fatal_continues_debate(self, research_dir):
-        """Fatal severity triggers round 2 before coder."""
-        sub = make_sub_unit(research_dir)
+        """Fatal severity triggers round 2 before experimenter."""
+        sub = make_claim(research_dir)
 
-        # Thinker round 1
-        write_result(research_dir, f"{sub}/thinker/round-1/result.md")
-        # Refutor round 1 (Fatal)
-        write_result(research_dir, f"{sub}/refutor/round-1/result.md", severity="Fatal")
+        # Architect round 1
+        write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        # Adversary round 1 (Fatal)
+        write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Fatal")
         state = detect_state(research_dir, sub, DEFAULT_CONFIG)
         assert state["action"] == "dispatch_architect"
         assert state["round"] == 2
 
-        # Thinker round 2
-        write_result(research_dir, f"{sub}/thinker/round-2/result.md")
+        # Architect round 2
+        write_result(research_dir, f"{sub}/architect/round-2/result.md")
         state = detect_state(research_dir, sub, DEFAULT_CONFIG)
         assert state["action"] == "dispatch_adversary"
         assert state["round"] == 2
 
-        # Refutor round 2 (Minor) → exits to coder
-        write_result(research_dir, f"{sub}/refutor/round-2/result.md", severity="Minor")
+        # Adversary round 2 (Minor) -> exits to experimenter
+        write_result(research_dir, f"{sub}/adversary/round-2/result.md", severity="Minor")
         state = detect_state(research_dir, sub, DEFAULT_CONFIG)
         assert state["action"] == "dispatch_experimenter"
-
-
-# ---------------------------------------------------------------------------
-# New Role Name Tests (architect/adversary/experimenter/arbiter)
-# ---------------------------------------------------------------------------
-
-
-def make_new_sub_unit(research_dir, sub_rel="cycles/cycle-1/unit-1-test/sub-1a-direct"):
-    """Create a sub-unit using NEW role names."""
-    sub = research_dir / sub_rel
-    for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
-        (sub / role).mkdir(parents=True, exist_ok=True)
-    for frontier_path in [sub.parent / "frontier.md", sub / "frontier.md"]:
-        if not frontier_path.exists():
-            frontier_path.parent.mkdir(parents=True, exist_ok=True)
-            frontier_path.write_text(
-                "---\nid: test-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test\n"
-            )
-    return sub_rel
-
-
-class TestNewRoleNameStateMachine:
-    """Verify the state machine works with architect/adversary/experimenter/arbiter dirs."""
-
-    def test_empty_dispatches_architect(self, research_dir):
-        sub = make_new_sub_unit(research_dir)
-        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
-        assert state["action"] == "dispatch_architect"
-
-    def test_architect_done_dispatches_adversary(self, research_dir):
-        sub = make_new_sub_unit(research_dir)
-        write_result(research_dir, f"{sub}/architect/round-1/result.md")
-        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
-        assert state["action"] == "dispatch_adversary"
-
-    def test_adversary_fatal_continues_debate(self, research_dir):
-        sub = make_new_sub_unit(research_dir)
-        write_result(research_dir, f"{sub}/architect/round-1/result.md")
-        write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Fatal (blocks the approach)")
-        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
-        assert state["action"] == "dispatch_architect"
-        assert state["round"] == 2
-
-    def test_adversary_minor_exits_to_experimenter(self, research_dir):
-        sub = make_new_sub_unit(research_dir)
-        write_result(research_dir, f"{sub}/architect/round-1/result.md")
-        write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Minor (worth noting)")
-        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
-        assert state["action"] == "dispatch_experimenter"
-
-    def test_experimenter_done_dispatches_arbiter(self, research_dir):
-        sub = make_new_sub_unit(research_dir)
-        write_result(research_dir, f"{sub}/architect/round-1/result.md")
-        write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Minor")
-        write_result(research_dir, f"{sub}/experimenter/results/output.md")
-        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
-        assert state["action"] == "dispatch_arbiter"
-
-    def test_context_files_include_new_names(self, research_dir):
-        sub = make_new_sub_unit(research_dir)
-        write_result(research_dir, f"{sub}/architect/round-1/result.md")
-        files = list_context_files(research_dir, sub, "dispatch_adversary", round_num=1)
-        assert any("architect" in f for f in files)
 
 
 class TestFindActiveSubunitFlatClaims:
@@ -1219,7 +1011,7 @@ class TestExtendDebate:
 
     def test_override_extends_rounds(self, research_dir):
         """A .max_rounds_override file extends debate past config max_rounds."""
-        sub_rel = make_sub_unit(research_dir)
+        sub_rel = make_claim(research_dir)
         sub_path = research_dir / sub_rel
         config = DEFAULT_CONFIG.copy()
         config["debate_loop"] = {"max_rounds": 2, "sequence": ["architect", "adversary"]}
@@ -1243,7 +1035,7 @@ class TestExtendDebate:
 
     def test_invalid_override_ignored(self, research_dir):
         """A malformed override file falls back to config max_rounds."""
-        sub_rel = make_sub_unit(research_dir)
+        sub_rel = make_claim(research_dir)
         sub_path = research_dir / sub_rel
         config = DEFAULT_CONFIG.copy()
         config["debate_loop"] = {"max_rounds": 1, "sequence": ["architect", "adversary"]}

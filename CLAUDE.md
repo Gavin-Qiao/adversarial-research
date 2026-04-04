@@ -33,5 +33,5 @@ Eight agents in `agents/`, thirteen skills in `skills/`, config in `config/orche
 - All manage.py invocations use `--root design` (the working directory created by `/principia:init`)
 - Custom YAML parser — no PyYAML dependency. Only supports single-line values and inline lists `[a, b]`
 - Atomic file writes via temp file + `os.replace()`
-- Node IDs derived from file paths: `cycles/cycle-1/` -> `c1-`, `claims/claim-1/` -> `h1-`
+- Node IDs derived from file paths: `claims/claim-1/` -> `h1-` (legacy: `cycles/cycle-1/` -> `c1-`)
 - Tests import from `manage` (which re-exports from `frontmatter`) or from `frontmatter` directly

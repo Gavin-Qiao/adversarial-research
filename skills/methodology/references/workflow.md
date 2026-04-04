@@ -2,7 +2,7 @@
 
 ## Phases
 
-A sub-unit investigation proceeds through four phases:
+A claim investigation proceeds through four phases:
 
 ```
 Dialectic       -> Refutation    -> Judgment  -> Recording
@@ -59,7 +59,7 @@ The post-verdict step updates frontmatter statuses, runs cascade invalidation if
 
 ## State Machine
 
-The conductor determines the next action by scanning what files exist in the sub-unit directory.
+The conductor determines the next action by scanning what files exist in the claim directory.
 
 Each row below is a **contract** -- tested automatically by `tests/test_workflow_contract.py`.
 If code or docs change without updating the other, tests fail.
@@ -99,17 +99,6 @@ For agents configured as external:
 2. The user pastes it into an external session (claude.ai, API, etc.)
 3. The user saves the response as result.md
 4. The conductor detects the file and continues
-
-## Unit and Cycle Resolution
-
-When all sub-units in a unit are resolved (no pending):
-1. Dispatch synthesizer for cross-unit synthesis
-2. Dispatch arbiter for unit-level verdict
-3. Run post-verdict to update unit progress
-
-When all units in a cycle are resolved:
-1. Update cycle progress
-2. Decide whether to open next cycle or conclude
 
 ## Configurable vs Hardcoded
 

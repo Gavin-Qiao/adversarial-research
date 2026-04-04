@@ -141,7 +141,7 @@ Monitor for premature convergence: if both agents agree by round 2 without subst
 The state machine decides what to do next. Do NOT improvise routing — call this command:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design next <sub-unit-path>
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design next <claim-path>
 ```
 
 The JSON output tells you:
@@ -164,8 +164,8 @@ When the state machine returns `dispatch_arbiter`, YOU are the arbiter — write
 ## Side-Channel Dispatches (your judgment)
 
 Between main-line actions, you MAY dispatch additional agents when you spot something:
-- `@experimenter` for a quick empirical check (save to `{sub-unit}/experimenter/results/check-{N}.md`)
-- `@scout` for a prior art lookup (save to `{sub-unit}/scout/results/targeted-{N}.md`)
+- `@experimenter` for a quick empirical check (save to `{claim-path}/experimenter/results/check-{N}.md`)
+- `@scout` for a prior art lookup (save to `{claim-path}/scout/results/targeted-{N}.md`)
 
 These don't change the main flow — the state machine ignores them. The next main-line action stays the same.
 
@@ -183,7 +183,7 @@ Between main-line actions, you MAY dispatch `@deep-thinker` when you spot a hard
 - "Are claims A and B mathematically coupled?"
 - "What explains the unexpected experimenter result at boundary Y?"
 
-Save to `{sub-unit}/deep-thinker/analysis-{N}.md`. Include the deep-thinker's conclusion in the NEXT main-line dispatch's prompt.
+Save to `{claim-path}/deep-thinker/analysis-{N}.md`. Include the deep-thinker's conclusion in the NEXT main-line dispatch's prompt.
 
 Log deep-thinker dispatches:
 
@@ -197,7 +197,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design log-dispatch \
 If the adversary is still finding **fatal** or **serious** flaws near the round limit and the debate is making progress (architect is genuinely shifting frameworks, not just patching), extend the debate:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design extend-debate <sub-unit-path> --to <N>
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design extend-debate <claim-path> --to <N>
 ```
 
 This overrides `max_rounds` for this specific claim. The state machine will continue the debate loop instead of forcing the experimenter.
@@ -220,7 +220,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design log-dispatch \
 
 ## Other Overrides
 
-If you override the state machine for other reasons (e.g., the adversary rated severity as minor but you judge it's actually serious, or you skip remaining rounds), log it:
+If you override the state machine for other reasons (e.g., the adversary rated severity as minor but you assess it's actually serious, or you skip remaining rounds), log it:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design log-dispatch \
@@ -241,14 +241,14 @@ The protocol guides your judgment for **side-channel decisions** (mid-debate sco
 ## Saving Results
 
 After each agent dispatch, save the result to the file indicated by `result_path` from `manage.py next`. Standard locations:
-- Architect: `{sub-unit}/architect/round-{N}/result.md`
-- Adversary: `{sub-unit}/adversary/round-{N}/result.md`
-- Experimenter: `{sub-unit}/experimenter/results/output.md` (or `check-{N}.md` for mid-debate side-channel checks)
-- Scout: `{sub-unit}/scout/results/result.md` (or `targeted-{N}.md` for side-channel lookups)
+- Architect: `{claim-path}/architect/round-{N}/result.md`
+- Adversary: `{claim-path}/adversary/round-{N}/result.md`
+- Experimenter: `{claim-path}/experimenter/results/output.md` (or `check-{N}.md` for mid-debate side-channel checks)
+- Scout: `{claim-path}/scout/results/result.md` (or `targeted-{N}.md` for side-channel lookups)
 
 ## Verdict
 
-When `manage.py next` returns `dispatch_arbiter`, YOU are the arbiter. Write your verdict to `{sub-unit}/arbiter/results/verdict.md`.
+When `manage.py next` returns `dispatch_arbiter`, YOU are the arbiter. Write your verdict to `{claim-path}/arbiter/results/verdict.md`.
 
 ### Verdict thresholds
 
@@ -257,7 +257,7 @@ When `manage.py next` returns `dispatch_arbiter`, YOU are the arbiter. Write you
 | **PROVEN** | Strong evidence supports the claim | Empirical results meeting pre-registered criterion + theoretical argument survived adversarial attack |
 | **DISPROVEN** | Strong evidence contradicts the claim | Empirical counterexample OR fatal theoretical flaw unaddressed by architect. **All dependent claims will be weakened automatically.** |
 | **PARTIAL** | Evidence is ambiguous or conflicting | Some conditions met, others not. Document which conditions hold. |
-| **INCONCLUSIVE** | Insufficient evidence to judge | Experiments ran but results ambiguous, or experiments could not be run |
+| **INCONCLUSIVE** | Insufficient evidence to determine | Experiments ran but results ambiguous, or experiments could not be run |
 
 ### Evidence strength rubric
 - **Strong**: Empirical result with clear statistical significance, or mathematical proof

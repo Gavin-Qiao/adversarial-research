@@ -53,7 +53,7 @@ If you spot an unverified literature reference, dispatch @scout with a
 targeted question. Save results to `scout/results/targeted-N.md`.
 
 ### Severity override
-If the adversary rates severity as minor but you judge it's actually serious
+If the adversary rates severity as minor but you assess it's actually serious
 (or vice versa), state your reasoning and proceed accordingly.
 
 ### Early termination

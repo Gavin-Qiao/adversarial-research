@@ -32,5 +32,5 @@ Then read and present the key sections from `design/PROGRESS.md`:
 | What is proven | Proven claims grouped by cycle |
 | What is disproven | Disproven nodes with evidence |
 | Assumptions | All assumptions with dependent counts |
-| Cycle log | Hierarchical view of cycles/units/sub-units |
+| Claim log | Status of all claims (plus legacy cycle log if present) |
 | Next action | First pending node by file path |

@@ -3,7 +3,7 @@ name: scout
 description: |
   Use this agent to gather background knowledge, survey prior art, and compile reference material for algorithm design problems. The scout searches for relevant existing approaches, techniques, and foundational context.
 
-  Orchestration phase: **context building** (before the sub-unit loop). Can also be dispatched at the sub-unit level for targeted lookups.
+  Orchestration phase: **context building** (before the claim loop). Can also be dispatched at the claim level for targeted lookups.
 
   Trigger when the user needs background research, prior art surveys, state-of-the-art summaries, or foundational knowledge before the architect begins proposing designs.
 
@@ -69,5 +69,5 @@ Structure your findings as:
 ## File Output
 
 Save the compiled research to the appropriate location:
-- **Sub-unit-level research** (dispatched mid-cycle for a specific claim): `design/claims/claim-N-name/scout/results/result.md`
+- **Claim-level research** (dispatched mid-cycle for a specific claim): `design/claims/claim-N-name/scout/results/result.md`
 - **Context building** (dispatched before cycles for background): `design/context/survey-<topic>.md`

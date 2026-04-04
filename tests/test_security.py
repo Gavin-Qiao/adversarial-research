@@ -53,11 +53,3 @@ class TestPathTraversal:
     def test_rejects_absolute_path(self, research_dir):
         rc, _out, _ = run_manage(research_dir, "new", "/etc/passwd")
         assert rc != 0
-
-    def test_scaffold_rejects_traversal(self, research_dir):
-        """scaffold --parent with path traversal should be rejected."""
-        # Create a cycle first so the parent would exist if traversal worked
-        run_manage(research_dir, "scaffold", "cycle", "test")
-        rc, out, _ = run_manage(research_dir, "scaffold", "unit", "evil", "--parent", "cycles/../../..")
-        assert rc != 0
-        assert "escapes" in out.lower() or "error" in out.lower()

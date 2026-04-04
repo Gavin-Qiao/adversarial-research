@@ -132,7 +132,7 @@ When ready, run `investigate-next` to get the next state.
 **Claim iteration loop**: `investigate-next` returns one claim at a time. After each claim completes, call `investigate-next` again. Repeat until the action is no longer `test_claim` or `record_verdict`.
 
 **Action: `test_claim`**
-- The state includes `cycle` (claim name) and `sub_unit` (path)
+- The state includes `cycle` (claim name) and `sub_unit` (claim path)
 - Read `.config.md` to check dispatch mode for the conductor
 - If **internal**: Dispatch `@conductor` with the claim path, claim statement, and reference to `config/protocol.md`
 - If **external**: Generate conductor prompt with `manage.py prompt <path>` and tell user to paste result

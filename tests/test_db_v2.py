@@ -124,12 +124,12 @@ class TestIncrementalBuild:
         )
 
     def test_initial_build(self, research_dir):
-        self._make_file(research_dir, "cycles/cycle-1/unit-1/thinker/round-1/result.md", "c1-u1-t-r1")
+        self._make_file(research_dir, "claims/claim-1-test/architect/round-1/result.md", "h1-a-r1")
         conn = build_db(force=True)
         assert conn.execute("SELECT COUNT(*) as c FROM nodes").fetchone()["c"] == 1
 
     def test_unchanged_files_not_reparsed(self, research_dir, capsys):
-        self._make_file(research_dir, "cycles/cycle-1/unit-1/thinker/round-1/result.md", "c1-u1-t-r1")
+        self._make_file(research_dir, "claims/claim-1-test/architect/round-1/result.md", "h1-a-r1")
         build_db(force=True)
         # Second build — nothing changed
         build_db()
@@ -139,13 +139,13 @@ class TestIncrementalBuild:
         assert "1 unchanged" in output
 
     def test_changed_file_reparsed(self, research_dir, capsys):
-        path = research_dir / "cycles/cycle-1/unit-1/thinker/round-1/result.md"
-        self._make_file(research_dir, "cycles/cycle-1/unit-1/thinker/round-1/result.md", "c1-u1-t-r1")
+        path = research_dir / "claims/claim-1-test/architect/round-1/result.md"
+        self._make_file(research_dir, "claims/claim-1-test/architect/round-1/result.md", "h1-a-r1")
         build_db(force=True)
         # Modify the file (ensure mtime advances)
         time.sleep(0.1)
         path.write_text(
-            serialise_frontmatter({"id": "c1-u1-t-r1", "type": "claim", "status": "active", "date": "2026-01-01"})
+            serialise_frontmatter({"id": "h1-a-r1", "type": "claim", "status": "active", "date": "2026-01-01"})
             + "\n# Updated\n"
         )
         build_db()
@@ -153,14 +153,14 @@ class TestIncrementalBuild:
         assert "1 changed" in output
         # Verify the status was updated
         conn = _get_or_create_db()
-        row = conn.execute("SELECT status FROM nodes WHERE id='c1-u1-t-r1'").fetchone()
+        row = conn.execute("SELECT status FROM nodes WHERE id='h1-a-r1'").fetchone()
         assert row["status"] == "active"
 
     def test_new_file_detected(self, research_dir, capsys):
-        self._make_file(research_dir, "cycles/cycle-1/unit-1/thinker/round-1/result.md", "c1-u1-t-r1")
+        self._make_file(research_dir, "claims/claim-1-test/architect/round-1/result.md", "h1-a-r1")
         build_db(force=True)
         # Add a new file
-        self._make_file(research_dir, "cycles/cycle-1/unit-1/refutor/round-1/result.md", "c1-u1-r-r1")
+        self._make_file(research_dir, "claims/claim-1-test/adversary/round-1/result.md", "h1-adv-r1")
         build_db()
         output = capsys.readouterr().err
         assert "1 new" in output
@@ -168,11 +168,11 @@ class TestIncrementalBuild:
         assert conn.execute("SELECT COUNT(*) as c FROM nodes").fetchone()["c"] == 2
 
     def test_deleted_file_removed(self, research_dir, capsys):
-        self._make_file(research_dir, "cycles/cycle-1/unit-1/thinker/round-1/result.md", "c1-u1-t-r1")
-        self._make_file(research_dir, "cycles/cycle-1/unit-1/refutor/round-1/result.md", "c1-u1-r-r1")
+        self._make_file(research_dir, "claims/claim-1-test/architect/round-1/result.md", "h1-a-r1")
+        self._make_file(research_dir, "claims/claim-1-test/adversary/round-1/result.md", "h1-adv-r1")
         build_db(force=True)
         # Delete one file
-        (research_dir / "cycles/cycle-1/unit-1/refutor/round-1/result.md").unlink()
+        (research_dir / "claims/claim-1-test/adversary/round-1/result.md").unlink()
         build_db()
         output = capsys.readouterr().err
         assert "1 deleted" in output
@@ -180,7 +180,7 @@ class TestIncrementalBuild:
         assert conn.execute("SELECT COUNT(*) as c FROM nodes").fetchone()["c"] == 1
 
     def test_force_always_rebuilds(self, research_dir, capsys):
-        self._make_file(research_dir, "cycles/cycle-1/unit-1/thinker/round-1/result.md", "c1-u1-t-r1")
+        self._make_file(research_dir, "claims/claim-1-test/architect/round-1/result.md", "h1-a-r1")
         build_db(force=True)
         build_db(force=True)
         # Force should say "from N files" not "N unchanged"
@@ -228,7 +228,7 @@ class TestCoderRegistry:
         conn = _get_or_create_db()
         conn.execute(
             "INSERT INTO dispatches (timestamp, cycle_id, agent, action, round, details) "
-            "VALUES ('2026-01-01T00:00:00', 'cycle-1', 'thinker', 'dispatch', 1, 'test')"
+            "VALUES ('2026-01-01T00:00:00', 'claim-1', 'architect', 'dispatch', 1, 'test')"
         )
         conn.commit()
         conn.close()
@@ -236,8 +236,8 @@ class TestCoderRegistry:
         conn = _get_or_create_db()
         rows = conn.execute("SELECT * FROM dispatches").fetchall()
         assert len(rows) == 1
-        assert rows[0]["agent"] == "thinker"
-        assert rows[0]["cycle_id"] == "cycle-1"
+        assert rows[0]["agent"] == "architect"
+        assert rows[0]["cycle_id"] == "claim-1"
 
 
 # ---------------------------------------------------------------------------
@@ -248,7 +248,7 @@ class TestCoderRegistry:
 class TestResearchBuilder:
     def test_basic_build(self, research):
         root = research.build()
-        assert (root / "cycles").exists()
+        assert (root / "claims").exists() or (root / "context").exists()
         assert (root / ".db").exists()
 
     def test_with_cycle(self, research):
@@ -293,17 +293,52 @@ class TestResearchBuilder:
         assert len(rows) == 1
 
     def test_chaining(self, research):
-        """Test that the full fluent chain works."""
-        (
-            research.with_cycle("test")
-            .with_sub_unit("approach-a")
-            .with_thinker_result(round_num=1)
-            .with_refutor_result(round_num=1, severity="Minor")
-            .with_coder_result()
-            .with_verdict(verdict="SETTLED")
-            .with_artifact("bench1", "AUROC Benchmark", artifact_type="script")
-            .build()
+        """Test that the full fluent chain works with claims-based files."""
+        root = research.build()
+        # Create files under claims/ so discover_md_files() finds them
+        claim_dir = root / "claims" / "claim-1-test"
+        claim_dir.mkdir(parents=True, exist_ok=True)
+        (claim_dir / "claim.md").write_text(
+            "---\nid: h1-claim\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test Claim\n"
         )
+        arch_dir = claim_dir / "architect" / "round-1"
+        arch_dir.mkdir(parents=True)
+        (arch_dir / "result.md").write_text(
+            "---\nid: h1-arch-r1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Hypothesis\n"
+        )
+        adv_dir = claim_dir / "adversary" / "round-1"
+        adv_dir.mkdir(parents=True)
+        (adv_dir / "result.md").write_text(
+            "---\nid: h1-adv-r1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n"
+            "# Attack\n\n**Severity**: Minor\n"
+        )
+        exp_dir = claim_dir / "experimenter" / "results"
+        exp_dir.mkdir(parents=True)
+        (exp_dir / "output.md").write_text(
+            "---\nid: h1-exp-out\ntype: evidence\nstatus: active\ndate: 2026-01-01\n---\n\n# Results\n"
+        )
+        arb_dir = claim_dir / "arbiter" / "results"
+        arb_dir.mkdir(parents=True)
+        (arb_dir / "verdict.md").write_text(
+            "---\nid: h1-verdict\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n**Verdict**: PROVEN\n"
+        )
+        # Re-build to pick up the new files
+        build_db(force=True)
+        # Register an artifact
+        import sqlite3
+
+        from manage import DB_PATH
+
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.execute(
+            "INSERT OR REPLACE INTO coder_artifacts "
+            "(id, name, artifact_type, file_path, description, dependencies, created_by, created_at) "
+            "VALUES (?, ?, ?, ?, '', '', '', '2026-01-01')",
+            ("bench1", "AUROC Benchmark", "script", "coder/bench.py"),
+        )
+        conn.commit()
+        conn.close()
+
         conn = _get_or_create_db()
         # Should have nodes from the files
         node_count = conn.execute("SELECT COUNT(*) as c FROM nodes").fetchone()["c"]
@@ -320,21 +355,21 @@ class TestResearchBuilder:
 
 class TestNewFrontmatterFields:
     def test_maturity_persists(self, research_dir):
-        path = research_dir / "cycles" / "cycle-1" / "frontier.md"
+        path = research_dir / "claims" / "claim-1-test" / "claim.md"
         path.parent.mkdir(parents=True)
         path.write_text(
-            "---\nid: c1\ntype: claim\nstatus: pending\ndate: 2026-01-01\n"
+            "---\nid: h1\ntype: claim\nstatus: pending\ndate: 2026-01-01\n"
             "maturity: conjecture\nconfidence: moderate\n---\n\n# Test\n"
         )
         conn = build_db(force=True)
-        row = conn.execute("SELECT maturity, confidence FROM nodes WHERE id='c1'").fetchone()
+        row = conn.execute("SELECT maturity, confidence FROM nodes WHERE id='h1'").fetchone()
         assert row["maturity"] == "conjecture"
         assert row["confidence"] == "moderate"
 
     def test_wave_persists(self, research_dir):
-        path = research_dir / "cycles" / "cycle-1" / "frontier.md"
+        path = research_dir / "claims" / "claim-1-test" / "claim.md"
         path.parent.mkdir(parents=True)
-        path.write_text("---\nid: c1\ntype: claim\nstatus: pending\ndate: 2026-01-01\nwave: 1\n---\n\n# Test\n")
+        path.write_text("---\nid: h1\ntype: claim\nstatus: pending\ndate: 2026-01-01\nwave: 1\n---\n\n# Test\n")
         conn = build_db(force=True)
-        row = conn.execute("SELECT wave FROM nodes WHERE id='c1'").fetchone()
+        row = conn.execute("SELECT wave FROM nodes WHERE id='h1'").fetchone()
         assert row["wave"] is not None

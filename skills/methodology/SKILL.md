@@ -8,7 +8,7 @@ user-invocable: false
 
 ## Philosophy
 
-Algorithm design proceeds through adversarial cycles where design proposals are proposed, attacked, tested empirically, and judged. This prevents confirmation bias and ensures only evidence-backed claims survive.
+Algorithm design proceeds through adversarial cycles where design proposals are proposed, attacked, tested empirically, and evaluated by an arbiter. This prevents confirmation bias and ensures only evidence-backed claims survive.
 
 ## Hierarchy
 
@@ -33,10 +33,6 @@ design/
 ├── synthesis.md
 └── RESULTS.md
 ```
-
-### Legacy: Cycles Hierarchy
-
-The `cycles/cycle-N/unit-M/sub-Ma/` structure from v0.2 is still supported for backward compatibility but is not the primary model for new investigations. Use `scaffold claim` for new work.
 
 ## Roles
 
@@ -97,8 +93,8 @@ Every `.md` node file starts with YAML frontmatter:
 4. **Judgment**: **Arbiter** evaluates all evidence from a structured brief, renders PROVEN / DISPROVEN / PARTIAL / INCONCLUSIVE
 5. **Recording**: **Post-verdict** (automated) updates statuses, runs cascade, regenerates PROGRESS.md
 6. **Branching**:
-   - PROVEN -> sub-unit complete, dependents proceed
-   - DISPROVEN -> cascade to dependents, open new sub-unit
+   - PROVEN -> claim complete, dependents proceed
+   - DISPROVEN -> cascade to dependents, open new claim
    - PARTIAL -> user decides: retry, more evidence, or escalate
 
 Use `/principia:step` to step through this workflow automatically, or `/principia:design` to run the full cycle.

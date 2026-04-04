@@ -93,7 +93,7 @@ claims:
 
 Field reference:
 - **id**: Short slug (lowercase, hyphens). Used as cycle name.
-- **statement**: One-line claim. Becomes the sub-unit frontier.
+- **statement**: One-line claim. Becomes the claim statement in `claim.md`.
 - **maturity**: `theorem-backed`, `supported`, `conjecture`, or `experiment`. Controls routing (see `config/protocol.md`).
 - **confidence**: `high`, `moderate`, or `low`. Your initial confidence before adversarial testing.
 - **depends_on**: List of other claim IDs this depends on. Controls execution wave ordering.

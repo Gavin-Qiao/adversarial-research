@@ -16,10 +16,10 @@ from manage import build_db, init_paths, serialise_frontmatter
 @pytest.fixture
 def research_dir(tmp_path):
     """Create a minimal research directory structure and configure paths."""
-    cycles = tmp_path / "cycles"
+    claims = tmp_path / "claims"
     context = tmp_path / "context" / "assumptions"
     db = tmp_path / ".db"
-    cycles.mkdir(parents=True)
+    claims.mkdir(parents=True)
     context.mkdir(parents=True)
     db.mkdir()
     init_paths(tmp_path)
@@ -28,12 +28,12 @@ def research_dir(tmp_path):
 
 @pytest.fixture
 def sample_node(research_dir):
-    """Create a sample thinker result file with frontmatter."""
-    path = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "thinker" / "round-1"
+    """Create a sample architect result file with frontmatter."""
+    path = research_dir / "claims" / "claim-1-test" / "architect" / "round-1"
     path.mkdir(parents=True)
     f = path / "result.md"
     meta = {
-        "id": "c1-u1-thinker-r1-result",
+        "id": "h1-architect-r1-result",
         "type": "claim",
         "status": "pending",
         "date": "2026-01-01",
@@ -53,8 +53,8 @@ def populated_research(research_dir):
 
     Creates:
     - assumption-a1 (assumption, pending)
-    - c1-u1-thinker-r1-result (claim, active, assumes: [assumption-a1])
-    - c1-u1-coder-output (evidence, active, depends_on: [c1-u1-thinker-r1-result])
+    - h1-architect-r1-result (claim, active, assumes: [assumption-a1])
+    - h1-experimenter-output (evidence, active, depends_on: [h1-architect-r1-result])
     """
     assume_dir = research_dir / "context" / "assumptions"
     assume_file = assume_dir / "assumption-a1.md"
@@ -75,12 +75,12 @@ def populated_research(research_dir):
         + "\n\n# Homogeneity Assumption\n"
     )
 
-    thinker_dir = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "thinker" / "round-1"
-    thinker_dir.mkdir(parents=True)
-    (thinker_dir / "result.md").write_text(
+    architect_dir = research_dir / "claims" / "claim-1-test" / "architect" / "round-1"
+    architect_dir.mkdir(parents=True)
+    (architect_dir / "result.md").write_text(
         serialise_frontmatter(
             {
-                "id": "c1-u1-thinker-r1-result",
+                "id": "h1-architect-r1-result",
                 "type": "claim",
                 "status": "active",
                 "date": "2026-01-01",
@@ -94,16 +94,16 @@ def populated_research(research_dir):
         + "\n\n# Bottleneck Hypothesis\n"
     )
 
-    coder_dir = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "coder" / "results"
-    coder_dir.mkdir(parents=True)
-    (coder_dir / "output.md").write_text(
+    experimenter_dir = research_dir / "claims" / "claim-1-test" / "experimenter" / "results"
+    experimenter_dir.mkdir(parents=True)
+    (experimenter_dir / "output.md").write_text(
         serialise_frontmatter(
             {
-                "id": "c1-u1-coder-output",
+                "id": "h1-experimenter-output",
                 "type": "evidence",
                 "status": "active",
                 "date": "2026-01-02",
-                "depends_on": ["c1-u1-thinker-r1-result"],
+                "depends_on": ["h1-architect-r1-result"],
                 "assumes": [],
                 "attack_type": None,
                 "falsified_by": None,

@@ -63,6 +63,3 @@ When a node is disproven:
 - **weakened**: A dependency was disproven; confidence reduced but claim not directly disproven
 - **inconclusive**: Evidence was ambiguous; no clear verdict
 
-## Legacy
-
-The `cycles/cycle-N/unit-M/sub-Ma/` structure from v0.2 is still supported for backward compatibility. Legacy ID derivation rules: `cycle-N` -> `cN`, `unit-M-name` -> `uM`, `sub-Ma-name` -> `sMa`. Use `scaffold claim` for new work.

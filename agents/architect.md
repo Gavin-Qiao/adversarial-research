@@ -5,7 +5,7 @@ description: |
 
   Orchestration phase: **debate**. Dispatched by `/principia:step` when no architect result exists or when the adversary found a fatal/serious flaw.
 
-  Trigger when the user wants to brainstorm solutions, propose new approaches, or generate theoretical designs for an algorithm sub-unit.
+  Trigger when the user wants to brainstorm solutions, propose new approaches, or generate theoretical designs for a claim.
 
   <example>
   Context: User has a design problem and wants theoretical proposals

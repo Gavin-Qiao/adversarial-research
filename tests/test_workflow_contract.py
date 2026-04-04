@@ -59,29 +59,23 @@ def _load_verdict_contracts() -> list[dict[str, str]]:
 # Fixtures
 # ---------------------------------------------------------------------------
 
-SUB_REL = "cycles/cycle-1/unit-1-test/sub-1a-direct"
+CLAIM_REL = "claims/claim-1-test"
 
 
 @pytest.fixture
-def sub_unit(tmp_path):
-    """Create a sub-unit directory with role dirs and frontier files."""
+def claim_dir(tmp_path):
+    """Create a claim directory with role dirs and claim.md."""
     research_dir = tmp_path
-    for d in ["cycles", "context/assumptions", ".db"]:
+    for d in ["claims", "context/assumptions", ".db"]:
         (research_dir / d).mkdir(parents=True)
     init_paths(research_dir)
 
-    sub = research_dir / SUB_REL
-    for role in ("thinker", "refutor", "coder", "judge", "researcher"):
-        (sub / role).mkdir(parents=True)
+    claim = research_dir / CLAIM_REL
+    for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+        (claim / role).mkdir(parents=True)
 
-    # Unit frontier
-    unit_frontier = sub.parent / "frontier.md"
-    unit_frontier.parent.mkdir(parents=True, exist_ok=True)
-    unit_frontier.write_text("---\nid: test\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test Unit\n")
-
-    # Sub-unit frontier
-    sub_frontier = sub / "frontier.md"
-    sub_frontier.write_text("---\nid: test-sub\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test Sub\n")
+    claim_md = claim / "claim.md"
+    claim_md.write_text("---\nid: h1-test\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test\n")
 
     return research_dir
 
@@ -116,53 +110,53 @@ def _write_result(
 
 def _setup_scenario(research_dir: Path, contract_id: str) -> None:
     """Set up the filesystem state for a given contract ID."""
-    sub = SUB_REL
+    sub = CLAIM_REL
 
     if contract_id == "T1":
-        pass  # Empty sub-unit
+        pass  # Empty claim dir
 
     elif contract_id == "T2":
-        _write_result(research_dir, f"{sub}/thinker/round-1/result.md")
+        _write_result(research_dir, f"{sub}/architect/round-1/result.md")
 
     elif contract_id == "T3":
-        _write_result(research_dir, f"{sub}/thinker/round-1/result.md")
-        _write_result(research_dir, f"{sub}/refutor/round-1/result.md", severity="Fatal (blocks the approach)")
+        _write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        _write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Fatal (blocks the approach)")
 
     elif contract_id == "T4":
-        _write_result(research_dir, f"{sub}/thinker/round-1/result.md")
-        _write_result(research_dir, f"{sub}/refutor/round-1/result.md", severity="Serious (requires modification)")
+        _write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        _write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Serious (requires modification)")
 
     elif contract_id == "T5":
-        _write_result(research_dir, f"{sub}/thinker/round-1/result.md")
-        _write_result(research_dir, f"{sub}/refutor/round-1/result.md", severity="Minor (worth noting)")
+        _write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        _write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Minor (worth noting)")
 
     elif contract_id == "T6":
-        _write_result(research_dir, f"{sub}/thinker/round-1/result.md")
-        _write_result(research_dir, f"{sub}/refutor/round-1/result.md", content_override="No genuine flaws found.")
+        _write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        _write_result(research_dir, f"{sub}/adversary/round-1/result.md", content_override="No genuine flaws found.")
 
     elif contract_id == "T7":
-        _write_result(research_dir, f"{sub}/thinker/round-1/result.md")
-        _write_result(research_dir, f"{sub}/refutor/round-1/result.md")  # no severity field
+        _write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        _write_result(research_dir, f"{sub}/adversary/round-1/result.md")  # no severity field
 
     elif contract_id == "T8":
         for r in range(1, 4):
-            _write_result(research_dir, f"{sub}/thinker/round-{r}/result.md")
-            _write_result(research_dir, f"{sub}/refutor/round-{r}/result.md", severity="Fatal")
+            _write_result(research_dir, f"{sub}/architect/round-{r}/result.md")
+            _write_result(research_dir, f"{sub}/adversary/round-{r}/result.md", severity="Fatal")
 
     elif contract_id == "T9":
-        _write_result(research_dir, f"{sub}/thinker/round-1/result.md")
-        _write_result(research_dir, f"{sub}/refutor/round-1/result.md", severity="Minor")
-        _write_result(research_dir, f"{sub}/coder/results/output.md")
+        _write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        _write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Minor")
+        _write_result(research_dir, f"{sub}/experimenter/results/output.md")
 
     elif contract_id in ("T10", "T10B"):
-        _write_result(research_dir, f"{sub}/thinker/round-1/result.md")
-        _write_result(research_dir, f"{sub}/refutor/round-1/result.md", severity="Minor")
-        _write_result(research_dir, f"{sub}/coder/results/output.md")
-        _write_result(research_dir, f"{sub}/judge/results/verdict.md", verdict="PROVEN")
+        _write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        _write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Minor")
+        _write_result(research_dir, f"{sub}/experimenter/results/output.md")
+        _write_result(research_dir, f"{sub}/arbiter/results/verdict.md", verdict="PROVEN")
 
     elif contract_id == "T11":
         # Prompt exists but no result — waiting for external
-        prompt = research_dir / sub / "thinker" / "round-1" / "prompt.md"
+        prompt = research_dir / sub / "architect" / "round-1" / "prompt.md"
         prompt.parent.mkdir(parents=True, exist_ok=True)
         prompt.write_text("# External prompt\n")
 
@@ -199,11 +193,11 @@ class TestStateTableContract:
     def _load_contracts(self):
         self.contracts = {row["ID"]: row for row in _load_state_contracts()}
 
-    def _assert_contract(self, sub_unit, contract_id: str):
+    def _assert_contract(self, claim_dir, contract_id: str):
         """Run detect_state and check it matches the documented contract."""
         contract = self.contracts[contract_id]
-        _setup_scenario(sub_unit, contract_id)
-        state = detect_state(sub_unit, SUB_REL, DEFAULT_CONFIG)
+        _setup_scenario(claim_dir, contract_id)
+        state = detect_state(claim_dir, CLAIM_REL, DEFAULT_CONFIG)
 
         expected_action, expected_round = _parse_action(contract["Action"])
         expected_phase = contract["Phase"]
@@ -225,47 +219,47 @@ class TestStateTableContract:
                 f"Update workflow.md or orchestration.py."
             )
 
-    def test_T1_empty_subunit(self, sub_unit):
-        self._assert_contract(sub_unit, "T1")
+    def test_T1_empty_subunit(self, claim_dir):
+        self._assert_contract(claim_dir, "T1")
 
-    def test_T2_thinker_done(self, sub_unit):
-        self._assert_contract(sub_unit, "T2")
+    def test_T2_thinker_done(self, claim_dir):
+        self._assert_contract(claim_dir, "T2")
 
-    def test_T3_refutor_fatal(self, sub_unit):
-        self._assert_contract(sub_unit, "T3")
+    def test_T3_refutor_fatal(self, claim_dir):
+        self._assert_contract(claim_dir, "T3")
 
-    def test_T4_refutor_serious(self, sub_unit):
-        self._assert_contract(sub_unit, "T4")
+    def test_T4_refutor_serious(self, claim_dir):
+        self._assert_contract(claim_dir, "T4")
 
-    def test_T5_refutor_minor(self, sub_unit):
-        self._assert_contract(sub_unit, "T5")
+    def test_T5_refutor_minor(self, claim_dir):
+        self._assert_contract(claim_dir, "T5")
 
-    def test_T6_refutor_none(self, sub_unit):
-        self._assert_contract(sub_unit, "T6")
+    def test_T6_refutor_none(self, claim_dir):
+        self._assert_contract(claim_dir, "T6")
 
-    def test_T7_refutor_unknown(self, sub_unit):
-        self._assert_contract(sub_unit, "T7")
+    def test_T7_refutor_unknown(self, claim_dir):
+        self._assert_contract(claim_dir, "T7")
 
-    def test_T8_round_max(self, sub_unit):
-        self._assert_contract(sub_unit, "T8")
+    def test_T8_round_max(self, claim_dir):
+        self._assert_contract(claim_dir, "T8")
 
-    def test_T9_coder_done(self, sub_unit):
-        self._assert_contract(sub_unit, "T9")
+    def test_T9_coder_done(self, claim_dir):
+        self._assert_contract(claim_dir, "T9")
 
-    def test_T10_verdict_exists(self, sub_unit):
-        self._assert_contract(sub_unit, "T10")
+    def test_T10_verdict_exists(self, claim_dir):
+        self._assert_contract(claim_dir, "T10")
 
-    def test_T10B_verdict_auto_review_false(self, sub_unit):
+    def test_T10B_verdict_auto_review_false(self, claim_dir):
         """T10B: auto_review=false falls back to dispatch_reviewer."""
         contract = self.contracts["T10B"]
-        _setup_scenario(sub_unit, "T10B")
+        _setup_scenario(claim_dir, "T10B")
         config = {**DEFAULT_CONFIG, "auto_review": False}
-        state = detect_state(sub_unit, SUB_REL, config)
+        state = detect_state(claim_dir, CLAIM_REL, config)
         expected_action, _ = _parse_action(contract["Action"])
         assert state["action"] == expected_action
 
-    def test_T11_waiting(self, sub_unit):
-        self._assert_contract(sub_unit, "T11")
+    def test_T11_waiting(self, claim_dir):
+        self._assert_contract(claim_dir, "T11")
 
 
 # ---------------------------------------------------------------------------

@@ -16,13 +16,13 @@ def run_manage(research_dir, *args):
 
 class TestCmdNew:
     def test_creates_file(self, research_dir):
-        rc, out, _ = run_manage(research_dir, "new", "cycles/cycle-1/unit-1-test/thinker/round-1/result.md")
+        rc, out, _ = run_manage(research_dir, "new", "claims/claim-1-test/architect/round-1/result.md")
         assert rc == 0
         assert "Created" in out
-        f = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "thinker" / "round-1" / "result.md"
+        f = research_dir / "claims" / "claim-1-test" / "architect" / "round-1" / "result.md"
         assert f.exists()
         content = f.read_text()
-        assert "id: c1-u1-thinker-r1-result" in content
+        assert "id: h1-architect-r1-result" in content
         assert "type: claim" in content
         assert "status: pending" in content
 
@@ -52,12 +52,12 @@ class TestCmdValidate:
     def test_invalid_status(self, research_dir):
         from manage import serialise_frontmatter
 
-        path = research_dir / "cycles" / "cycle-1" / "unit-1" / "thinker" / "round-1"
+        path = research_dir / "claims" / "claim-1-test" / "architect" / "round-1"
         path.mkdir(parents=True)
         (path / "result.md").write_text(
             serialise_frontmatter(
                 {
-                    "id": "c1-u1-thinker-r1-result",
+                    "id": "h1-architect-r1-result",
                     "type": "claim",
                     "status": "INVALID",
                     "date": "2026-01-01",
@@ -110,9 +110,9 @@ class TestCmdFalsify:
             )
             + "\n# A\n"
         )
-        cycles_dir = research_dir / "cycles" / "cycle-1" / "unit-1" / "thinker" / "round-1"
-        cycles_dir.mkdir(parents=True)
-        (cycles_dir / "result.md").write_text(
+        architect_dir = research_dir / "claims" / "claim-1-test" / "architect" / "round-1"
+        architect_dir.mkdir(parents=True)
+        (architect_dir / "result.md").write_text(
             serialise_frontmatter(
                 {
                     "id": "b",
@@ -125,9 +125,9 @@ class TestCmdFalsify:
             )
             + "\n# B\n"
         )
-        coder_dir = research_dir / "cycles" / "cycle-1" / "unit-1" / "coder" / "results"
-        coder_dir.mkdir(parents=True)
-        (coder_dir / "output.md").write_text(
+        experimenter_dir = research_dir / "claims" / "claim-1-test" / "experimenter" / "results"
+        experimenter_dir.mkdir(parents=True)
+        (experimenter_dir / "output.md").write_text(
             serialise_frontmatter(
                 {
                     "id": "c",
@@ -167,9 +167,9 @@ class TestCmdFalsify:
             )
             + "\n# Base\n"
         )
-        cycles_dir = research_dir / "cycles" / "cycle-1" / "unit-1" / "thinker" / "round-1"
-        cycles_dir.mkdir(parents=True)
-        (cycles_dir / "result.md").write_text(
+        architect_dir = research_dir / "claims" / "claim-1-test" / "architect" / "round-1"
+        architect_dir.mkdir(parents=True)
+        (architect_dir / "result.md").write_text(
             serialise_frontmatter(
                 {
                     "id": "dep",
@@ -213,7 +213,7 @@ class TestCmdFalsify:
 
 class TestCmdSettle:
     def test_marks_settled(self, sample_node):
-        rc, out, _ = run_manage(sample_node, "settle", "c1-u1-thinker-r1-result")
+        rc, out, _ = run_manage(sample_node, "settle", "h1-architect-r1-result")
         assert rc == 0
         assert "Settled" in out
 
@@ -250,55 +250,8 @@ class TestCmdCascade:
         rc, out, _ = run_manage(populated_research, "cascade", "assumption-a1")
         assert rc == 0
         assert "Cascade analysis" in out
-        # Should show the thinker claim as affected
-        assert "c1-u1-thinker-r1-result" in out
-
-
-class TestCmdScaffold:
-    def test_creates_cycle(self, research_dir):
-        rc, out, _ = run_manage(research_dir, "scaffold", "cycle", "enrichment")
-        assert rc == 0
-        assert "Created" in out
-        d = research_dir / "cycles" / "cycle-1-enrichment"
-        assert d.exists()
-        assert (d / "frontier.md").exists()
-
-    def test_creates_unit(self, research_dir):
-        run_manage(research_dir, "scaffold", "cycle", "enrichment")
-        rc, _out, _ = run_manage(
-            research_dir, "scaffold", "unit", "bottleneck", "--parent", "cycles/cycle-1-enrichment"
-        )
-        assert rc == 0
-        d = research_dir / "cycles" / "cycle-1-enrichment" / "unit-1-bottleneck"
-        assert d.exists()
-
-    def test_creates_sub_unit_with_role_dirs(self, research_dir):
-        run_manage(research_dir, "scaffold", "cycle", "enrichment")
-        run_manage(research_dir, "scaffold", "unit", "bottleneck", "--parent", "cycles/cycle-1-enrichment")
-        rc, _out, _ = run_manage(
-            research_dir,
-            "scaffold",
-            "sub-unit",
-            "ratio-test",
-            "--parent",
-            "cycles/cycle-1-enrichment/unit-1-bottleneck",
-        )
-        assert rc == 0
-        base = research_dir / "cycles" / "cycle-1-enrichment" / "unit-1-bottleneck" / "sub-1a-ratio-test"
-        assert base.exists()
-        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
-            assert (base / role).exists()
-
-    def test_auto_numbering(self, research_dir):
-        run_manage(research_dir, "scaffold", "cycle", "first")
-        run_manage(research_dir, "scaffold", "cycle", "second")
-        assert (research_dir / "cycles" / "cycle-1-first").exists()
-        assert (research_dir / "cycles" / "cycle-2-second").exists()
-
-    def test_requires_parent_for_unit(self, research_dir):
-        rc, out, _ = run_manage(research_dir, "scaffold", "unit", "test")
-        assert rc != 0
-        assert "parent" in out.lower() or "error" in out.lower()
+        # Should show the architect claim as affected
+        assert "h1-architect-r1-result" in out
 
 
 class TestCmdLogDispatch:
@@ -586,7 +539,7 @@ class TestCmdList:
     def test_list_all(self, sample_node):
         rc, out, _ = run_manage(sample_node, "list")
         assert rc == 0
-        assert "c1-u1-thinker-r1-result" in out
+        assert "h1-architect-r1-result" in out
 
     def test_list_filter_type(self, populated_research):
         rc, out, _ = run_manage(populated_research, "list", "--type", "assumption")
@@ -744,25 +697,25 @@ class TestCmdNext:
         assert "context_files" in state
         assert isinstance(state["context_files"], list)
 
-    def test_auto_no_sub_units(self, research_dir):
+    def test_auto_no_claims(self, research_dir):
         rc, out, _ = run_manage(research_dir, "next", "auto")
         assert rc == 0
-        assert "No active sub-units" in out
+        assert "No active claims" in out
 
 
 class TestCmdContext:
     def test_assembles_context(self, research_dir):
-        # Create a sub-unit with a frontier
-        sub = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "sub-1a-probe"
-        sub.mkdir(parents=True)
-        (sub / "frontier.md").write_text(
-            "---\nid: s1a-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test Question\n"
+        # Create a claim with claim.md
+        claim = research_dir / "claims" / "claim-1-probe"
+        claim.mkdir(parents=True)
+        (claim / "claim.md").write_text(
+            "---\nid: h1-claim\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test Question\n"
         )
         for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
-            (sub / role).mkdir()
-        sub_path = "cycles/cycle-1/unit-1-test/sub-1a-probe"
+            (claim / role).mkdir()
+        claim_path = "claims/claim-1-probe"
 
-        rc, out, _ = run_manage(research_dir, "context", sub_path)
+        rc, out, _ = run_manage(research_dir, "context", claim_path)
         assert rc == 0
         assert "Test Question" in out
 
@@ -788,41 +741,41 @@ class TestCmdPrompt:
 
 class TestCmdPostVerdict:
     def _make_verdicted_sub_unit(self, research_dir, verdict="PROVEN", confidence="high"):
-        """Create a sub-unit with architect, adversary, experimenter, and arbiter results."""
-        sub = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "sub-1a-probe"
-        sub.mkdir(parents=True)
-        (sub / "frontier.md").write_text(
-            "---\nid: s1a-frontier\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n# Probe\n"
+        """Create a claim with architect, adversary, experimenter, and arbiter results."""
+        claim = research_dir / "claims" / "claim-1-probe"
+        claim.mkdir(parents=True)
+        (claim / "claim.md").write_text(
+            "---\nid: h1-claim\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n# Probe\n"
         )
         for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
-            (sub / role).mkdir()
+            (claim / role).mkdir()
 
         # Architect round 1
-        r1 = sub / "architect" / "round-1"
+        r1 = claim / "architect" / "round-1"
         r1.mkdir()
         (r1 / "result.md").write_text(
             "---\nid: arch-r1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Proposal\n"
         )
         # Adversary round 1
-        a1 = sub / "adversary" / "round-1"
+        a1 = claim / "adversary" / "round-1"
         a1.mkdir()
         (a1 / "result.md").write_text(
             "---\nid: adv-r1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Attack\n\n**Severity**: Minor\n"
         )
         # Experimenter
-        exp = sub / "experimenter" / "results"
+        exp = claim / "experimenter" / "results"
         exp.mkdir()
         (exp / "output.md").write_text(
             "---\nid: exp-out\ntype: evidence\nstatus: active\ndate: 2026-01-01\n---\n\n# Results\nAUROC: 0.92\n"
         )
         # Verdict
-        arb = sub / "arbiter" / "results"
+        arb = claim / "arbiter" / "results"
         arb.mkdir()
         (arb / "verdict.md").write_text(
             f"---\nid: verdict\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n"
             f"# Verdict\n\n**Verdict**: {verdict}\n**Confidence**: {confidence}\n"
         )
-        return "cycles/cycle-1/unit-1-test/sub-1a-probe"
+        return "claims/claim-1-probe"
 
     def test_proven_updates_frontier(self, research_dir):
         import json
@@ -834,12 +787,12 @@ class TestCmdPostVerdict:
         assert rc == 0
         result = json.loads(out)
         assert result["verdict"] == "PROVEN"
-        # Frontier status should be updated
+        # Claim status should be updated
         from manage import init_paths, parse_frontmatter
 
         init_paths(research_dir)
-        frontier = research_dir / sub_path / "frontier.md"
-        meta = parse_frontmatter(frontier.read_text())
+        claim_file = research_dir / sub_path / "claim.md"
+        meta = parse_frontmatter(claim_file.read_text())
         assert meta["status"] == "proven"
 
     def test_writes_marker_file(self, research_dir):
@@ -858,7 +811,7 @@ class TestCmdPostVerdict:
         dep_dir = research_dir / "context"
         (dep_dir / "dependent.md").write_text(
             "---\nid: dependent\ntype: claim\nstatus: active\ndate: 2026-01-01\n"
-            "depends_on: [s1a-frontier]\n---\n\n# Dependent\n"
+            "depends_on: [h1-claim]\n---\n\n# Dependent\n"
         )
         run_manage(research_dir, "build")
         rc, out, _ = run_manage(research_dir, "post-verdict", sub_path)

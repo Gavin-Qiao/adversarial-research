@@ -3,7 +3,7 @@
 Principia — design management system for algorithm design from first principles.
 
 User-facing commands:
-    scaffold <level> <name> Create claim/cycle/unit/sub-unit structure
+    scaffold <level> <name> Create claim structure (legacy: cycle/unit/sub-unit)
     status                  Auto-generate PROGRESS.md
     validate                Check referential integrity
     query <sql>             Query the evidence database
@@ -57,7 +57,6 @@ from frontmatter import (
 
 RESEARCH_DIR: Path = Path(".")
 DB_PATH: Path = Path(".")
-CYCLES_DIR: Path = Path(".")
 CONTEXT_DIR: Path = Path(".")
 PROGRESS_PATH: Path = Path(".")
 FOUNDATIONS_PATH: Path = Path(".")
@@ -65,12 +64,11 @@ FOUNDATIONS_PATH: Path = Path(".")
 
 def init_paths(root: Path) -> None:
     """Configure all path globals from the given research root directory."""
-    global RESEARCH_DIR, DB_PATH, CYCLES_DIR, CONTEXT_DIR, PROGRESS_PATH, FOUNDATIONS_PATH
+    global RESEARCH_DIR, DB_PATH, CONTEXT_DIR, PROGRESS_PATH, FOUNDATIONS_PATH
     RESEARCH_DIR = root.resolve()
     db_dir = RESEARCH_DIR / ".db"
     db_dir.mkdir(parents=True, exist_ok=True)
     DB_PATH = db_dir / "research.db"
-    CYCLES_DIR = RESEARCH_DIR / "cycles"
     CONTEXT_DIR = RESEARCH_DIR / "context"
     PROGRESS_PATH = RESEARCH_DIR / "PROGRESS.md"
     FOUNDATIONS_PATH = RESEARCH_DIR / "FOUNDATIONS.md"
@@ -137,63 +135,21 @@ VALID_STATUSES = {
     "disproven",
     "partial",
     "weakened",
-    "inconclusive",  # principia names
-    "settled",
-    "falsified",
-    "mixed",
-    "undermined",  # legacy aliases
+    "inconclusive",
 }
 VALID_TYPES = {"claim", "assumption", "evidence", "reference", "verdict", "question"}
 VALID_ATTACK_TYPES = {"undermines", "rebuts", "undercuts", None}
 VALID_MATURITIES = {"theorem-backed", "supported", "conjecture", "experiment", None}
 VALID_CONFIDENCES = {"high", "moderate", "low", None}
-VALID_CYCLE_STATUSES = {"not-started", "in-progress", "complete", None}
-
-# Role name mapping: new names (principia) → legacy names for backward compat
-ROLE_ALIASES = {
-    "architect": "thinker",
-    "adversary": "refutor",
-    "experimenter": "coder",
-    "scout": "researcher",
-    "arbiter": "judge",
-    "synthesizer": "deep-thinker",
-}
-# Reverse: legacy → principia
-ROLE_ALIASES_REV = {v: k for k, v in ROLE_ALIASES.items()}
 
 ROLE_TYPE_MAP = {
-    # Principia names
     "architect": "claim",
     "adversary": "claim",
     "experimenter": "evidence",
     "scout": "reference",
     "arbiter": "verdict",
     "synthesizer": "claim",
-    # Legacy names (still supported)
-    "thinker": "claim",
-    "refutor": "claim",
-    "coder": "evidence",
-    "researcher": "reference",
-    "judge": "verdict",
-    "deep-thinker": "claim",
 }
-
-# Status mapping: principia ↔ legacy
-STATUS_ALIASES = {
-    "proven": "settled",
-    "disproven": "falsified",
-    "partial": "mixed",
-    "weakened": "undermined",
-}
-STATUS_ALIASES_REV = {v: k for k, v in STATUS_ALIASES.items()}
-
-# Verdict mapping: principia ↔ legacy
-VERDICT_ALIASES = {
-    "PROVEN": "SETTLED",
-    "DISPROVEN": "FALSIFIED",
-    "PARTIAL": "MIXED",
-}
-VERDICT_ALIASES_REV = {v: k for k, v in VERDICT_ALIASES.items()}
 
 # ---------------------------------------------------------------------------
 # Frontmatter parser/serialiser — see frontmatter.py
@@ -204,23 +160,13 @@ VERDICT_ALIASES_REV = {v: k for k, v in VERDICT_ALIASES.items()}
 # ID derivation from relative path
 # ---------------------------------------------------------------------------
 
-_ABBREV_PATTERNS = [
-    (re.compile(r"^cycles/"), ""),
-    (re.compile(r"cycle-(\d+)"), r"c\1"),
-    (re.compile(r"unit-(\d+)-[a-z0-9_-]+"), r"u\1"),
-    (re.compile(r"sub-(\d+[a-z])-[a-z0-9_-]+"), r"s\1"),
-    (re.compile(r"round-(\d+)"), r"r\1"),
-]
-
 
 def derive_id(rel_path: str) -> str:
     """Derive a short ID from a path relative to research/."""
-    # Remove file extension
     p = rel_path
     if p.endswith(".md"):
         p = p[:-3]
     # Strip leading directory prefixes
-    p = re.sub(r"^cycles/", "", p)
     p = re.sub(r"^claims/", "", p)
     p = re.sub(r"^context/", "", p)
     # Apply abbreviations
@@ -228,14 +174,8 @@ def derive_id(rel_path: str) -> str:
     result = []
     for part in parts:
         t = part
-        # cycle-N or cycle-N-name -> cN
-        t = re.sub(r"^cycle-(\d+)(?:-[a-z0-9_-]+)?$", r"c\1", t)
         # claim-N or claim-N-name -> hN (hypothesis)
         t = re.sub(r"^claim-(\d+)(?:-[a-z0-9_-]+)?$", r"h\1", t)
-        # unit-M-name -> uM
-        t = re.sub(r"^unit-(\d+)-[a-z0-9_-]+$", r"u\1", t)
-        # sub-Ma-name -> sMa
-        t = re.sub(r"^sub-(\d+[a-z])-[a-z0-9_-]+$", r"s\1", t)
         # round-N -> rN
         t = re.sub(r"^round-(\d+)$", r"r\1", t)
         # Drop bare prompts/ and results/ directory names
@@ -248,30 +188,16 @@ def derive_id(rel_path: str) -> str:
 def infer_type_from_path(rel_path: str) -> str:
     """Infer the node type from the role directory in the path."""
     parts = rel_path.split("/")
-    # Assumption files
     if "assumptions" in parts:
         return "assumption"
-    # Role-based inference, with prompt vs result distinction
-    _prompt_roles = {
-        "thinker",
-        "refutor",
-        "deep-thinker",
-        "researcher",  # legacy
-        "architect",
-        "adversary",
-        "synthesizer",
-        "scout",  # principia
-    }
+    _prompt_roles = {"architect", "adversary", "synthesizer", "scout"}
     for role in ROLE_TYPE_MAP:
         if role in parts:
             basename = os.path.basename(rel_path)
             if basename == "prompt.md" and role in _prompt_roles:
                 return "question"
             return ROLE_TYPE_MAP[role]
-    # frontier/claim files
     basename = os.path.basename(rel_path)
-    if basename == "frontier.md":
-        return "verdict"
     if basename == "claim.md":
         return "claim"
     return "reference"
@@ -283,10 +209,9 @@ def infer_type_from_path(rel_path: str) -> str:
 
 
 def discover_md_files() -> list[Path]:
-    """Find all .md files under cycles/, claims/, and context/."""
+    """Find all .md files under claims/ and context/."""
     files = []
-    claims_dir = RESEARCH_DIR / "claims"
-    for root_dir in (CYCLES_DIR, claims_dir, CONTEXT_DIR):
+    for root_dir in (RESEARCH_DIR / "claims", CONTEXT_DIR):
         if not root_dir.exists():
             continue
         for p in sorted(root_dir.rglob("*.md")):
@@ -806,10 +731,6 @@ def cmd_validate(args: argparse.Namespace) -> None:
         if row["attack_type"] and row["attack_type"] not in VALID_ATTACK_TYPES:
             errors.append(f"Invalid attack_type '{row['attack_type']}' for {nid} ({fp})")
 
-        # Valid cycle_status
-        if row["cycle_status"] and row["cycle_status"] not in VALID_CYCLE_STATUSES:
-            errors.append(f"Invalid cycle_status '{row['cycle_status']}' for {nid} ({fp})")
-
     # Check for self-loops
     self_loops = conn.execute("SELECT source_id, relation FROM edges WHERE source_id = target_id").fetchall()
     for sl in self_loops:
@@ -970,13 +891,13 @@ def cmd_falsify(args: argparse.Namespace) -> None:
         print(f"ERROR: Node '{node_id}' not found.")
         sys.exit(1)
 
-    if node["status"] in ("falsified", "disproven"):
+    if node["status"] == "disproven":
         print(f"WARN: Node '{node_id}' is already disproven — skipping.")
         return
 
     # Find cascade targets
     affected = _find_cascade_targets(conn, node_id)
-    non_disproven = [(d, f, s) for d, f, s in affected if s not in ("falsified", "disproven")]
+    non_disproven = [(d, f, s) for d, f, s in affected if s != "disproven"]
 
     # --dry-run: preview only
     if dry_run:
@@ -986,7 +907,7 @@ def cmd_falsify(args: argparse.Namespace) -> None:
         if non_disproven:
             print(f"\nWould weaken {len(non_disproven)} dependent node(s):")
             for dep_id, fp, status in affected:
-                marker = " (already disproven)" if status in ("falsified", "disproven") else ""
+                marker = " (already disproven)" if status == "disproven" else ""
                 print(f"  {dep_id}  ({fp})  status={status}{marker}")
         else:
             print("No dependents would be affected.")
@@ -1030,7 +951,7 @@ def cmd_falsify(args: argparse.Namespace) -> None:
     from orchestration import attenuate_confidence
 
     for dep_id, dep_fp, dep_status in affected:
-        if dep_status not in ("falsified", "disproven"):
+        if dep_status != "disproven":
             dep_fpath = RESEARCH_DIR / dep_fp
             dep_node = conn.execute("SELECT * FROM nodes WHERE id = ?", (dep_id,)).fetchone()
             new_conf = attenuate_confidence(dep_node["confidence"] if dep_node else None)
@@ -1087,11 +1008,11 @@ def cmd_settle(args: argparse.Namespace) -> None:
         print(f"ERROR: Node '{node_id}' not found.")
         sys.exit(1)
 
-    if node["status"] in ("settled", "proven"):
+    if node["status"] == "proven":
         print(f"WARN: Node '{node_id}' is already proven — skipping.")
         return
 
-    if node["status"] in ("falsified", "disproven"):
+    if node["status"] == "disproven":
         print(f"ERROR: Node '{node_id}' is disproven — cannot prove a disproven node.")
         sys.exit(1)
 
@@ -1116,22 +1037,19 @@ def cmd_settle(args: argparse.Namespace) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Command: post-verdict (automated reviewer replacement)
+# Command: post-verdict (automated post-verdict bookkeeping)
 # ---------------------------------------------------------------------------
 
 
 def cmd_post_verdict(args: argparse.Namespace) -> None:
-    """Automate post-verdict bookkeeping (replaces reviewer LLM dispatch)."""
+    """Automate post-verdict bookkeeping (update statuses, cascade, regenerate reports)."""
     from orchestration import extract_confidence, extract_verdict, load_config
 
     config = load_config(DEFAULT_ORCH_CONFIG)
     sub_path = args.path
     target = RESEARCH_DIR / sub_path
 
-    # Support both principia (arbiter/) and legacy (judge/) directories
     verdict_file = target / "arbiter" / "results" / "verdict.md"
-    if not verdict_file.exists():
-        verdict_file = target / "judge" / "results" / "verdict.md"
     if not verdict_file.exists():
         print(f"ERROR: No verdict file found in {target}")
         sys.exit(1)
@@ -1148,28 +1066,25 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
     conn = build_db()
     changes: list[str] = []
 
-    # Determine the claim node ID from the sub-unit frontier
-    frontier = target / "frontier.md"
-    if not frontier.exists():
-        frontier = target / "claim.md"
+    claim_file = target / "claim.md"
     node_id: str | None = None
-    if frontier.exists():
-        meta = parse_frontmatter(frontier.read_text(encoding="utf-8"))
+    if claim_file.exists():
+        meta = parse_frontmatter(claim_file.read_text(encoding="utf-8"))
         node_id = meta.get("id")  # type: ignore[assignment]
 
     # Apply verdict (extract_verdict now returns principia names: PROVEN, DISPROVEN, PARTIAL)
     if verdict == "PROVEN" and node_id:
         node = conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
-        if node and node["status"] not in ("settled", "proven", "falsified", "disproven"):
-            _update_frontmatter_in_file(frontier, {"status": "proven"})
+        if node and node["status"] not in ("proven", "disproven"):
+            _update_frontmatter_in_file(claim_file, {"status": "proven"})
             conn.execute("UPDATE nodes SET status = 'proven' WHERE id = ?", (node_id,))
             changes.append(f"Proven: {node_id}")
 
     elif verdict == "DISPROVEN" and node_id:
         node = conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
-        if node and node["status"] not in ("falsified", "disproven"):
+        if node and node["status"] != "disproven":
             verdict_id = derive_id(str(verdict_file.relative_to(RESEARCH_DIR)))
-            _update_frontmatter_in_file(frontier, {"status": "disproven", "falsified_by": verdict_id})
+            _update_frontmatter_in_file(claim_file, {"status": "disproven", "falsified_by": verdict_id})
             conn.execute("UPDATE nodes SET status = 'disproven' WHERE id = ?", (node_id,))
             changes.append(f"Disproven: {node_id} by {verdict_id}")
             # Cascade — weaken dependents
@@ -1177,7 +1092,7 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
             from orchestration import attenuate_confidence
 
             for dep_id, dep_fp, dep_status in cascade_targets:
-                if dep_status not in ("falsified", "disproven"):
+                if dep_status != "disproven":
                     dep_fpath = RESEARCH_DIR / dep_fp
                     dep_node = conn.execute("SELECT * FROM nodes WHERE id = ?", (dep_id,)).fetchone()
                     new_conf = attenuate_confidence(dep_node["confidence"] if dep_node else None)
@@ -1190,7 +1105,7 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
 
     elif verdict in ("PARTIAL", "INCONCLUSIVE") and node_id:
         new_status = "partial" if verdict == "PARTIAL" else "inconclusive"
-        _update_frontmatter_in_file(frontier, {"status": new_status})
+        _update_frontmatter_in_file(claim_file, {"status": new_status})
         conn.execute("UPDATE nodes SET status = ? WHERE id = ?", (new_status, node_id))
         changes.append(f"Updated {node_id} to {new_status}")
 
@@ -1249,7 +1164,7 @@ def cmd_cascade(args: argparse.Namespace) -> None:
     print()
 
     if affected:
-        print(f"Would set {len(affected)} node(s) to 'undermined':")
+        print(f"Would set {len(affected)} node(s) to 'weakened':")
         for dep_id, fp, status in affected:
             rel = conn.execute(
                 "SELECT relation FROM edges WHERE source_id = ? AND target_id = ?",
@@ -1268,66 +1183,16 @@ def cmd_cascade(args: argparse.Namespace) -> None:
 
 
 def cmd_scaffold(args: argparse.Namespace) -> None:
-    """Create directory structure for a cycle, unit, or sub-unit."""
+    """Create directory structure for a claim."""
     level = args.level
     name = args.name
-    parent = args.parent
 
     # Validate name is a slug
     if not re.match(r"^[a-z0-9][a-z0-9-]*$", name):
         print(f"ERROR: Name must be a lowercase slug (letters, digits, hyphens): got '{name}'")
         sys.exit(1)
 
-    if level == "cycle":
-        base = CYCLES_DIR
-        if not base.exists():
-            base.mkdir(parents=True)
-        # Auto-number: count existing cycle-* dirs
-        existing = sorted(d.name for d in base.iterdir() if d.is_dir() and d.name.startswith("cycle-"))
-        next_num = len(existing) + 1
-        dir_name = f"cycle-{next_num}-{name}"
-        target = base / dir_name
-
-    elif level == "unit":
-        if not parent:
-            print("ERROR: --parent is required for 'unit'. Provide the cycle path (e.g., cycles/cycle-1-enrichment).")
-            sys.exit(1)
-        base = (RESEARCH_DIR / parent).resolve()
-        if not str(base).startswith(str(RESEARCH_DIR.resolve())):
-            print("ERROR: Parent path escapes the research directory.")
-            sys.exit(1)
-        if not base.exists():
-            print(f"ERROR: Parent directory does not exist: {base}")
-            sys.exit(1)
-        existing = sorted(d.name for d in base.iterdir() if d.is_dir() and d.name.startswith("unit-"))
-        next_num = len(existing) + 1
-        dir_name = f"unit-{next_num}-{name}"
-        target = base / dir_name
-
-    elif level == "sub-unit":
-        if not parent:
-            print("ERROR: --parent is required for 'sub-unit'. Provide the unit path.")
-            sys.exit(1)
-        base = (RESEARCH_DIR / parent).resolve()
-        if not str(base).startswith(str(RESEARCH_DIR.resolve())):
-            print("ERROR: Parent path escapes the research directory.")
-            sys.exit(1)
-        if not base.exists():
-            print(f"ERROR: Parent directory does not exist: {base}")
-            sys.exit(1)
-        existing = sorted(d.name for d in base.iterdir() if d.is_dir() and d.name.startswith("sub-"))
-        # Derive letter suffix: count existing → a, b, c, ..., z, aa, ab, ...
-        parent_unit_match = re.search(r"unit-(\d+)", parent)
-        unit_num = parent_unit_match.group(1) if parent_unit_match else "1"
-        next_idx = len(existing)
-        if next_idx < 26:
-            letter = chr(ord("a") + next_idx)
-        else:
-            letter = chr(ord("a") + (next_idx // 26) - 1) + chr(ord("a") + (next_idx % 26))
-        dir_name = f"sub-{unit_num}{letter}-{name}"
-        target = base / dir_name
-
-    elif level == "claim":
+    if level == "claim":
         # Flat hierarchy: claims/claim-N-name/ — no unit/sub-unit nesting
         base = RESEARCH_DIR / "claims"
         if not base.exists():
@@ -1350,15 +1215,15 @@ def cmd_scaffold(args: argparse.Namespace) -> None:
 
     _emit_progress("scaffolding", f"scaffold_{level}", name)
 
-    # Create frontier.md (claim.md for flat claims) with frontmatter
-    frontier_name = "claim.md" if level == "claim" else "frontier.md"
+    # Create claim.md with frontmatter
+    frontier_name = "claim.md"
     frontier = target / frontier_name
     rel = rel_path_from_root(frontier)
     node_id = derive_id(rel)
     today = date.today().isoformat()
     meta: dict[str, str | list[str] | None] = {
         "id": node_id,
-        "type": "claim" if level == "claim" else "verdict",
+        "type": "claim",
         "status": "pending",
         "date": today,
         "depends_on": [],
@@ -1383,8 +1248,8 @@ def cmd_scaffold(args: argparse.Namespace) -> None:
     print(f"Created: {target}")
     print(f"  {frontier_name} (id: {node_id})")
 
-    # For sub-units and claims, create role directories
-    if level in ("sub-unit", "claim"):
+    # For claims, create role directories
+    if level == "claim":
         for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
             (target / role).mkdir()
             print(f"  {role}/")
@@ -1438,42 +1303,29 @@ def cmd_status(args: argparse.Namespace) -> None:
             lines.append("No active blockers.")
     lines.append("")
 
-    # --- Settled ---
-    lines.append("## What is settled")
+    # --- Proven ---
+    lines.append("## What is proven")
     lines.append("")
-    settled = conn.execute("SELECT * FROM nodes WHERE status = 'settled' ORDER BY file_path").fetchall()
-    if settled:
-        # Group by cycle
-        by_cycle = defaultdict(list)
-        for s in settled:
-            parts = s["file_path"].split("/")
-            cycle = "unknown"
-            for p in parts:
-                if p.startswith("cycle-"):
-                    cycle = p
-                    break
-            by_cycle[cycle].append(s)
-        for cycle in sorted(by_cycle):
-            lines.append(f"### {cycle}")
-            lines.append("")
-            lines.append("| Decision | Source |")
-            lines.append("|----------|--------|")
-            for s in by_cycle[cycle]:
-                title = s["title"] or readable_id(s["id"])
-                lines.append(f"| {title} | `{s['id']}` |")
-            lines.append("")
+    proven = conn.execute("SELECT * FROM nodes WHERE status = 'proven' ORDER BY file_path").fetchall()
+    if proven:
+        lines.append("| Claim | Source |")
+        lines.append("|-------|--------|")
+        for s in proven:
+            title = s["title"] or readable_id(s["id"])
+            lines.append(f"| {title} | `{s['id']}` |")
+        lines.append("")
     else:
-        lines.append("Nothing settled yet.")
+        lines.append("Nothing proven yet.")
         lines.append("")
 
-    # --- Falsified ---
-    lines.append("## What is falsified")
+    # --- Disproven ---
+    lines.append("## What is disproven")
     lines.append("")
     falsified = conn.execute(
         "SELECT n.*, e.target_id as evidence_id "
         "FROM nodes n "
         "LEFT JOIN edges e ON e.source_id = n.id AND e.relation = 'falsified_by' "
-        "WHERE n.status = 'falsified' "
+        "WHERE n.status = 'disproven' "
         "ORDER BY n.file_path"
     ).fetchall()
     if falsified:
@@ -1485,7 +1337,7 @@ def cmd_status(args: argparse.Namespace) -> None:
             lines.append(f"| {title} | `{f['file_path']}` | `{eby}` |")
         lines.append("")
     else:
-        lines.append("Nothing falsified.")
+        lines.append("Nothing disproven.")
         lines.append("")
 
     # --- Assumptions ---
@@ -1506,80 +1358,21 @@ def cmd_status(args: argparse.Namespace) -> None:
         lines.append("No assumptions registered.")
         lines.append("")
 
-    # --- Cycle log ---
-    lines.append("## Cycle log")
+    lines.append("## Claim log")
     lines.append("")
-    # Build a tree of cycles > units > sub-units from file paths
-    cycle_nodes = conn.execute("SELECT * FROM nodes WHERE file_path LIKE 'cycles/%' ORDER BY file_path").fetchall()
-
-    # Organize hierarchically
-    def _make_sub() -> dict[str, Any]:
-        return {"frontier": None, "nodes": []}
-
-    def _make_unit() -> dict[str, Any]:
-        return {"frontier": None, "subs": defaultdict(_make_sub)}
-
-    cycles: dict[str, Any] = defaultdict(lambda: {"frontier": None, "units": defaultdict(_make_unit)})
-
-    for n in cycle_nodes:
-        parts = n["file_path"].split("/")
-        # parts: cycles / cycle-N / ...
-        if len(parts) < 2:
-            continue
-        cycle_name = parts[1] if len(parts) > 1 else None
-        unit_name = None
-        sub_name = None
-        for p in parts:
-            if p.startswith("unit-"):
-                unit_name = p
-            if p.startswith("sub-"):
-                sub_name = p
-
-        if cycle_name:
-            if os.path.basename(n["file_path"]) == "frontier.md" and unit_name is None:
-                cycles[cycle_name]["frontier"] = n
-            elif unit_name and sub_name is None and os.path.basename(n["file_path"]) == "frontier.md":
-                cycles[cycle_name]["units"][unit_name]["frontier"] = n
-            elif unit_name and sub_name and os.path.basename(n["file_path"]) == "frontier.md":
-                cycles[cycle_name]["units"][unit_name]["subs"][sub_name]["frontier"] = n
-            elif unit_name and sub_name:
-                cycles[cycle_name]["units"][unit_name]["subs"][sub_name]["nodes"].append(n)
-            elif unit_name:
-                unit_data = cycles[cycle_name]["units"][unit_name]
-                unit_data["frontier"] = unit_data["frontier"] or n
-            else:
-                # Top-level cycle nodes (e.g., cycle-0/deep-thinker/...)
-                # Put them under a virtual unit
-                cycles[cycle_name]["units"]["(top-level)"]["subs"]["(root)"]["nodes"].append(n)
-
-    lines.append("| Cycle | Status | Frontier |")
-    lines.append("|-------|--------|----------|")
-    for cname in sorted(cycles):
-        cdata = cycles[cname]
-        cf = cdata["frontier"]
-        cstatus = cf["status"] if cf else "--"
-        ctitle = cf["title"] if cf else cname
-        cfpath = cf["file_path"] if cf else "--"
-        lines.append(f"| {ctitle or cname} | {cstatus} | `{cfpath}` |")
-
-        for uname in sorted(cdata["units"]):
-            if uname == "(top-level)":
-                continue
-            udata = cdata["units"][uname]
-            uf = udata["frontier"]
-            ustatus = uf["status"] if uf else "--"
-            utitle = uf["title"] if uf else uname
-            ufpath = uf["file_path"] if uf else "--"
-            lines.append(f"| -- {utitle or uname} | {ustatus} | `{ufpath}` |")
-
-            for sname in sorted(udata["subs"]):
-                sdata = udata["subs"][sname]
-                sf = sdata["frontier"]
-                sstatus = sf["status"] if sf else "--"
-                stitle = sf["title"] if sf else sname
-                sfpath = sf["file_path"] if sf else "--"
-                lines.append(f"| ---- {stitle or sname} | {sstatus} | `{sfpath}` |")
-    lines.append("")
+    claim_nodes = conn.execute(
+        "SELECT * FROM nodes WHERE file_path LIKE 'claims/%' AND type IN ('claim', 'verdict') ORDER BY file_path"
+    ).fetchall()
+    if claim_nodes:
+        lines.append("| Claim | Status | File |")
+        lines.append("|-------|--------|------|")
+        for n in claim_nodes:
+            title = n["title"] or readable_id(n["id"])
+            lines.append(f"| {title} | {n['status']} | `{n['file_path']}` |")
+        lines.append("")
+    else:
+        lines.append("No claims registered.")
+        lines.append("")
 
     # --- Next action ---
     lines.append("## Next action")
@@ -1639,8 +1432,8 @@ def cmd_assumptions(args: argparse.Namespace) -> None:
             else:
                 lines.append("- **Depended on by**: (none)")
 
-            # If falsified
-            if a["status"] == "falsified":
+            # If disproven
+            if a["status"] == "disproven":
                 evidence = conn.execute(
                     "SELECT target_id FROM edges WHERE source_id = ? AND relation = 'falsified_by'",
                     (a["id"],),
@@ -1652,7 +1445,7 @@ def cmd_assumptions(args: argparse.Namespace) -> None:
                 cascaded = conn.execute(
                     "SELECT n.id, n.status FROM nodes n "
                     "JOIN edges e ON e.source_id = n.id AND e.target_id = ? AND e.relation = 'assumes' "
-                    "WHERE n.status IN ('mixed', 'undermined')",
+                    "WHERE n.status IN ('partial', 'weakened')",
                     (a["id"],),
                 ).fetchall()
                 if cascaded:
@@ -1917,7 +1710,7 @@ def cmd_dispatch_log(args: argparse.Namespace) -> None:
 
 
 def cmd_next(args: argparse.Namespace) -> None:
-    """Determine next action for a sub-unit."""
+    """Determine next action for a claim (or legacy sub-unit)."""
     from orchestration import (
         compute_paths,
         detect_state,
@@ -1933,7 +1726,7 @@ def cmd_next(args: argparse.Namespace) -> None:
     if sub_path == "auto":
         found = find_active_subunit(RESEARCH_DIR)
         if not found:
-            print("No active sub-units found. Use /principia:scaffold to create one.")
+            print("No active claims found. Use /principia:scaffold to create one.")
             return
         sub_path = found
         print(f"Auto-detected: {sub_path}", file=sys.stderr)
@@ -2135,7 +1928,7 @@ def cmd_results(args: argparse.Namespace) -> None:
 
     # --- Original question/principle ---
     # Try to read from blueprint or framework
-    for name in ("blueprint.md", "framework.md"):
+    for name in ("blueprint.md",):
         bp = RESEARCH_DIR / name
         if bp.exists():
             body = get_body(bp.read_text(encoding="utf-8"))
@@ -2157,7 +1950,6 @@ def cmd_results(args: argparse.Namespace) -> None:
     lines.append("## Claims")
     lines.append("")
 
-    cycles_dir = RESEARCH_DIR / "cycles"
     claims_dir = RESEARCH_DIR / "claims"
 
     # Gather all verdict nodes
@@ -2168,15 +1960,14 @@ def cmd_results(args: argparse.Namespace) -> None:
             vid = v["id"]
             status = v["status"] or "pending"
             confidence = v["confidence"] or "unknown"
-            # Map legacy status names
-            display_status = STATUS_ALIASES_REV.get(status, status).upper()
+            display_status = status.upper()
             lines.append(f"### {vid}")
             lines.append(f"- **Verdict**: {display_status}")
             lines.append(f"- **Confidence**: {confidence}")
             lines.append("")
     else:
         # Fall back to scanning directories
-        for search_dir in (claims_dir, cycles_dir):
+        for search_dir in (claims_dir,):
             if not search_dir.exists():
                 continue
             for verdict_file in sorted(search_dir.rglob("verdict.md")):
@@ -2187,13 +1978,13 @@ def cmd_results(args: argparse.Namespace) -> None:
                 lines.append(f"### {rel}")
                 if meta.get("status"):
                     status = meta["status"]
-                    display = STATUS_ALIASES_REV.get(status, status).upper()
+                    display = status.upper()
                     lines.append(f"- **Verdict**: {display}")
                 for bline in body_preview:
                     lines.append(f"> {bline}")
                 lines.append("")
 
-    if not verdicts and not any((claims_dir.exists(), cycles_dir.exists())):
+    if not verdicts and not claims_dir.exists():
         lines.append("No claims investigated yet.")
         lines.append("")
 
@@ -2219,7 +2010,7 @@ def cmd_results(args: argparse.Namespace) -> None:
     lines.append("## Limitations")
     lines.append("")
 
-    disproven = conn.execute("SELECT id FROM nodes WHERE status IN ('falsified', 'disproven') ORDER BY id").fetchall()
+    disproven = conn.execute("SELECT id FROM nodes WHERE status = 'disproven' ORDER BY id").fetchall()
     if disproven:
         lines.append("**Disproven claims**:")
         for row in disproven:
@@ -2235,9 +2026,7 @@ def cmd_results(args: argparse.Namespace) -> None:
             lines.append(f"- {row['id']}")
         lines.append("")
 
-    weakened = conn.execute(
-        "SELECT id FROM nodes WHERE status IN ('mixed', 'partial', 'undermined', 'weakened') ORDER BY id"
-    ).fetchall()
+    weakened = conn.execute("SELECT id FROM nodes WHERE status IN ('partial', 'weakened') ORDER BY id").fetchall()
     if weakened:
         lines.append("**Partially supported / weakened**:")
         for row in weakened:
@@ -2397,13 +2186,10 @@ def main() -> None:
     p_casc.add_argument("id", help="Node ID to analyze")
     p_casc.set_defaults(func=cmd_cascade)
 
-    # scaffold (supports cycle/unit/sub-unit and flat claim)
+    # scaffold
     p_scaffold = sub.add_parser("scaffold", help="Create directory structure")
-    p_scaffold.add_argument("level", choices=["cycle", "unit", "sub-unit", "claim"], help="What to scaffold")
+    p_scaffold.add_argument("level", choices=["claim"], help="What to scaffold")
     p_scaffold.add_argument("name", help="Slug name (e.g., enrichment, bottleneck)")
-    p_scaffold.add_argument(
-        "--parent", help="Parent path relative to research/ (required for unit/sub-unit)", default=None
-    )
     p_scaffold.add_argument("--falsification", default=None, help="Pre-registered falsification criterion")
     p_scaffold.add_argument(
         "--maturity",
@@ -2485,7 +2271,7 @@ def main() -> None:
     p_ac.set_defaults(func=cmd_autonomy_config)
 
     p_ed = sub.add_parser("extend-debate")  # conductor extends debate rounds for a claim
-    p_ed.add_argument("path", help="Claim sub-unit path")
+    p_ed.add_argument("path", help="Claim path")
     p_ed.add_argument("--to", type=int, required=True, help="New max rounds")
     p_ed.set_defaults(func=cmd_extend_debate)
 

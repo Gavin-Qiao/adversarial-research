@@ -1,7 +1,7 @@
 ---
 name: step
 description: Advance the design workflow by one step. Determines what comes next and dispatches the appropriate agent. Run without arguments to auto-detect. Supports paste-into-chat for external agent results. Use when the user asks "what's next", wants to continue, or after pasting external results.
-argument-hint: [sub-unit-path]
+argument-hint: [claim-path]
 allowed-tools:
   - Bash
   - Read
@@ -39,11 +39,11 @@ Determine the next step and dispatch the appropriate agent. Supports both intern
 
    - **`dispatch_architect`**: Get context:
      ```bash
-     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design context <sub_unit>
+     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design context <claim-path>
      ```
      Check `dispatch_mode`:
      - **internal**: Dispatch `@architect` with the context. Save result to `result_path`.
-     - **external**: Run `manage.py prompt <sub_unit>` and tell user where the prompt file was written. Tell user to paste the result back.
+     - **external**: Run `manage.py prompt <claim-path>` and tell user where the prompt file was written. Tell user to paste the result back.
 
    - **`dispatch_adversary`**: Same as architect. For rounds 2+, the context automatically includes previous attacks.
 
@@ -57,18 +57,18 @@ Determine the next step and dispatch the appropriate agent. Supports both intern
         - Strongest argument FOR and AGAINST
         - Empirical evidence and pre-registered criteria status
         - Unresolved points
-     3. Write brief to `<sub_unit>/arbiter/brief.md`
+     3. Write brief to `<claim-path>/arbiter/brief.md`
      4. Dispatch `@arbiter` with: "Read the brief at `<path>`, then read individual evidence files if needed."
      5. Save verdict to `result_path`
 
-   - **`dispatch_reviewer`** (only when `auto_review: false` in orchestration.yaml): The system expects manual review before post-verdict bookkeeping. Review the verdict at `<sub_unit>/arbiter/results/verdict.md` (or `judge/results/verdict.md`), then run post-verdict manually:
+   - **`dispatch_reviewer`** (only when `auto_review: false` in orchestration.yaml): The system expects manual review before post-verdict bookkeeping. Review the verdict at `<claim-path>/arbiter/results/verdict.md`, then run post-verdict manually:
      ```bash
-     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design post-verdict <sub_unit>
+     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design post-verdict <claim-path>
      ```
 
    - **`post_verdict`**: Run bookkeeping:
      ```bash
-     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design post-verdict <sub_unit>
+     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design post-verdict <claim-path>
      ```
 
    - **`complete_proven`**: Report: "Claim proven (confidence: X)." Show suggestion.
@@ -84,7 +84,7 @@ Determine the next step and dispatch the appropriate agent. Supports both intern
 
    - **`error`**: Tell user and ask what they want to do.
 
-3. **After dispatch**: Save result to `result_path`. Run `manage.py next <sub_unit>` again. If there's an immediate next step, continue. If `complete_*` or `waiting`, stop and report.
+3. **After dispatch**: Save result to `result_path`. Run `manage.py next <claim-path>` again. If there's an immediate next step, continue. If `complete_*` or `waiting`, stop and report.
 
 ## Handling Pasted Results
 

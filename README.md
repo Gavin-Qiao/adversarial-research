@@ -4,10 +4,10 @@
 
 **Turn a philosophical principle into a working algorithm through rigorous adversarial testing.**
 
-[![Version](https://img.shields.io/badge/version-0.3.2-blue.svg)](https://github.com/Gavin-Qiao/principia/releases)
+[![Version](https://img.shields.io/badge/version-0.3.3-blue.svg)](https://github.com/Gavin-Qiao/principia/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-373_passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-346_passing-brightgreen.svg)]()
 [![Claude Code](https://img.shields.io/badge/Claude_Code-plugin-blueviolet.svg)](https://docs.anthropic.com/en/docs/claude-code)
 
 You start with an insight. Principia decomposes it into testable claims, stress-tests each through structured debate and empirical experiments, and composes the surviving pieces into a theory you can build on.
@@ -186,7 +186,7 @@ Principia uses 8 specialized agents. Each has a specific role and constrained ac
 | **@architect** | Proposes designs from first principles | | | proposes | |
 | **@adversary** | Finds flaws, counterexamples, edge cases | | | attacks | |
 | **@experimenter** | Tests claims with code and synthetic data | | | experiments | |
-| **@arbiter** | Evaluates evidence, renders verdict | | | judges | |
+| **@arbiter** | Evaluates evidence, renders verdict | | | verdicts | |
 | **@conductor** | Orchestrates full claim cycles | | | orchestrates | |
 | **@synthesizer** | Decomposes and unifies | | decomposes | | unifies |
 | **@scout** | Surveys prior art and failure cases | surveys | | prior art | |

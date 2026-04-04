@@ -42,7 +42,7 @@ class TestBuildDb:
         conn = build_db()
         count = conn.execute("SELECT COUNT(*) as c FROM nodes").fetchone()["c"]
         assert count == 1
-        node = conn.execute("SELECT * FROM nodes WHERE id = 'c1-u1-thinker-r1-result'").fetchone()
+        node = conn.execute("SELECT * FROM nodes WHERE id = 'h1-architect-r1-result'").fetchone()
         assert node is not None
         assert node["type"] == "claim"
         assert node["status"] == "pending"
@@ -51,12 +51,12 @@ class TestBuildDb:
         conn = build_db()
         edges = conn.execute("SELECT * FROM edges").fetchall()
         relations = {(e["source_id"], e["target_id"], e["relation"]) for e in edges}
-        assert ("c1-u1-thinker-r1-result", "assumption-a1", "assumes") in relations
-        assert ("c1-u1-coder-output", "c1-u1-thinker-r1-result", "depends_on") in relations
+        assert ("h1-architect-r1-result", "assumption-a1", "assumes") in relations
+        assert ("h1-experimenter-output", "h1-architect-r1-result", "depends_on") in relations
 
     def test_missing_frontmatter(self, research_dir):
         """Files without frontmatter should use path-derived defaults."""
-        path = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "coder" / "results"
+        path = research_dir / "claims" / "claim-1-test" / "experimenter" / "results"
         path.mkdir(parents=True)
         (path / "output.md").write_text("# No frontmatter here\n\nJust content.")
         conn = build_db()
@@ -65,7 +65,7 @@ class TestBuildDb:
 
 
 class TestDiscoverMdFiles:
-    def test_finds_in_cycles(self, sample_node):
+    def test_finds_in_claims(self, sample_node):
         files = discover_md_files()
         assert len(files) == 1
         assert files[0].name == "result.md"
@@ -78,14 +78,14 @@ class TestDiscoverMdFiles:
 
 class TestUpdateFrontmatter:
     def test_updates_status(self, sample_node):
-        fpath = sample_node / "cycles" / "cycle-1" / "unit-1-test" / "thinker" / "round-1" / "result.md"
-        result = _update_frontmatter_in_file(fpath, {"status": "settled"})
+        fpath = sample_node / "claims" / "claim-1-test" / "architect" / "round-1" / "result.md"
+        result = _update_frontmatter_in_file(fpath, {"status": "proven"})
         assert result is True
         meta = parse_frontmatter(fpath.read_text())
-        assert meta["status"] == "settled"
+        assert meta["status"] == "proven"
 
     def test_preserves_body(self, sample_node):
-        fpath = sample_node / "cycles" / "cycle-1" / "unit-1-test" / "thinker" / "round-1" / "result.md"
+        fpath = sample_node / "claims" / "claim-1-test" / "architect" / "round-1" / "result.md"
         _update_frontmatter_in_file(fpath, {"status": "active"})
         text = fpath.read_text()
         assert "# Test Hypothesis" in text
@@ -99,11 +99,11 @@ class TestUpdateFrontmatter:
 class TestBuildDbEdgeCases:
     def test_duplicate_ids_last_wins(self, research_dir):
         """When two files derive the same ID, the last one parsed wins."""
-        d1 = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "thinker" / "round-1"
+        d1 = research_dir / "claims" / "claim-1-test" / "architect" / "round-1"
         d1.mkdir(parents=True)
         (d1 / "result.md").write_text("---\nid: dupe\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# First\n")
 
-        d2 = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "coder" / "results"
+        d2 = research_dir / "claims" / "claim-1-test" / "experimenter" / "results"
         d2.mkdir(parents=True)
         (d2 / "output.md").write_text(
             "---\nid: dupe\ntype: evidence\nstatus: active\ndate: 2026-01-02\n---\n\n# Second\n"
@@ -114,7 +114,7 @@ class TestBuildDbEdgeCases:
         assert len(rows) == 1  # upsert, not duplicate
 
     def test_frontmatter_only_no_body(self, research_dir):
-        d = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "thinker" / "round-1"
+        d = research_dir / "claims" / "claim-1-test" / "architect" / "round-1"
         d.mkdir(parents=True)
         (d / "result.md").write_text("---\nid: no-body\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n")
 
@@ -134,7 +134,7 @@ class TestBuildDbEdgeCases:
 
     def test_self_referential_dependency(self, research_dir):
         """A node that depends_on itself should still be inserted (validate catches it)."""
-        d = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "thinker" / "round-1"
+        d = research_dir / "claims" / "claim-1-test" / "architect" / "round-1"
         d.mkdir(parents=True)
         (d / "result.md").write_text(
             "---\nid: self-ref\ntype: claim\nstatus: pending\ndate: 2026-01-01\ndepends_on: [self-ref]\n---\n\n# Self\n"
@@ -145,7 +145,7 @@ class TestBuildDbEdgeCases:
 
     def test_dependency_on_nonexistent_node(self, research_dir):
         """Edges to non-existent nodes are stored (validate catches dangling refs)."""
-        d = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "thinker" / "round-1"
+        d = research_dir / "claims" / "claim-1-test" / "architect" / "round-1"
         d.mkdir(parents=True)
         (d / "result.md").write_text(
             "---\nid: orphan-dep\ntype: claim\nstatus: pending\ndate: 2026-01-01\n"
@@ -158,14 +158,14 @@ class TestBuildDbEdgeCases:
 
 class TestDiscoverMdFilesEdgeCases:
     def test_nested_subdirectories(self, research_dir):
-        deep = research_dir / "cycles" / "cycle-1" / "unit-1" / "sub-1a" / "thinker" / "round-1"
+        deep = research_dir / "claims" / "claim-1-test" / "architect" / "round-1"
         deep.mkdir(parents=True)
         (deep / "result.md").write_text("---\nid: deep\n---\n")
         files = discover_md_files()
         assert any(f.name == "result.md" for f in files)
 
     def test_non_md_files_ignored(self, research_dir):
-        d = research_dir / "cycles" / "cycle-1"
+        d = research_dir / "claims" / "claim-1-test"
         d.mkdir(parents=True)
         (d / "notes.txt").write_text("not markdown")
         (d / "data.json").write_text("{}")
@@ -173,14 +173,14 @@ class TestDiscoverMdFilesEdgeCases:
         assert len(files) == 0
 
     def test_empty_directories(self, research_dir):
-        (research_dir / "cycles" / "cycle-1" / "empty").mkdir(parents=True)
+        (research_dir / "claims" / "claim-1-test" / "empty").mkdir(parents=True)
         files = discover_md_files()
         assert len(files) == 0
 
 
 class TestUpdateFrontmatterEdgeCases:
     def test_add_new_key(self, sample_node):
-        fpath = sample_node / "cycles" / "cycle-1" / "unit-1-test" / "thinker" / "round-1" / "result.md"
+        fpath = sample_node / "claims" / "claim-1-test" / "architect" / "round-1" / "result.md"
         result = _update_frontmatter_in_file(fpath, {"maturity": "conjecture"})
         assert result is True
         meta = parse_frontmatter(fpath.read_text())
@@ -188,14 +188,14 @@ class TestUpdateFrontmatterEdgeCases:
         assert meta["status"] == "pending"  # original preserved
 
     def test_empty_updates_noop(self, sample_node):
-        fpath = sample_node / "cycles" / "cycle-1" / "unit-1-test" / "thinker" / "round-1" / "result.md"
+        fpath = sample_node / "claims" / "claim-1-test" / "architect" / "round-1" / "result.md"
         _update_frontmatter_in_file(fpath, {})
         meta = parse_frontmatter(fpath.read_text())
         assert meta["status"] == "pending"
 
     def test_file_without_frontmatter_gets_one(self, research_dir):
         """A file with no frontmatter should get auto-generated frontmatter."""
-        d = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "thinker" / "round-1"
+        d = research_dir / "claims" / "claim-1-test" / "architect" / "round-1"
         d.mkdir(parents=True)
         fpath = d / "result.md"
         fpath.write_text("# Just a heading\n\nNo frontmatter here.\n")
@@ -209,7 +209,7 @@ class TestUpdateFrontmatterEdgeCases:
 
 class TestParseAndUpsert:
     def test_basic_upsert(self, research_dir):
-        d = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "thinker" / "round-1"
+        d = research_dir / "claims" / "claim-1-test" / "architect" / "round-1"
         d.mkdir(parents=True)
         fpath = d / "result.md"
         fpath.write_text("---\nid: test-node\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Title\n")
@@ -222,7 +222,7 @@ class TestParseAndUpsert:
         assert row["title"] == "Title"
 
     def test_no_frontmatter_uses_defaults(self, research_dir):
-        d = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "coder" / "results"
+        d = research_dir / "claims" / "claim-1-test" / "experimenter" / "results"
         d.mkdir(parents=True)
         fpath = d / "output.md"
         fpath.write_text("# No Frontmatter\n\nJust body content.\n")
@@ -235,7 +235,7 @@ class TestParseAndUpsert:
         assert row["status"] == "pending"  # default
 
     def test_edges_created(self, research_dir):
-        d = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "thinker" / "round-1"
+        d = research_dir / "claims" / "claim-1-test" / "architect" / "round-1"
         d.mkdir(parents=True)
         fpath = d / "result.md"
         fpath.write_text(
@@ -252,10 +252,10 @@ class TestParseAndUpsert:
         assert ("assumption-b", "assumes") in relations
 
     def test_id_collision_warns(self, research_dir, capsys):
-        d1 = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "thinker" / "round-1"
+        d1 = research_dir / "claims" / "claim-1-test" / "architect" / "round-1"
         d1.mkdir(parents=True)
         (d1 / "result.md").write_text("---\nid: dupe\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n")
-        d2 = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "coder" / "results"
+        d2 = research_dir / "claims" / "claim-1-test" / "experimenter" / "results"
         d2.mkdir(parents=True)
         (d2 / "output.md").write_text("---\nid: dupe\ntype: evidence\nstatus: active\ndate: 2026-01-01\n---\n")
         conn = init_db()
@@ -266,7 +266,7 @@ class TestParseAndUpsert:
         assert "collision" in err.lower()
 
     def test_unknown_keys_warn(self, research_dir, capsys):
-        d = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "thinker" / "round-1"
+        d = research_dir / "claims" / "claim-1-test" / "architect" / "round-1"
         d.mkdir(parents=True)
         fpath = d / "result.md"
         fpath.write_text("---\nid: test\ntype: claim\nstatus: active\ndate: 2026-01-01\nbogus_key: foo\n---\n")
