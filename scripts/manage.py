@@ -465,6 +465,7 @@ KNOWN_FRONTMATTER_KEYS = {
     "confidence",
     "wave",
     "cycle_status",
+    "falsification",
 }
 
 

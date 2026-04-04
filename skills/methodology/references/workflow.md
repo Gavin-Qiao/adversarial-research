@@ -55,7 +55,7 @@ The arbiter reads the brief (and can dig into individual files) and renders: PRO
 
 ### Phase 4: Recording
 
-The post-verdict step updates frontmatter statuses, runs cascade invalidation if disproven, regenerates PROGRESS.md and FOUNDATIONS.md, and writes a summary.
+The post-verdict step updates frontmatter statuses and runs cascade invalidation if disproven. The design skill then regenerates PROGRESS.md and FOUNDATIONS.md as a separate step.
 
 ## State Machine
 

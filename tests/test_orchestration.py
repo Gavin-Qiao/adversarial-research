@@ -197,6 +197,12 @@ class TestExtractSeverity:
     def test_missing_file(self, tmp_path):
         assert extract_severity(tmp_path / "nonexistent.md", DEFAULT_CONFIG) == "unknown"
 
+    def test_no_fatal_is_none_not_fatal(self, tmp_path):
+        """Regression: 'no fatal flaws' must match 'none', not 'fatal'."""
+        f = tmp_path / "result.md"
+        f.write_text("The design has no fatal flaws and is generally sound.\n")
+        assert extract_severity(f, DEFAULT_CONFIG) == "none"
+
 
 # ---------------------------------------------------------------------------
 # Verdict Tests

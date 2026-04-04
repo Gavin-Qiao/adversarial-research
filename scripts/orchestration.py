@@ -383,14 +383,19 @@ def extract_severity(result_path: Path, config: dict[str, Any]) -> str:
                 if level in val:
                     return level
 
-    # Fallback: scan for keyword phrases from config
+    # Fallback: scan for keyword phrases from config.
+    # Check longer phrases first so "no fatal" matches before "fatal".
     keywords = config.get("severity_keywords", {})
+    matches: list[tuple[str, str]] = []
     for level, phrases in keywords.items():
         if not isinstance(phrases, list):
             continue
         for phrase in phrases:
             if phrase.lower() in text_lower:
-                return str(level)
+                matches.append((str(level), phrase.lower()))
+    if matches:
+        matches.sort(key=lambda m: len(m[1]), reverse=True)
+        return matches[0][0]
 
     return "unknown"
 
