@@ -7,3 +7,6 @@ design/.db/
 .venv/
 .claude/
 .serena/
+# Test artifacts that leak when tests run with cwd as root
+claims/
+cycles/
