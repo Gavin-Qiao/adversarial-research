@@ -219,6 +219,7 @@ Principia uses 8 specialized agents. Each has a specific role and constrained ac
 | `/principia:status` | Regenerate PROGRESS.md |
 | `/principia:impact <id>` | Preview cascade: what breaks if this claim is disproven? |
 | `/principia:query "<sql>"` | Query the evidence database directly |
+| `/principia:help` | Overview of commands, agents, and how to get started |
 
 <details>
 <summary><b>Internal commands</b> (used by agents and skills)</summary>
