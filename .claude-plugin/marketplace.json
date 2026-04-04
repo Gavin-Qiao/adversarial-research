@@ -11,7 +11,7 @@
       "name": "principia",
       "source": "./",
       "description": "Turn a philosophical principle into a working algorithm through rigorous adversarial testing. Decomposes ideas into testable claims, stress-tests each through structured debate and empirical experiments, and composes the surviving pieces into a design you can build on.",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "license": "MIT",
       "keywords": [
         "algorithm-design",

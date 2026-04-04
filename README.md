@@ -4,7 +4,7 @@
 
 **Turn a philosophical principle into a working algorithm through rigorous adversarial testing.**
 
-[![Version](https://img.shields.io/badge/version-0.3.1-blue.svg)](https://github.com/Gavin-Qiao/principia/releases)
+[![Version](https://img.shields.io/badge/version-0.3.2-blue.svg)](https://github.com/Gavin-Qiao/principia/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-373_passing-brightgreen.svg)]()
