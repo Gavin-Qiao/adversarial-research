@@ -1753,8 +1753,6 @@ def cmd_next(args: argparse.Namespace) -> None:
     # Enrich complete states with verdict confidence
     if state["action"].startswith("complete_"):
         verdict_path = RESEARCH_DIR / sub_path / "arbiter" / "results" / "verdict.md"
-        if not verdict_path.exists():
-            verdict_path = RESEARCH_DIR / sub_path / "judge" / "results" / "verdict.md"
         state["confidence"] = extract_confidence(verdict_path)
 
     print(json.dumps(state, indent=2))
@@ -1906,8 +1904,6 @@ def cmd_parse_framework(args: argparse.Namespace) -> None:
     from orchestration import parse_framework
 
     framework_path = RESEARCH_DIR / "blueprint.md"
-    if not framework_path.exists():
-        framework_path = RESEARCH_DIR / "framework.md"
     claims = parse_framework(framework_path)
     if not claims:
         print("No claim registry found in blueprint.md.")
@@ -2049,20 +2045,97 @@ def cmd_results(args: argparse.Namespace) -> None:
 # Paste validation
 # ---------------------------------------------------------------------------
 
-# Agent-specific required sections for paste validation
-_PASTE_REQUIREMENTS: dict[str, list[str]] = {
-    "architect": [],  # No strict format requirements
-    "adversary": ["severity"],
-    "experimenter": ["result"],
-    "arbiter": ["verdict", "confidence"],
-    "scout": ["key findings", "sources"],
-    "synthesizer": [],
-    "deep-thinker": ["analysis"],
-}
+# ---------------------------------------------------------------------------
+# Artifact validation schemas
+# ---------------------------------------------------------------------------
+
+_VALID_VERDICTS = {"PROVEN", "DISPROVEN", "PARTIAL", "INCONCLUSIVE"}
+_VALID_SEVERITIES = {"fatal", "serious", "minor", "none"}
+_VALID_CONFIDENCES_PASTE = {"high", "moderate", "low"}
+
+
+def _find_field(text: str, field_name: str) -> str | None:
+    """Extract a structured field value from '**Field**: value' or 'Field: value' lines."""
+    for line in text.splitlines():
+        stripped = line.strip()
+        # Match both **Field**: value and Field: value
+        lower = stripped.lower().replace("*", "")
+        if lower.startswith(field_name.lower()) and ":" in stripped:
+            val = stripped.split(":", 1)[1].strip().strip("*").strip()
+            return val
+    return None
+
+
+def validate_artifact(agent: str, content: str) -> list[str]:
+    """Validate artifact content for a given agent role. Returns list of errors (empty = valid)."""
+    errors: list[str] = []
+
+    if not content or len(content.strip()) < 50:
+        errors.append("Result appears empty or truncated (minimum 50 characters).")
+        return errors
+
+    if agent == "adversary":
+        severity_val = _find_field(content, "Severity")
+        if not severity_val:
+            errors.append("Missing required field: **Severity**: <Fatal|Serious|Minor|None>")
+        elif severity_val.split()[0].lower().rstrip("(,.:") not in _VALID_SEVERITIES:
+            errors.append(
+                f"Invalid severity value '{severity_val}'. "
+                f"Must start with one of: {', '.join(sorted(_VALID_SEVERITIES))}"
+            )
+
+    elif agent == "arbiter":
+        verdict_val = _find_field(content, "Verdict")
+        if not verdict_val:
+            errors.append("Missing required field: **Verdict**: <PROVEN|DISPROVEN|PARTIAL|INCONCLUSIVE>")
+        elif verdict_val.split()[0].strip("*").upper() not in _VALID_VERDICTS:
+            errors.append(
+                f"Invalid verdict value '{verdict_val}'. Must be one of: {', '.join(sorted(_VALID_VERDICTS))}"
+            )
+        confidence_val = _find_field(content, "Confidence")
+        if not confidence_val:
+            errors.append("Missing required field: **Confidence**: <high|moderate|low>")
+        elif confidence_val.split()[0].strip("*").lower() not in _VALID_CONFIDENCES_PASTE:
+            errors.append(
+                f"Invalid confidence value '{confidence_val}'. "
+                f"Must be one of: {', '.join(sorted(_VALID_CONFIDENCES_PASTE))}"
+            )
+
+    elif agent == "experimenter":
+        # Must have a results section with substantive content
+        has_results = any(
+            line.strip().lower().startswith(("## result", "# result", "**result")) for line in content.splitlines()
+        )
+        if not has_results:
+            errors.append("Missing results section. Experimenter output must contain a '## Results' heading.")
+
+    elif agent == "scout":
+        has_findings = any(
+            line.strip().lower().startswith(("## key finding", "# key finding", "**key finding"))
+            for line in content.splitlines()
+        )
+        has_sources = any(
+            line.strip().lower().startswith(("## source", "# source", "**source")) for line in content.splitlines()
+        )
+        if not has_findings:
+            errors.append("Missing section: '## Key Findings'")
+        if not has_sources:
+            errors.append("Missing section: '## Sources'")
+
+    elif agent == "deep-thinker":
+        has_analysis = any(
+            line.strip().lower().startswith(("## analysis", "# analysis", "**analysis"))
+            for line in content.splitlines()
+        )
+        if not has_analysis:
+            errors.append("Missing section: '## Analysis'")
+
+    # architect and synthesizer have no strict structural requirements
+    return errors
 
 
 def cmd_validate_paste(args: argparse.Namespace) -> None:
-    """Validate a pasted external agent result."""
+    """Validate a pasted external agent result against its artifact schema."""
     agent = args.agent
     file_path = Path(args.file)
 
@@ -2070,22 +2143,16 @@ def cmd_validate_paste(args: argparse.Namespace) -> None:
         print(f"ERROR: File not found: {file_path}")
         sys.exit(1)
 
-    content = file_path.read_text(encoding="utf-8").strip()
+    content = file_path.read_text(encoding="utf-8")
+    errors = validate_artifact(agent, content)
 
-    if not content or len(content) < 50:
-        print("ERROR: Result appears empty or truncated (minimum 50 characters).")
+    if errors:
+        print(f"ERROR: Invalid {agent} result:")
+        for e in errors:
+            print(f"  - {e}")
         sys.exit(1)
 
-    required = _PASTE_REQUIREMENTS.get(agent, [])
-    content_lower = content.lower()
-    missing = [s for s in required if s not in content_lower]
-
-    if missing:
-        print(f"ERROR: Missing expected section(s) for {agent}: {', '.join(missing)}")
-        print(f"The {agent} result must contain: {', '.join(required)}")
-        sys.exit(1)
-
-    print(f"OK: Valid {agent} result ({len(content)} characters).")
+    print(f"OK: Valid {agent} result ({len(content.strip())} characters).")
 
 
 def cmd_autonomy_config(args: argparse.Namespace) -> None:
@@ -2094,6 +2161,169 @@ def cmd_autonomy_config(args: argparse.Namespace) -> None:
 
     result = read_autonomy_config(DEFAULT_ORCH_CONFIG)
     print(json.dumps(result))
+
+
+def cmd_dashboard(args: argparse.Namespace) -> None:
+    """Single-view control panel: phase, active claim, last verdict, blockers, config."""
+    from orchestration import detect_investigation_state, load_config, read_autonomy_config
+
+    config = load_config(DEFAULT_ORCH_CONFIG)
+    conn = build_db()
+
+    # Investigation state
+    inv_state = detect_investigation_state(RESEARCH_DIR, config)
+    phase = inv_state.get("phase", "unknown")
+    action = inv_state.get("action", "unknown")
+    breadcrumb = _format_investigation_breadcrumb(inv_state, RESEARCH_DIR)
+
+    # Active claim
+    active_claim = inv_state.get("sub_unit")
+    active_cycle = inv_state.get("cycle")
+
+    # Last verdict
+    last_verdict_row = conn.execute(
+        "SELECT node_id, event, timestamp FROM ledger "
+        "WHERE event IN ('proven', 'disproven', 'partial', 'inconclusive') "
+        "ORDER BY timestamp DESC LIMIT 1"
+    ).fetchone()
+    last_verdict = None
+    if last_verdict_row:
+        last_verdict = {
+            "claim": last_verdict_row["node_id"],
+            "verdict": last_verdict_row["event"].upper(),
+            "timestamp": last_verdict_row["timestamp"],
+        }
+
+    # Claim summary
+    claim_counts = {}
+    for status in ("pending", "active", "proven", "disproven", "partial", "weakened", "inconclusive"):
+        count = conn.execute(
+            "SELECT COUNT(*) as c FROM nodes WHERE type IN ('claim', 'verdict') "
+            "AND file_path LIKE 'claims/%' AND status = ?",
+            (status,),
+        ).fetchone()["c"]
+        if count > 0:
+            claim_counts[status] = count
+
+    # Blocked claims (pending with unresolved dependencies)
+    blocked = conn.execute(
+        "SELECT n.id, dep.id as dep_id FROM nodes n "
+        "JOIN edges e ON e.source_id = n.id AND e.relation = 'depends_on' "
+        "JOIN nodes dep ON dep.id = e.target_id AND dep.status NOT IN ('proven') "
+        "WHERE n.status = 'pending' AND n.file_path LIKE 'claims/%'"
+    ).fetchall()
+    blocked_claims = [{"id": b["id"], "blocked_by": b["dep_id"]} for b in blocked]
+
+    # Pending human decisions (partial/inconclusive claims needing user input)
+    pending_decisions = conn.execute(
+        "SELECT id, status, file_path FROM nodes "
+        "WHERE status IN ('partial', 'inconclusive') AND file_path LIKE 'claims/%' "
+        "ORDER BY file_path"
+    ).fetchall()
+    decisions = [{"id": d["id"], "status": d["status"], "file": d["file_path"]} for d in pending_decisions]
+
+    # Autonomy config
+    autonomy = read_autonomy_config(DEFAULT_ORCH_CONFIG)
+
+    result = {
+        "phase": phase,
+        "action": action,
+        "breadcrumb": breadcrumb,
+        "active_claim": active_claim,
+        "active_cycle": active_cycle,
+        "last_verdict": last_verdict,
+        "claims": claim_counts,
+        "blocked": blocked_claims,
+        "pending_decisions": decisions,
+        "autonomy": autonomy,
+    }
+    print(json.dumps(result, indent=2))
+
+
+def cmd_reopen(args: argparse.Namespace) -> None:
+    """Reopen a completed claim for further investigation."""
+    conn = build_db()
+    node_id = args.id
+
+    node = conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
+    if not node:
+        print(f"ERROR: Node '{node_id}' not found.")
+        sys.exit(1)
+
+    if node["status"] in ("pending", "active"):
+        print(f"WARN: Node '{node_id}' is already {node['status']} — nothing to reopen.")
+        return
+
+    old_status = node["status"]
+
+    # Update frontmatter
+    fpath = RESEARCH_DIR / node["file_path"]
+    if not _update_frontmatter_in_file(fpath, {"status": "active"}):
+        print(f"ERROR: Could not update file for '{node_id}' — aborting.")
+        sys.exit(1)
+
+    # Update DB
+    conn.execute("UPDATE nodes SET status = 'active' WHERE id = ?", (node_id,))
+
+    # Remove post-verdict marker if present
+    claim_dir = fpath.parent
+    marker = claim_dir / ".post_verdict_done"
+    if marker.exists():
+        marker.unlink()
+
+    # Ledger entry
+    today = date.today().isoformat()
+    conn.execute(
+        "INSERT INTO ledger (timestamp, event, node_id, details, agent) VALUES (?, ?, ?, ?, ?)",
+        (today, "reopened", node_id, f"Reopened from {old_status}", "user"),
+    )
+    conn.commit()
+
+    print(f"Reopened: {node_id} ({old_status} → active)")
+    print(f"   File: {node['file_path']}")
+
+
+def cmd_replace_verdict(args: argparse.Namespace) -> None:
+    """Delete existing verdict and reset claim to experimenter-done state."""
+    sub_path = args.path
+    target = RESEARCH_DIR / sub_path
+
+    if not target.exists():
+        print(f"ERROR: Path not found: {target}")
+        sys.exit(1)
+
+    verdict_file = target / "arbiter" / "results" / "verdict.md"
+    if not verdict_file.exists():
+        print(f"ERROR: No verdict file found at {verdict_file}")
+        sys.exit(1)
+
+    # Remove verdict file
+    verdict_file.unlink()
+    print(f"Removed: {verdict_file.relative_to(RESEARCH_DIR)}")
+
+    # Remove post-verdict marker
+    marker = target / ".post_verdict_done"
+    if marker.exists():
+        marker.unlink()
+        print("Removed: .post_verdict_done marker")
+
+    # Reset claim.md status to active
+    claim_file = target / "claim.md"
+    if claim_file.exists() and not _update_frontmatter_in_file(claim_file, {"status": "active"}):
+        print(f"WARN: Could not update frontmatter in {claim_file}")
+
+    # Ledger entry
+    conn = build_db()
+    today = date.today().isoformat()
+    claim_meta = parse_frontmatter(claim_file.read_text(encoding="utf-8")) if claim_file.exists() else {}
+    node_id = claim_meta.get("id", sub_path)
+    conn.execute(
+        "INSERT INTO ledger (timestamp, event, node_id, details, agent) VALUES (?, ?, ?, ?, ?)",
+        (today, "verdict_replaced", str(node_id), f"Verdict removed from {sub_path}", "user"),
+    )
+    conn.commit()
+
+    print(f"Claim reset to pre-verdict state. Run `/principia:step {sub_path}` to re-dispatch arbiter.")
 
 
 def cmd_extend_debate(args: argparse.Namespace) -> None:
@@ -2161,9 +2391,23 @@ def main() -> None:
     p_settle.add_argument("id", help="Node ID to settle")
     p_settle.set_defaults(func=cmd_settle)
 
+    # reopen
+    p_reopen = sub.add_parser("reopen", help="Reopen a completed claim for further investigation")
+    p_reopen.add_argument("id", help="Node ID to reopen")
+    p_reopen.set_defaults(func=cmd_reopen)
+
+    # replace-verdict
+    p_rv = sub.add_parser("replace-verdict", help="Delete verdict and reset claim to pre-verdict state")
+    p_rv.add_argument("path", help="Claim path")
+    p_rv.set_defaults(func=cmd_replace_verdict)
+
     # status
     p_stat = sub.add_parser("status", help="Auto-generate PROGRESS.md from the DB")
     p_stat.set_defaults(func=cmd_status)
+
+    # dashboard
+    p_dash = sub.add_parser("dashboard", help="Control panel: phase, claims, verdicts, blockers")
+    p_dash.set_defaults(func=cmd_dashboard)
 
     # assumptions
     p_assu = sub.add_parser("assumptions", help="Auto-generate FOUNDATIONS.md")
@@ -2264,7 +2508,11 @@ def main() -> None:
     p_pv.set_defaults(func=cmd_post_verdict)
 
     p_vp = sub.add_parser("validate-paste")  # validate pasted agent result
-    p_vp.add_argument("--agent", required=True, choices=list(_PASTE_REQUIREMENTS.keys()))
+    p_vp.add_argument(
+        "--agent",
+        required=True,
+        choices=["architect", "adversary", "experimenter", "arbiter", "scout", "synthesizer", "deep-thinker"],
+    )
     p_vp.add_argument("--file", required=True, help="Path to file containing pasted result")
     p_vp.set_defaults(func=cmd_validate_paste)
 

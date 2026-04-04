@@ -398,8 +398,8 @@ class TestCmdParseFramework:
         assert rc != 0
 
     def test_with_valid_framework(self, research_dir):
-        (research_dir / "framework.md").write_text("""\
-# Framework
+        (research_dir / "blueprint.md").write_text("""\
+# Blueprint
 
 ```yaml
 # CLAIM_REGISTRY
@@ -909,6 +909,37 @@ class TestValidatePaste:
             "**Confidence**: high\n\n## Reasoning\nDetails here with enough text.\n"
         )
         rc, _out, _ = run_manage(research_dir, "validate-paste", "--agent", "arbiter", "--file", str(paste_file))
+        assert rc == 0
+
+    def test_invalid_verdict_value(self, research_dir, tmp_path):
+        paste_file = tmp_path / "paste.md"
+        paste_file.write_text(
+            "# Verdict\n\n**Verdict**: MAYBE\n**Confidence**: high\n\nEnough content to pass length.\n"
+        )
+        rc, out, _ = run_manage(research_dir, "validate-paste", "--agent", "arbiter", "--file", str(paste_file))
+        assert rc != 0
+        assert "invalid verdict" in out.lower()
+
+    def test_invalid_severity_value(self, research_dir, tmp_path):
+        paste_file = tmp_path / "paste.md"
+        paste_file.write_text(
+            "# Attack\n\n**Severity**: Devastating\n\nThis is a detailed critique with enough text.\n"
+        )
+        rc, out, _ = run_manage(research_dir, "validate-paste", "--agent", "adversary", "--file", str(paste_file))
+        assert rc != 0
+        assert "invalid severity" in out.lower()
+
+    def test_experimenter_missing_results_section(self, research_dir, tmp_path):
+        paste_file = tmp_path / "paste.md"
+        paste_file.write_text("# Experiment\n\nI ran some code and it worked. Here is the long enough output text.\n")
+        rc, out, _ = run_manage(research_dir, "validate-paste", "--agent", "experimenter", "--file", str(paste_file))
+        assert rc != 0
+        assert "results" in out.lower()
+
+    def test_valid_experimenter_paste(self, research_dir, tmp_path):
+        paste_file = tmp_path / "paste.md"
+        paste_file.write_text("# Experiment\n\n## Results\n\nAUROC = 0.87, p < 0.01. The hypothesis holds.\n")
+        rc, _out, _ = run_manage(research_dir, "validate-paste", "--agent", "experimenter", "--file", str(paste_file))
         assert rc == 0
 
 
