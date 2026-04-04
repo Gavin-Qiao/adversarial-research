@@ -69,6 +69,6 @@ Inform the user:
 - Use `/principia:design "<principle>"` to run a full 4-phase design process (Understand > Divide > Test > Synthesize)
 - Use `/principia:step` to advance manually, one agent at a time
 - Use `/principia:status` to see progress
-- Edit `design/.config.md` to change agent dispatch preferences (internal vs external)
-- For external dispatch: set an agent to `external` in `.config.md`, and the system will generate a self-contained prompt you can paste into any LLM
-- Workflow behavior (round limits, severity thresholds) is in `config/orchestration.yaml`
+- Use `/principia:help` for a full command reference
+- All agents run as Claude Code subagents by default. To use external LLMs for any agent, edit `design/.config.md` and set it to `external` — the system will generate a self-contained prompt you can paste into any LLM. Note: external dispatch requires manual copy/paste, so it is incompatible with yolo mode.
+- Autonomy mode (checkpoints vs yolo for overnight runs) is in `config/orchestration.yaml`
