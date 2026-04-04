@@ -51,8 +51,12 @@ Show a **status-first** response:
 2. **How to continue**: Based on the action:
    - `understand` → "Run `/principia:design` to continue, or `/principia:step` for manual control."
    - `divide` / `scaffold` → "Run `/principia:step` to scaffold claims, or `/principia:design` to continue automatically."
+   - `scaffold_quick` → "Quick mode: scaffolding a single claim. Run `/principia:design` to continue."
    - `test_claim` → "Run `/principia:step` to test the next claim, or `/principia:design` to run all remaining claims."
-   - `synthesize` → "Run `/principia:step` to synthesize, or `/principia:design` to finish automatically."
+   - `record_verdict` → "A claim has been tested. Run `/principia:step` to record the verdict, or `/principia:design` to continue."
+   - `complete_partial` → "A claim was partially proven. Run `/principia:step` to decide: narrow the claim, gather more evidence, or accept and move on."
+   - `complete_inconclusive` → "A claim was inconclusive. Run `/principia:step` to decide: try a different approach, gather more evidence, or defer."
+   - `synthesize` → "All claims tested. Run `/principia:step` to synthesize, or `/principia:design` to finish automatically."
    - `complete` → "Investigation complete! Run `/principia:status` to see results, or read `design/RESULTS.md`."
 3. **Current config**: Report autonomy mode (checkpoints/yolo) and whether any agents are external.
 4. **Quick reference**: Show the commands table below.
