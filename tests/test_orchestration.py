@@ -953,7 +953,10 @@ class TestFullCycleIntegration:
 class TestFindActiveSubunitFlatClaims:
     def test_finds_flat_claim(self, tmp_path):
         """find_active_subunit finds claims in claims/ directory."""
-        from manage import build_db, init_paths, serialise_frontmatter
+        from db import build_db
+        from frontmatter import serialise_frontmatter
+
+        from config import init_paths
 
         rd = tmp_path
         for d in ["claims", "context/assumptions", ".db"]:

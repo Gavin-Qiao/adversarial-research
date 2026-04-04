@@ -50,7 +50,7 @@ class TestCmdValidate:
         assert "passed" in out.lower()
 
     def test_invalid_status(self, research_dir):
-        from manage import serialise_frontmatter
+        from frontmatter import serialise_frontmatter
 
         path = research_dir / "claims" / "claim-1-test" / "architect" / "round-1"
         path.mkdir(parents=True)
@@ -93,7 +93,7 @@ class TestCmdFalsify:
 
     def test_multi_level_cascade(self, research_dir):
         """A → B → C: falsify A, both B and C should be undermined."""
-        from manage import serialise_frontmatter
+        from frontmatter import serialise_frontmatter
 
         assume_dir = research_dir / "context" / "assumptions"
         assume_dir.mkdir(parents=True, exist_ok=True)
@@ -150,7 +150,7 @@ class TestCmdFalsify:
 
     def test_cascade_attenuates_confidence(self, research_dir):
         """Cascade should downgrade confidence on undermined nodes."""
-        from manage import serialise_frontmatter
+        from frontmatter import serialise_frontmatter
 
         assume_dir = research_dir / "context" / "assumptions"
         assume_dir.mkdir(parents=True, exist_ok=True)
@@ -586,7 +586,7 @@ class TestScaffoldClaim:
     def test_scaffold_claim_id_derivation(self, research_dir):
         run_manage(research_dir, "scaffold", "claim", "enrichment")
         claim_md = research_dir / "claims" / "claim-1-enrichment" / "claim.md"
-        from manage import parse_frontmatter
+        from frontmatter import parse_frontmatter
 
         meta = parse_frontmatter(claim_md.read_text())
         # claim-1-enrichment/claim -> h1-claim
@@ -788,7 +788,9 @@ class TestCmdPostVerdict:
         result = json.loads(out)
         assert result["verdict"] == "PROVEN"
         # Claim status should be updated
-        from manage import init_paths, parse_frontmatter
+        from frontmatter import parse_frontmatter
+
+        from config import init_paths
 
         init_paths(research_dir)
         claim_file = research_dir / sub_path / "claim.md"

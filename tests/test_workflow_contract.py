@@ -11,8 +11,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from manage import init_paths
 from orchestration import DEFAULT_CONFIG, detect_investigation_state, detect_state, suggest_next
+
+from config import init_paths
 
 WORKFLOW_MD = Path(__file__).resolve().parent.parent / "skills" / "methodology" / "references" / "workflow.md"
 

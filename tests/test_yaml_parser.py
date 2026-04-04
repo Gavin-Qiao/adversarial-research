@@ -1,4 +1,4 @@
-from manage import _parse_yaml_value, extract_title, get_body, parse_frontmatter
+from frontmatter import _parse_yaml_value, extract_title, get_body, parse_frontmatter
 
 
 class TestParseYamlValue:

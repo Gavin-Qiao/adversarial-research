@@ -1,4 +1,4 @@
-from manage import _yaml_val, parse_frontmatter, serialise_frontmatter
+from frontmatter import _yaml_val, parse_frontmatter, serialise_frontmatter
 
 
 class TestYamlVal:
