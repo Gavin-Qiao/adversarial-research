@@ -27,7 +27,6 @@ import os
 import re
 import sqlite3
 import sys
-import tempfile
 import textwrap
 from collections import defaultdict, deque
 from datetime import date, datetime, timezone
@@ -51,77 +50,25 @@ from frontmatter import (
     serialise_frontmatter,
 )
 
-# ---------------------------------------------------------------------------
-# Paths (set by init_paths(), called from main())
-# ---------------------------------------------------------------------------
+import config as _cfg
+from config import (
+    DEFAULT_ORCH_CONFIG,
+    PLUGIN_ROOT,
+    _atomic_write,
+    _emit_progress,
+    init_paths,
+    rel_path_from_root,
+)
 
-RESEARCH_DIR: Path = Path(".")
-DB_PATH: Path = Path(".")
-CONTEXT_DIR: Path = Path(".")
-PROGRESS_PATH: Path = Path(".")
-FOUNDATIONS_PATH: Path = Path(".")
-
-
-def init_paths(root: Path) -> None:
-    """Configure all path globals from the given research root directory."""
-    global RESEARCH_DIR, DB_PATH, CONTEXT_DIR, PROGRESS_PATH, FOUNDATIONS_PATH
-    RESEARCH_DIR = root.resolve()
-    db_dir = RESEARCH_DIR / ".db"
-    db_dir.mkdir(parents=True, exist_ok=True)
-    DB_PATH = db_dir / "research.db"
-    CONTEXT_DIR = RESEARCH_DIR / "context"
-    PROGRESS_PATH = RESEARCH_DIR / "PROGRESS.md"
-    FOUNDATIONS_PATH = RESEARCH_DIR / "FOUNDATIONS.md"
+# Re-export path globals from config so tests can do `from manage import DB_PATH` etc.
+# These are live aliases: callers that import them by name get the current config value.
+_PATH_GLOBALS = frozenset({"RESEARCH_DIR", "DB_PATH", "CONTEXT_DIR", "PROGRESS_PATH", "FOUNDATIONS_PATH"})
 
 
-def _emit_progress(
-    phase: str,
-    step: str,
-    detail: str = "",
-    total: int | None = None,
-    current: int | None = None,
-) -> None:
-    """Emit structured progress to stderr for skill-level reporting."""
-    progress: dict[str, Any] = {"type": "progress", "phase": phase, "step": step}
-    if detail:
-        progress["detail"] = detail
-    if total is not None:
-        progress["total"] = total
-        progress["current"] = current
-    print(json.dumps(progress), file=sys.stderr)
-
-
-def _atomic_write(path: Path, content: str, encoding: str = "utf-8") -> None:
-    """Write content to path atomically via temp file + os.replace().
-
-    Writes to a temporary file in the same directory, then uses
-    os.replace() which is atomic on the same filesystem.  If the write
-    or rename fails, the temp file is cleaned up and the original file
-    is left intact.
-    """
-    fd = None
-    tmp_path: Path | None = None
-    try:
-        fd = tempfile.NamedTemporaryFile(  # noqa: SIM115
-            mode="w",
-            encoding=encoding,
-            dir=path.parent,
-            suffix=".tmp",
-            delete=False,
-        )
-        tmp_path = Path(fd.name)
-        fd.write(content)
-        fd.flush()
-        os.fsync(fd.fileno())
-        fd.close()
-        fd = None
-        os.replace(tmp_path, path)
-    except BaseException:
-        if fd is not None:
-            fd.close()
-        if tmp_path is not None and tmp_path.exists():
-            tmp_path.unlink(missing_ok=True)
-        raise
+def __getattr__(name: str) -> object:
+    if name in _PATH_GLOBALS:
+        return getattr(_cfg, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -211,17 +158,12 @@ def infer_type_from_path(rel_path: str) -> str:
 def discover_md_files() -> list[Path]:
     """Find all .md files under claims/ and context/."""
     files = []
-    for root_dir in (RESEARCH_DIR / "claims", CONTEXT_DIR):
+    for root_dir in (_cfg.RESEARCH_DIR / "claims", _cfg.CONTEXT_DIR):
         if not root_dir.exists():
             continue
         for p in sorted(root_dir.rglob("*.md")):
             files.append(p)
     return files
-
-
-def rel_path_from_root(p: Path) -> str:
-    """Return path relative to the research root."""
-    return str(p.relative_to(RESEARCH_DIR))
 
 
 # ---------------------------------------------------------------------------
@@ -340,8 +282,8 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
 
 def _get_or_create_db() -> sqlite3.Connection:
     """Open (or create) the database and run migrations."""
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(DB_PATH))
+    _cfg.DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(_cfg.DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -354,9 +296,9 @@ def init_db() -> sqlite3.Connection:
     preserved_ledger: list[tuple] = []
     preserved_artifacts: list[tuple] = []
     preserved_dispatches: list[tuple] = []
-    if DB_PATH.exists():
+    if _cfg.DB_PATH.exists():
         try:
-            old = sqlite3.connect(str(DB_PATH))
+            old = sqlite3.connect(str(_cfg.DB_PATH))
             old.row_factory = sqlite3.Row
             has_agent_col = _has_column(old, "ledger", "agent")
             preserved_ledger = [
@@ -372,7 +314,7 @@ def init_db() -> sqlite3.Connection:
             old.close()
         except Exception:
             pass
-        DB_PATH.unlink()
+        _cfg.DB_PATH.unlink()
 
     conn = _get_or_create_db()
 
@@ -412,9 +354,9 @@ def cmd_new(args: argparse.Namespace) -> None:
     if not rel.endswith(".md"):
         rel += ".md"
         print(f"  (appended .md → {rel})")
-    full = (RESEARCH_DIR / rel).resolve()
+    full = (_cfg.RESEARCH_DIR / rel).resolve()
     # Prevent path traversal outside research/
-    if not str(full).startswith(str(RESEARCH_DIR.resolve())):
+    if not str(full).startswith(str(_cfg.RESEARCH_DIR.resolve())):
         print(f"ERROR: Path escapes research directory: {rel}")
         sys.exit(1)
     if full.exists():
@@ -603,7 +545,7 @@ def build_db(force: bool = False) -> sqlite3.Connection:
     Args:
         force: If True, do a full rebuild (delete DB, recreate from scratch).
     """
-    if force or not DB_PATH.exists():
+    if force or not _cfg.DB_PATH.exists():
         conn = init_db()
         return _full_build(conn)
 
@@ -927,7 +869,7 @@ def cmd_falsify(args: argparse.Namespace) -> None:
     changes: list[tuple[str, str, str]] = []
 
     # Mark the node itself as disproven
-    fpath = RESEARCH_DIR / node["file_path"]
+    fpath = _cfg.RESEARCH_DIR / node["file_path"]
     updates: dict[str, Any] = {"status": "disproven"}
     if evidence_id:
         updates["falsified_by"] = evidence_id
@@ -953,7 +895,7 @@ def cmd_falsify(args: argparse.Namespace) -> None:
 
     for dep_id, dep_fp, dep_status in affected:
         if dep_status != "disproven":
-            dep_fpath = RESEARCH_DIR / dep_fp
+            dep_fpath = _cfg.RESEARCH_DIR / dep_fp
             dep_node = conn.execute("SELECT * FROM nodes WHERE id = ?", (dep_id,)).fetchone()
             new_conf = attenuate_confidence(dep_node["confidence"] if dep_node else None)
             cascade_updates: dict[str, Any] = {"status": "weakened", "confidence": new_conf}
@@ -1018,7 +960,7 @@ def cmd_settle(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     # Mark the node as proven
-    fpath = RESEARCH_DIR / node["file_path"]
+    fpath = _cfg.RESEARCH_DIR / node["file_path"]
     if not _update_frontmatter_in_file(fpath, {"status": "proven"}):
         print(f"ERROR: Could not update file for '{node_id}' — aborting.")
         sys.exit(1)
@@ -1048,7 +990,7 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
 
     config = load_config(DEFAULT_ORCH_CONFIG)
     sub_path = args.path
-    target = RESEARCH_DIR / sub_path
+    target = _cfg.RESEARCH_DIR / sub_path
 
     verdict_file = target / "arbiter" / "results" / "verdict.md"
     if not verdict_file.exists():
@@ -1084,7 +1026,7 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
     elif verdict == "DISPROVEN" and node_id:
         node = conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
         if node and node["status"] != "disproven":
-            verdict_id = derive_id(str(verdict_file.relative_to(RESEARCH_DIR)))
+            verdict_id = derive_id(str(verdict_file.relative_to(_cfg.RESEARCH_DIR)))
             _update_frontmatter_in_file(claim_file, {"status": "disproven", "falsified_by": verdict_id})
             conn.execute("UPDATE nodes SET status = 'disproven' WHERE id = ?", (node_id,))
             changes.append(f"Disproven: {node_id} by {verdict_id}")
@@ -1094,7 +1036,7 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
 
             for dep_id, dep_fp, dep_status in cascade_targets:
                 if dep_status != "disproven":
-                    dep_fpath = RESEARCH_DIR / dep_fp
+                    dep_fpath = _cfg.RESEARCH_DIR / dep_fp
                     dep_node = conn.execute("SELECT * FROM nodes WHERE id = ?", (dep_id,)).fetchone()
                     new_conf = attenuate_confidence(dep_node["confidence"] if dep_node else None)
                     if _update_frontmatter_in_file(dep_fpath, {"status": "weakened", "confidence": new_conf}):
@@ -1112,7 +1054,7 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
 
     # Ledger entry
     today = date.today().isoformat()
-    verdict_rel = str(verdict_file.relative_to(RESEARCH_DIR)) if verdict_file.exists() else ""
+    verdict_rel = str(verdict_file.relative_to(_cfg.RESEARCH_DIR)) if verdict_file.exists() else ""
     conn.execute(
         "INSERT INTO ledger (timestamp, event, node_id, details, agent) VALUES (?, ?, ?, ?, ?)",
         (
@@ -1195,7 +1137,7 @@ def cmd_scaffold(args: argparse.Namespace) -> None:
 
     if level == "claim":
         # Flat hierarchy: claims/claim-N-name/ — no unit/sub-unit nesting
-        base = RESEARCH_DIR / "claims"
+        base = _cfg.RESEARCH_DIR / "claims"
         if not base.exists():
             base.mkdir(parents=True)
         existing = sorted(d.name for d in base.iterdir() if d.is_dir() and d.name.startswith("claim-"))
@@ -1388,8 +1330,8 @@ def cmd_status(args: argparse.Namespace) -> None:
     lines.append("")
 
     content = "\n".join(lines) + "\n"
-    _atomic_write(PROGRESS_PATH, content)
-    print(f"Generated: {PROGRESS_PATH}")
+    _atomic_write(_cfg.PROGRESS_PATH, content)
+    print(f"Generated: {_cfg.PROGRESS_PATH}")
 
 
 # ---------------------------------------------------------------------------
@@ -1454,8 +1396,8 @@ def cmd_assumptions(args: argparse.Namespace) -> None:
             lines.append("")
 
     content = "\n".join(lines) + "\n"
-    _atomic_write(FOUNDATIONS_PATH, content)
-    print(f"Generated: {FOUNDATIONS_PATH}")
+    _atomic_write(_cfg.FOUNDATIONS_PATH, content)
+    print(f"Generated: {_cfg.FOUNDATIONS_PATH}")
 
 
 # ---------------------------------------------------------------------------
@@ -1650,7 +1592,7 @@ def cmd_codebook(args: argparse.Namespace) -> None:
                 lines.append("")
 
     content = "\n".join(lines) + "\n"
-    codebook_path = RESEARCH_DIR / "TOOLKIT.md"
+    codebook_path = _cfg.RESEARCH_DIR / "TOOLKIT.md"
     _atomic_write(codebook_path, content)
     print(f"Generated: {codebook_path}")
 
@@ -1658,9 +1600,6 @@ def cmd_codebook(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 # Command: next / context / prompt (orchestration)
 # ---------------------------------------------------------------------------
-
-PLUGIN_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_ORCH_CONFIG = PLUGIN_ROOT / "config" / "orchestration.yaml"
 
 
 def cmd_log_dispatch(args: argparse.Namespace) -> None:
@@ -1725,18 +1664,18 @@ def cmd_next(args: argparse.Namespace) -> None:
     config = load_config(DEFAULT_ORCH_CONFIG)
     sub_path = args.path
     if sub_path == "auto":
-        found = find_active_subunit(RESEARCH_DIR)
+        found = find_active_subunit(_cfg.RESEARCH_DIR)
         if not found:
             print("No active claims found. Use /principia:scaffold to create one.")
             return
         sub_path = found
         print(f"Auto-detected: {sub_path}", file=sys.stderr)
 
-    state = detect_state(RESEARCH_DIR, sub_path, config)
+    state = detect_state(_cfg.RESEARCH_DIR, sub_path, config)
     state["sub_unit"] = sub_path
 
     # Enrich with dispatch mode
-    dispatch_config = read_dispatch_config(RESEARCH_DIR)
+    dispatch_config = read_dispatch_config(_cfg.RESEARCH_DIR)
     agent = state.get("agent")
     if agent:
         state["dispatch_mode"] = dispatch_config.get(agent, "internal")
@@ -1747,12 +1686,12 @@ def cmd_next(args: argparse.Namespace) -> None:
     agent = state["action"].removeprefix("dispatch_") if state["action"].startswith("dispatch_") else ""
     mr = config.get("debate_loop", {}).get("max_rounds", 3)
     state["context_files"] = list_context_files(
-        RESEARCH_DIR, sub_path, state["action"], state.get("round"), agent=agent, max_rounds=mr
+        _cfg.RESEARCH_DIR, sub_path, state["action"], state.get("round"), agent=agent, max_rounds=mr
     )
 
     # Enrich complete states with verdict confidence
     if state["action"].startswith("complete_"):
-        verdict_path = RESEARCH_DIR / sub_path / "arbiter" / "results" / "verdict.md"
+        verdict_path = _cfg.RESEARCH_DIR / sub_path / "arbiter" / "results" / "verdict.md"
         state["confidence"] = extract_confidence(verdict_path)
 
     print(json.dumps(state, indent=2))
@@ -1763,11 +1702,13 @@ def cmd_context(args: argparse.Namespace) -> None:
     from orchestration import assemble_context, detect_state, list_context_files, load_config
 
     config = load_config(DEFAULT_ORCH_CONFIG)
-    state = detect_state(RESEARCH_DIR, args.path, config)
+    state = detect_state(_cfg.RESEARCH_DIR, args.path, config)
     agent = state["action"].removeprefix("dispatch_") if state["action"].startswith("dispatch_") else ""
     mr = config.get("debate_loop", {}).get("max_rounds", 3)
-    files = list_context_files(RESEARCH_DIR, args.path, state["action"], state.get("round"), agent=agent, max_rounds=mr)
-    doc = assemble_context(RESEARCH_DIR, files)
+    files = list_context_files(
+        _cfg.RESEARCH_DIR, args.path, state["action"], state.get("round"), agent=agent, max_rounds=mr
+    )
+    doc = assemble_context(_cfg.RESEARCH_DIR, files)
     print(doc)
 
 
@@ -1783,7 +1724,7 @@ def cmd_prompt(args: argparse.Namespace) -> None:
     )
 
     config = load_config(DEFAULT_ORCH_CONFIG)
-    state = detect_state(RESEARCH_DIR, args.path, config)
+    state = detect_state(_cfg.RESEARCH_DIR, args.path, config)
     agent = state.get("agent")
     if not agent:
         print("ERROR: No agent to dispatch in current state.")
@@ -1793,8 +1734,10 @@ def cmd_prompt(args: argparse.Namespace) -> None:
     state.update(paths)
 
     mr = config.get("debate_loop", {}).get("max_rounds", 3)
-    files = list_context_files(RESEARCH_DIR, args.path, state["action"], state.get("round"), agent=agent, max_rounds=mr)
-    context = assemble_context(RESEARCH_DIR, files)
+    files = list_context_files(
+        _cfg.RESEARCH_DIR, args.path, state["action"], state.get("round"), agent=agent, max_rounds=mr
+    )
+    context = assemble_context(_cfg.RESEARCH_DIR, files)
 
     # Read agent instructions
     agent_file = PLUGIN_ROOT / "agents" / f"{agent}.md"
@@ -1805,7 +1748,7 @@ def cmd_prompt(args: argparse.Namespace) -> None:
     prompt = generate_external_prompt(state, context, instructions)
 
     # Write to prompt_path
-    prompt_path = RESEARCH_DIR / state["prompt_path"]
+    prompt_path = _cfg.RESEARCH_DIR / state["prompt_path"]
     prompt_path.parent.mkdir(parents=True, exist_ok=True)
     _atomic_write(prompt_path, prompt)
     print(f"Written: {prompt_path}")
@@ -1815,7 +1758,7 @@ def cmd_waves(args: argparse.Namespace) -> None:
     """Show execution waves based on dependency topological sort."""
     from orchestration import compute_waves
 
-    waves = compute_waves(RESEARCH_DIR)
+    waves = compute_waves(_cfg.RESEARCH_DIR)
     if not waves:
         if getattr(args, "json", False):
             print("[]")
@@ -1894,8 +1837,8 @@ def cmd_investigate_next(args: argparse.Namespace) -> None:
         # Quick mode: override to 1 debate round
         config = {**config}
         config["debate_loop"] = {**config.get("debate_loop", {}), "max_rounds": 1}
-    state = detect_investigation_state(RESEARCH_DIR, config, quick=quick)
-    state["breadcrumb"] = _format_investigation_breadcrumb(state, RESEARCH_DIR)
+    state = detect_investigation_state(_cfg.RESEARCH_DIR, config, quick=quick)
+    state["breadcrumb"] = _format_investigation_breadcrumb(state, _cfg.RESEARCH_DIR)
     print(json.dumps(state, indent=2))
 
 
@@ -1903,7 +1846,7 @@ def cmd_parse_framework(args: argparse.Namespace) -> None:
     """Parse claim registry from blueprint.md (or legacy framework.md)."""
     from orchestration import parse_framework
 
-    framework_path = RESEARCH_DIR / "blueprint.md"
+    framework_path = _cfg.RESEARCH_DIR / "blueprint.md"
     claims = parse_framework(framework_path)
     if not claims:
         print("No claim registry found in blueprint.md.")
@@ -1926,7 +1869,7 @@ def cmd_results(args: argparse.Namespace) -> None:
     # --- Original question/principle ---
     # Try to read from blueprint or framework
     for name in ("blueprint.md",):
-        bp = RESEARCH_DIR / name
+        bp = _cfg.RESEARCH_DIR / name
         if bp.exists():
             body = get_body(bp.read_text(encoding="utf-8"))
             # Extract first paragraph as the principle
@@ -1947,7 +1890,7 @@ def cmd_results(args: argparse.Namespace) -> None:
     lines.append("## Claims")
     lines.append("")
 
-    claims_dir = RESEARCH_DIR / "claims"
+    claims_dir = _cfg.RESEARCH_DIR / "claims"
 
     # Gather all verdict nodes
     verdicts = conn.execute("SELECT id, status, confidence FROM nodes WHERE type = 'verdict' ORDER BY id").fetchall()
@@ -1968,7 +1911,7 @@ def cmd_results(args: argparse.Namespace) -> None:
             if not search_dir.exists():
                 continue
             for verdict_file in sorted(search_dir.rglob("verdict.md")):
-                rel = str(verdict_file.relative_to(RESEARCH_DIR))
+                rel = str(verdict_file.relative_to(_cfg.RESEARCH_DIR))
                 text = verdict_file.read_text(encoding="utf-8")
                 meta = parse_frontmatter(text)
                 body_preview = get_body(text).strip().splitlines()[:3]
@@ -1986,7 +1929,7 @@ def cmd_results(args: argparse.Namespace) -> None:
         lines.append("")
 
     # --- Synthesis ---
-    synthesis = RESEARCH_DIR / "synthesis.md"
+    synthesis = _cfg.RESEARCH_DIR / "synthesis.md"
     if synthesis.exists():
         lines.append("## Synthesis")
         lines.append("")
@@ -1995,7 +1938,7 @@ def cmd_results(args: argparse.Namespace) -> None:
         lines.append("")
 
     # --- Composition ---
-    composition = RESEARCH_DIR / "composition.md"
+    composition = _cfg.RESEARCH_DIR / "composition.md"
     if composition.exists():
         lines.append("## Composed Algorithm")
         lines.append("")
@@ -2036,7 +1979,7 @@ def cmd_results(args: argparse.Namespace) -> None:
 
     # --- Write ---
     content = "\n".join(lines) + "\n"
-    results_path = RESEARCH_DIR / "RESULTS.md"
+    results_path = _cfg.RESEARCH_DIR / "RESULTS.md"
     _atomic_write(results_path, content)
     print(f"Generated: {results_path}")
 
@@ -2171,10 +2114,10 @@ def cmd_dashboard(args: argparse.Namespace) -> None:
     conn = build_db()
 
     # Investigation state
-    inv_state = detect_investigation_state(RESEARCH_DIR, config)
+    inv_state = detect_investigation_state(_cfg.RESEARCH_DIR, config)
     phase = inv_state.get("phase", "unknown")
     action = inv_state.get("action", "unknown")
-    breadcrumb = _format_investigation_breadcrumb(inv_state, RESEARCH_DIR)
+    breadcrumb = _format_investigation_breadcrumb(inv_state, _cfg.RESEARCH_DIR)
 
     # Active claim
     active_claim = inv_state.get("sub_unit")
@@ -2257,7 +2200,7 @@ def cmd_reopen(args: argparse.Namespace) -> None:
     old_status = node["status"]
 
     # Update frontmatter
-    fpath = RESEARCH_DIR / node["file_path"]
+    fpath = _cfg.RESEARCH_DIR / node["file_path"]
     if not _update_frontmatter_in_file(fpath, {"status": "active"}):
         print(f"ERROR: Could not update file for '{node_id}' — aborting.")
         sys.exit(1)
@@ -2286,7 +2229,7 @@ def cmd_reopen(args: argparse.Namespace) -> None:
 def cmd_replace_verdict(args: argparse.Namespace) -> None:
     """Delete existing verdict and reset claim to experimenter-done state."""
     sub_path = args.path
-    target = RESEARCH_DIR / sub_path
+    target = _cfg.RESEARCH_DIR / sub_path
 
     if not target.exists():
         print(f"ERROR: Path not found: {target}")
@@ -2299,7 +2242,7 @@ def cmd_replace_verdict(args: argparse.Namespace) -> None:
 
     # Remove verdict file
     verdict_file.unlink()
-    print(f"Removed: {verdict_file.relative_to(RESEARCH_DIR)}")
+    print(f"Removed: {verdict_file.relative_to(_cfg.RESEARCH_DIR)}")
 
     # Remove post-verdict marker
     marker = target / ".post_verdict_done"
@@ -2328,7 +2271,7 @@ def cmd_replace_verdict(args: argparse.Namespace) -> None:
 
 def cmd_extend_debate(args: argparse.Namespace) -> None:
     """Extend max debate rounds for a specific claim."""
-    target = RESEARCH_DIR / args.path
+    target = _cfg.RESEARCH_DIR / args.path
     if not target.exists():
         print(f"ERROR: Path not found: {target}")
         sys.exit(1)
