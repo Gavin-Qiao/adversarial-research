@@ -1,80 +1,104 @@
 ---
 name: help
-description: Show an overview of what Principia can do and how to get started. Use when the user asks for help, asks what commands are available, or seems unsure how to use the plugin.
+description: Show an overview of what Principia can do and how to get started. Adapts to the current project state. Use when the user asks for help, asks what commands are available, or seems unsure how to use the plugin.
+allowed-tools:
+  - Bash
+  - Read
 ---
 
 # Principia Help
 
-Present this guide to the user:
+Adapt the help output to the user's current project state.
 
----
+## Step 1: Detect State
 
-**Principia** turns a philosophical principle into a working algorithm through adversarial testing.
+Check the current project:
 
-## Getting Started
-
+```bash
+if [ -d design ]; then
+  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design investigate-next 2>/dev/null
+  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design autonomy-config 2>/dev/null
+fi
 ```
-/principia:init "Your project title"
-/principia:design "Your principle or insight here"
-```
 
-That's it. Principia runs 4 phases automatically:
+Also check if `design/.config.md` exists and whether any agents are set to `external`.
 
-1. **Understand** -- refines your principle, surveys the research landscape
-2. **Divide** -- decomposes into testable claims with dependency ordering
-3. **Test** -- each claim goes through adversarial debate, then empirical experiment, then verdict
-4. **Synthesize** -- composes surviving claims into a unified theory
+## Step 2: Present Help
 
-Add `--quick` for a fast single-claim investigation (1 debate round, no deep research).
+Based on what you found, present ONE of these variants:
 
-## Commands
+### If no `design/` directory exists:
+
+> **Principia** turns a philosophical principle into a working algorithm through adversarial testing.
+>
+> To get started:
+> ```
+> /principia:init "Your project title"
+> /principia:design "Your principle or insight here"
+> ```
+>
+> This runs 4 phases: **Understand** (refine + research) > **Divide** (decompose into claims) > **Test** (debate + experiment per claim) > **Synthesize** (compose surviving theory).
+>
+> Add `--quick` for a fast single-claim investigation.
+
+Then show the full commands table and agents list from the reference section below.
+
+### If `design/` exists and investigation is active:
+
+Show a **status-first** response:
+
+1. **Where you are**: Read the `breadcrumb` and `action` from `investigate-next` output. Tell the user: "You're in **[phase]**. Next action: **[action]**."
+2. **How to continue**: Based on the action:
+   - `understand` → "Run `/principia:design` to continue, or `/principia:step` for manual control."
+   - `divide` / `scaffold` → "Run `/principia:step` to scaffold claims, or `/principia:design` to continue automatically."
+   - `test_claim` → "Run `/principia:step` to test the next claim, or `/principia:design` to run all remaining claims."
+   - `synthesize` → "Run `/principia:step` to synthesize, or `/principia:design` to finish automatically."
+   - `complete` → "Investigation complete! Run `/principia:status` to see results, or read `design/RESULTS.md`."
+3. **Current config**: Report autonomy mode (checkpoints/yolo) and whether any agents are external.
+4. **Quick reference**: Show the commands table below.
+
+### If `design/` exists but investigation is complete:
+
+> Your investigation is **complete**. See `design/RESULTS.md` for the full summary.
+>
+> To start a new investigation, remove or rename the `design/` directory and run `/principia:init`.
+
+Then show the commands table.
+
+## Reference (always available)
+
+### Commands
 
 | Command | What it does |
 |---------|-------------|
 | `/principia:init [title]` | Set up a new design project |
 | `/principia:design "<principle>"` | Full pipeline: principle to algorithm |
 | `/principia:design "<principle>" --quick` | Quick mode: 1 round, 1 claim, fast results |
-| `/principia:step` | Advance one step manually (for fine-grained control) |
-| `/principia:status` | Show current progress, blockers, and proven claims |
+| `/principia:step` | Advance one step manually |
+| `/principia:status` | Show current progress and blockers |
 | `/principia:impact <id>` | Preview: what breaks if this claim is disproven? |
-| `/principia:query "<sql>"` | Query the evidence database directly |
-| `/principia:methodology` | Reference: how the design methodology works |
+| `/principia:query "<sql>"` | Query the evidence database |
+| `/principia:methodology` | Reference: how the methodology works |
 | `/principia:help` | This guide |
 
-## Agents
+### Agents
 
-Principia uses 8 agents:
+| Agent | Role | Phases |
+|-------|------|--------|
+| **@architect** | Proposes designs (no codebase access) | Test |
+| **@adversary** | Finds flaws and counterexamples (no codebase access) | Test |
+| **@experimenter** | Tests claims with code and data | Test |
+| **@arbiter** | Evaluates evidence, renders verdict | Test |
+| **@conductor** | Orchestrates full claim cycles | Test |
+| **@synthesizer** | Decomposes principles and unifies findings | Divide, Synthesize |
+| **@scout** | Surveys prior art and literature | Understand, Test |
+| **@deep-thinker** | Hard math/theory reasoning | Any phase |
 
-- **@architect** -- proposes designs (no codebase access, reasons from theory)
-- **@adversary** -- attacks designs (no codebase access, finds flaws)
-- **@experimenter** -- tests claims empirically with real code
-- **@arbiter** -- evaluates all evidence and renders verdict
-- **@conductor** -- orchestrates a full claim cycle automatically
-- **@synthesizer** -- decomposes principles into claims (Divide) and unifies findings (Synthesize)
-- **@scout** -- surveys prior art and literature
-- **@deep-thinker** -- hard math/theory reasoning (available in any phase)
+### Modes
 
-## Modes
+| Mode | Behavior | Config |
+|------|----------|--------|
+| **Checkpoints** (default) | Pauses between phases for your input | `autonomy.mode: checkpoints` |
+| **Yolo** | Fully automated, for overnight runs | `autonomy.mode: yolo` |
 
-- **Checkpoints** (default): pauses between phases for your input
-- **Yolo**: runs fully automated, designed for overnight runs. Set `autonomy.mode: yolo` in `config/orchestration.yaml`
-
-## Tips
-
-- Start with `/principia:design` for the full experience
-- Use `--quick` if you have a focused question and want a fast answer
-- Use `/principia:step` if you want to control each agent dispatch manually
-- Use `/principia:status` any time to see where things stand
-- The conductor can extend debate rounds if the adversary keeps finding serious flaws
-- Every state change is tracked in the research log -- your investigation history is never lost
-
-## Example
-
-```
-/principia:init "Topological Enrichment"
-/principia:design "Persistent homology captures information that clustering
-algorithms discard. An algorithm that preserves topological features during
-hierarchical merging should produce more faithful cluster boundaries."
-```
-
-For more details, see the [README](https://github.com/Gavin-Qiao/principia).
+Autonomy is configured in `config/orchestration.yaml`. Agent dispatch mode (internal vs external) is in `design/.config.md`.
