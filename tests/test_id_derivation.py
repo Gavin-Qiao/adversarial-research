@@ -1,4 +1,4 @@
-from manage import derive_id, infer_type_from_path
+from ids import derive_id, infer_type_from_path
 
 
 class TestDeriveId:
