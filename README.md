@@ -4,7 +4,7 @@
 
 **Turn a philosophical principle into a working algorithm through rigorous adversarial testing.**
 
-[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/Gavin-Qiao/principia/releases)
+[![Version](https://img.shields.io/badge/version-0.3.1-blue.svg)](https://github.com/Gavin-Qiao/principia/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-373_passing-brightgreen.svg)]()
@@ -12,7 +12,7 @@
 
 You start with an insight. Principia decomposes it into testable claims, stress-tests each through structured debate and empirical experiments, and composes the surviving pieces into a theory you can build on.
 
-[Installation](#installation) | [Quick Start](#quick-start) | [How It Works](#how-it-works) | [Commands](#commands) | [Configuration](#configuration)
+[Installation](#installation) | [Quick Start](#quick-start) | [How It Works](#how-it-works) | [Agents](#agents) | [Commands](#commands) | [Configuration](#configuration)
 
 </div>
 
@@ -20,9 +20,16 @@ You start with an insight. Principia decomposes it into testable claims, stress-
 
 ## Installation
 
+Inside Claude Code:
+
+```
+/plugin marketplace add github.com/Gavin-Qiao/principia
+/plugin install principia
+```
+
+Or for local development:
+
 ```bash
-claude plugin install principia
-# or
 claude --plugin-dir /path/to/principia
 ```
 
@@ -41,9 +48,9 @@ That's it. Principia runs four phases automatically:
 
 ```mermaid
 graph LR
-    U["<b>Understand</b><br/>Refine principle<br/>Survey landscape"] --> D["<b>Divide</b><br/>Decompose into<br/>testable claims"]
-    D --> T["<b>Test</b><br/>Debate + experiment<br/>per claim"]
-    T --> S["<b>Synthesize</b><br/>Compose surviving<br/>claims into theory"]
+    U["<b>1. Understand</b><br/>Refine principle<br/>Survey landscape"] --> D["<b>2. Divide</b><br/>Decompose into<br/>testable claims"]
+    D --> T["<b>3. Test</b><br/>Debate + experiment<br/>per claim"]
+    T --> S["<b>4. Synthesize</b><br/>Compose surviving<br/>claims into theory"]
 
     style U fill:#e8f4fd,stroke:#2196f3
     style D fill:#fff3e0,stroke:#ff9800
@@ -62,44 +69,49 @@ flowchart TD
     P["User's Principle"] --> U
 
     subgraph U ["Phase 1: Understand"]
-        U1[Discuss & refine] --> U2[Inspect codebase]
-        U2 --> U3["@scout surveys literature"]
+        U1["Discuss & refine<br/><i>with user</i>"] --> U2["Inspect codebase"]
+        U2 --> U3["<b>@scout</b> surveys literature"]
+        U3 -.-> DT1["<b>@deep-thinker</b><br/><i>if hard math questions arise</i>"]
     end
 
     U --> D
 
     subgraph D ["Phase 2: Divide"]
-        D1["@synthesizer decomposes<br/>principle into claims"] --> D2[Scaffold claim directories]
-        D2 --> D3[Dependency graph computed]
+        D1["<b>@synthesizer</b> decomposes<br/>principle into claims"] --> D2["Scaffold claim directories"]
+        D2 --> D3["Dependency graph computed"]
+        D1 -.-> DT2["<b>@deep-thinker</b><br/><i>if decomposition needs<br/>theoretical grounding</i>"]
     end
 
     D --> T
 
     subgraph T ["Phase 3: Test"]
-        T1["For each claim<br/>(respecting waves)"]
+        T1["For each claim<br/><i>(respecting dependency waves)</i>"]
         T1 --> DEBATE
-        DEBATE --> EXP["@experimenter<br/>runs empirical test"]
-        EXP --> VERDICT["@arbiter<br/>renders verdict"]
-        VERDICT -->|more claims| T1
+        DEBATE --> EXP["<b>@experimenter</b><br/>runs empirical test"]
+        EXP --> VERDICT["<b>@arbiter</b><br/>renders verdict"]
+        VERDICT -->|"more claims"| T1
     end
 
     T --> S
 
     subgraph S ["Phase 4: Synthesize"]
-        S1["@synthesizer composes<br/>composition.md + synthesis.md"]
-        S1 --> S2[Generate RESULTS.md]
+        S1["<b>@synthesizer</b> composes<br/>composition.md + synthesis.md"]
+        S1 --> S2["Generate RESULTS.md"]
+        S1 -.-> DT3["<b>@deep-thinker</b><br/><i>if conflicting verdicts need<br/>mathematical reconciliation</i>"]
     end
 
-    subgraph DEBATE ["Adversarial Debate"]
-        A1["@architect proposes"] --> A2["@adversary attacks"]
+    subgraph DEBATE ["Adversarial Debate (1-3+ rounds)"]
+        A1["<b>@architect</b> proposes"] --> A2["<b>@adversary</b> attacks"]
         A2 -->|"fatal / serious"| A1
         A2 -->|"minor / none"| EXIT(("Exit"))
     end
+
+    T -.-> SCO["<b>@scout</b><br/><i>mid-debate prior art<br/>if debate stalls</i>"]
 ```
 
 ### Per-Claim Debate Loop
 
-Each claim goes through an adversarial cycle. The conductor can extend debate rounds if the adversary is still finding serious flaws and the architect is making real progress.
+Each claim goes through an adversarial cycle. The `@conductor` orchestrates the full loop and can extend debate rounds if the adversary is still finding serious flaws.
 
 ```mermaid
 stateDiagram-v2
@@ -165,40 +177,37 @@ graph TD
 
 ## Agents
 
-```mermaid
-graph TB
-    subgraph "Debate Agents (no codebase access)"
-        ARCH["@architect<br/><i>Opus</i><br/>Proposes designs"]
-        ADV["@adversary<br/><i>Opus</i><br/>Finds flaws"]
-    end
+Principia uses 8 specialized agents. Each has a specific role and constrained access to prevent bias.
 
-    subgraph "Empirical"
-        EXP["@experimenter<br/><i>Sonnet</i><br/>Tests with code"]
-    end
+### Agent-Phase Map
 
-    subgraph "Judgment"
-        ARB["@arbiter<br/><i>Opus</i><br/>Renders verdicts"]
-    end
+| Agent | Role | Understand | Divide | Test | Synthesize |
+|-------|------|:----------:|:------:|:----:|:----------:|
+| **@architect** | Proposes designs from first principles | | | proposes | |
+| **@adversary** | Finds flaws, counterexamples, edge cases | | | attacks | |
+| **@experimenter** | Tests claims with code and synthetic data | | | experiments | |
+| **@arbiter** | Evaluates evidence, renders verdict | | | judges | |
+| **@conductor** | Orchestrates full claim cycles | | | orchestrates | |
+| **@synthesizer** | Decomposes and unifies | | decomposes | | unifies |
+| **@scout** | Surveys prior art and failure cases | surveys | | prior art | |
+| **@deep-thinker** | Hard math/theory reasoning | on demand | on demand | on demand | on demand |
 
-    subgraph "Orchestration"
-        CON["@conductor<br/><i>Opus</i><br/>Runs full cycles"]
-        SYN["@synthesizer<br/><i>Opus</i><br/>Decomposes & unifies"]
-    end
+| Agent | Model | Access |
+|-------|-------|--------|
+| **@architect** | Opus | No codebase (isolated to prevent anchoring) |
+| **@adversary** | Opus | No codebase (isolated to prevent anchoring) |
+| **@experimenter** | Sonnet | Full codebase access |
+| **@arbiter** | Opus | Read-only codebase |
+| **@conductor** | Opus | Full access + Agent tool |
+| **@synthesizer** | Opus | No codebase (isolated) |
+| **@scout** | Sonnet | Web search + read access |
+| **@deep-thinker** | Opus | Web search |
 
-    subgraph "Support (any phase)"
-        SCO["@scout<br/><i>Sonnet</i><br/>Prior art survey"]
-        DT["@deep-thinker<br/><i>Opus</i><br/>Hard math/theory"]
-    end
+**Isolation matters**: The architect and adversary have **no codebase access** to prevent anchoring bias. They reason purely from provided context. The experimenter has full access because it needs to write and run code.
 
-    CON -->|dispatches| ARCH
-    CON -->|dispatches| ADV
-    CON -->|dispatches| EXP
-    CON -->|dispatches| ARB
-    CON -.->|side-channel| SCO
-    CON -.->|side-channel| DT
-```
+**Anti-convergence**: The conductor monitors for **sycophancy** (architect conceding without new evidence, adversary downgrading severity without justification) and injects counter-evidence via `@scout` when agents agree too quickly.
 
-The architect and adversary have **no codebase access** -- isolated to prevent anchoring bias. The conductor monitors for **sycophancy** (premature agreement) and can extend debate or inject counter-evidence via scout.
+**Knowledge divergence**: The conductor gives architect and adversary **different prior art** — positive results to the architect, failure cases to the adversary — to prevent premature agreement.
 
 ## Commands
 
@@ -229,7 +238,7 @@ The architect and adversary have **no codebase access** -- isolated to prevent a
 
 ### Autonomy
 
-By default, Principia pauses at each phase transition for confirmation. Set **yolo mode** to run fully automated (e.g., overnight):
+By default, Principia pauses at each phase transition for confirmation. Set **yolo mode** for fully autonomous runs (e.g., overnight):
 
 ```yaml
 # config/orchestration.yaml
@@ -332,6 +341,7 @@ confidence: high | moderate | low
 | **Severity** | Adversary's rating (Fatal/Serious/Minor/None) -- determines debate continuation |
 | **Falsification** | Pre-registered criterion that would disprove a claim |
 | **Anti-convergence** | Protocol that detects premature agent agreement and injects counter-evidence |
+| **Knowledge divergence** | Giving architect and adversary different prior art to prevent convergence |
 
 ## Development
 
