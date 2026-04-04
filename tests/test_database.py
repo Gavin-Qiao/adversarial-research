@@ -1,12 +1,12 @@
-from manage import (
+from db import (
     _find_cascade_targets,
     _parse_and_upsert,
     _update_frontmatter_in_file,
     build_db,
     discover_md_files,
     init_db,
-    parse_frontmatter,
 )
+from frontmatter import parse_frontmatter
 
 
 class TestInitDb:

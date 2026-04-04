@@ -6,7 +6,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from manage import build_db, init_paths, serialise_frontmatter
+from db import build_db
+from frontmatter import serialise_frontmatter
+
+from config import init_paths
 
 # ---------------------------------------------------------------------------
 # Basic fixtures (backward-compatible with existing tests)

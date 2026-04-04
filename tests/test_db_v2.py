@@ -6,14 +6,15 @@ import sqlite3
 import time
 from pathlib import Path
 
-from manage import (
+from db import (
     _get_or_create_db,
     _get_schema_version,
     _migrate_db,
     build_db,
-    init_paths,
-    serialise_frontmatter,
 )
+from frontmatter import serialise_frontmatter
+
+from config import init_paths
 
 
 def _insert_artifact(
