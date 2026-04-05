@@ -933,7 +933,11 @@ def cmd_dashboard(args: argparse.Namespace) -> None:
 
 
 def cmd_reopen(args: argparse.Namespace) -> None:
-    """Reopen a completed claim for further investigation."""
+    """Re-evaluate a completed claim by deleting its verdict and resetting to active.
+
+    The claim's debate and experiment artifacts are preserved. The state machine
+    will route to dispatch_arbiter (re-verdict), not back to debate.
+    """
     conn = build_db()
     node_id = args.id
 
@@ -995,7 +999,9 @@ def cmd_replace_verdict(args: argparse.Namespace) -> None:
         print(f"ERROR: No verdict file found at {verdict_file}")
         sys.exit(1)
 
-    # If claim was disproven, revert the entire cascade (transitive)
+    # If claim was disproven, revert cascade — but only for nodes whose
+    # SOLE reason for being weakened is this claim.  A node that depends
+    # on two disproven claims must stay weakened until both are reverted.
     claim_file = target / "claim.md"
     if claim_file.exists():
         claim_meta = parse_frontmatter(claim_file.read_text(encoding="utf-8"))
@@ -1003,14 +1009,25 @@ def cmd_replace_verdict(args: argparse.Namespace) -> None:
             conn = build_db()
             node_id = claim_meta.get("id")
             if node_id:
-                # _find_cascade_targets returns all transitive dependents
                 affected = _find_cascade_targets(conn, node_id)
                 for dep_id, fp, status in affected:
-                    if status == "weakened":
-                        wp = _cfg.RESEARCH_DIR / fp
-                        if wp.exists():
-                            _update_frontmatter_in_file(wp, {"status": "pending", "confidence": ""})
-                            print(f"Reverted: {dep_id} weakened → pending (confidence reset)")
+                    if status != "weakened":
+                        continue
+                    # Check for other live disproven dependencies
+                    other_disproven = conn.execute(
+                        "SELECT COUNT(*) as c FROM edges e "
+                        "JOIN nodes n ON n.id = e.target_id "
+                        "WHERE e.source_id = ? AND e.relation IN ('depends_on', 'assumes') "
+                        "AND n.status = 'disproven' AND n.id != ?",
+                        (dep_id, node_id),
+                    ).fetchone()["c"]
+                    if other_disproven > 0:
+                        print(f"Kept: {dep_id} still weakened (other disproven dependencies)")
+                        continue
+                    wp = _cfg.RESEARCH_DIR / fp
+                    if wp.exists():
+                        _update_frontmatter_in_file(wp, {"status": "pending", "confidence": ""})
+                        print(f"Reverted: {dep_id} weakened → pending (confidence reset)")
         # Clear falsified_by from frontmatter and reset to active
         updates: dict[str, str] = {"status": "active"}
         if claim_meta.get("falsified_by"):

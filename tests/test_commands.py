@@ -919,6 +919,69 @@ class TestReplaceVerdictCascadeRevert:
         assert root_meta["status"] == "active"
         assert not root_meta.get("falsified_by")
 
+    def test_multi_disproval_preserves_other_weakening(self, research_dir):
+        """Regression: node depending on two disproven claims stays weakened when only one is reverted."""
+        from frontmatter import parse_frontmatter
+
+        from config import init_paths
+
+        init_paths(research_dir)
+
+        def _make_disproven_claim(name, claim_num):
+            d = research_dir / "claims" / f"claim-{claim_num}-{name}"
+            d.mkdir(parents=True)
+            for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+                (d / role).mkdir()
+            (d / "claim.md").write_text(
+                f"---\nid: h{claim_num}-{name}\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# {name}\n"
+            )
+            (d / "architect" / "round-1").mkdir()
+            (d / "architect" / "round-1" / "result.md").write_text(
+                "---\nid: a\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# P\n"
+            )
+            (d / "adversary" / "round-1").mkdir()
+            (d / "adversary" / "round-1" / "result.md").write_text(
+                "---\nid: r\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# A\n\n**Severity**: Minor\n"
+            )
+            (d / "experimenter" / "results").mkdir()
+            (d / "experimenter" / "results" / "output.md").write_text(
+                "---\nid: e\ntype: evidence\nstatus: active\ndate: 2026-01-01\n---\n\n# R\n"
+            )
+            (d / "arbiter" / "results").mkdir()
+            (d / "arbiter" / "results" / "verdict.md").write_text(
+                "---\nid: v\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n"
+                "**Verdict**: DISPROVEN\n**Confidence**: high\n"
+            )
+            return f"claims/claim-{claim_num}-{name}"
+
+        # Two independent disproven claims
+        path_a = _make_disproven_claim("alpha", 1)
+        path_b = _make_disproven_claim("beta", 2)
+
+        # A dependent that depends on BOTH
+        dep = research_dir / "claims" / "claim-3-dep"
+        dep.mkdir(parents=True)
+        (dep / "claim.md").write_text(
+            "---\nid: h3-dep\ntype: claim\nstatus: active\ndate: 2026-01-01\n"
+            "depends_on: [h1-alpha, h2-beta]\n---\n\n# Dep\n"
+        )
+
+        # Disprove both
+        run_manage(research_dir, "build")
+        run_manage(research_dir, "post-verdict", path_a)
+        run_manage(research_dir, "post-verdict", path_b)
+
+        dep_meta = parse_frontmatter((dep / "claim.md").read_text())
+        assert dep_meta["status"] == "weakened"
+
+        # Revert only alpha — dep should STAY weakened because beta is still disproven
+        run_manage(research_dir, "replace-verdict", path_a)
+
+        dep_meta = parse_frontmatter((dep / "claim.md").read_text())
+        assert dep_meta["status"] == "weakened", (
+            f"dep should stay weakened (beta still disproven), got {dep_meta['status']}"
+        )
+
 
 class TestBreadcrumb:
     def test_understand_breadcrumb(self, research_dir):

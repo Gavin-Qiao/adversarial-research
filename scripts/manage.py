@@ -134,7 +134,7 @@ def main() -> None:
     p_settle.set_defaults(func=cmd_settle)
 
     # reopen
-    p_reopen = sub.add_parser("reopen", help="Reopen a completed claim for further investigation")
+    p_reopen = sub.add_parser("reopen", help="Delete verdict and reset claim to active for re-evaluation")
     p_reopen.add_argument("id", help="Node ID to reopen")
     p_reopen.set_defaults(func=cmd_reopen)
 
