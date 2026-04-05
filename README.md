@@ -1,33 +1,24 @@
-<div align="center">
+# Principia
 
-# principia
+Principia turns a philosophical principle into a working algorithm through rigorous adversarial testing. You start with an insight, Principia decomposes it into testable claims, stress-tests each through structured debate and empirical experiments, and composes the surviving pieces into a theory you can build on.
 
-**Turn a philosophical principle into a working algorithm through rigorous adversarial testing.**
+| Claude | Codex |
+| --- | --- |
+| [plugins/claude/README.md](plugins/claude/README.md) | [plugins/codex/README.md](plugins/codex/README.md) |
 
-[![Version](https://img.shields.io/badge/version-0.4.0a2-blue.svg)](https://github.com/Gavin-Qiao/principia/releases)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-432_passing-brightgreen.svg)]()
-[![Claude Code](https://img.shields.io/badge/Claude_Code-plugin-blueviolet.svg)](https://docs.anthropic.com/en/docs/claude-code)
-
-You start with an insight. Principia decomposes it into testable claims, stress-tests each through structured debate and empirical experiments, and composes the surviving pieces into a theory you can build on.
+Use the chooser above to pick the canonical plugin bundle for your agent surface. Both bundles run against the same packaged Principia runtime under `principia/`. A full Principia checkout remains the install surface for both because the bundles depend on `principia/`, `agents/`, and `config/`.
 
 [Installation](#installation) | [Quick Start](#quick-start) | [How It Works](#how-it-works) | [Agents](#agents) | [Commands](#commands) | [Configuration](#configuration) | [Changelog](CHANGELOG.md)
 
-</div>
-
----
-
 ## Installation
 
-Choose a harness after you clone this repository.
+Principia ships as a full repository checkout with one shared packaged runtime under `principia/`. Pick the canonical plugin bundle that matches your agent surface:
 
-- [Claude harness](harnesses/claude/README.md)
-- [Codex harness](harnesses/codex/README.md)
+| Claude | Codex |
+| --- | --- |
+| [plugins/claude/README.md](plugins/claude/README.md) | [plugins/codex/README.md](plugins/codex/README.md) |
 
-Principia keeps one shared Python engine in this repo and exposes it through harness-specific wrappers. The Claude harness continues to use the repo's Claude-facing agent, skill, and hook layout. The Codex harness uses the repo-local plugin under `harnesses/codex/` and must be used from a full Principia checkout, because it depends on shared repo content such as `principia/`, `agents/`, and `config/`.
-
-The packaged Python distribution now bundles the shared `agents/` instructions and `config/orchestration.yaml`, so package-only imports can still generate prompts and load orchestration config without a repo-shaped checkout. The `PrincipiaEngine` API is instance-bound per workspace root, so separate engine instances can operate on different workspaces without rebinding global path state.
+Both bundles run against the same Principia runtime and shared repo content. The Claude bundle is the Claude Code surface. The Codex bundle is the repo-local plugin surface. A full Principia checkout remains the install surface for both because the bundles depend on `principia/`, `agents/`, and `config/`.
 
 Requires **Python 3.10+** (stdlib only -- no pip packages at runtime).
 

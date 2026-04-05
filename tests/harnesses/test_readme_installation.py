@@ -1,14 +1,17 @@
 from pathlib import Path
 
 
-def test_readme_mentions_harness_selection() -> None:
+def test_readme_opening_mentions_plugin_bundle_choice() -> None:
     text = Path("README.md").read_text()
+    opening = text.split("## Installation", 1)[0]
 
-    assert "Choose a harness" in text
-    assert "harnesses/claude/README.md" in text
-    assert "harnesses/codex/README.md" in text
+    assert "plugins/claude/README.md" in opening
+    assert "plugins/codex/README.md" in opening
+    assert "harnesses/claude/README.md" not in opening
+    assert "harnesses/codex/README.md" not in opening
+    assert "same packaged Principia runtime under `principia/`" in opening
+    assert "full Principia checkout" in opening
     assert "CHANGELOG.md" in text
-    assert "shared Python engine" in text
     assert "full Principia checkout" in text
 
 
@@ -21,13 +24,14 @@ def test_changelog_tracks_recent_releases() -> None:
     assert "### Fixes" in text
 
 
-def test_claude_harness_readme_describes_repo_model() -> None:
-    text = Path("harnesses/claude/README.md").read_text()
+def test_claude_bundle_readme_describes_canonical_surface() -> None:
+    text = Path("plugins/claude/README.md").read_text()
 
-    assert "shared Principia engine" in text
-    assert "agents/" in text
-    assert "skills/" in text
-    assert "hooks/" in text
+    assert "Principia Claude Bundle" in text
+    assert "Canonical Claude Code plugin bundle" in text
+    assert "plugins/claude" in text
+    assert "full Principia checkout" in text
+    assert "canonical Claude bundle lives under" in text
 
 
 def test_codex_bundle_readme_describes_native_wrapper() -> None:
