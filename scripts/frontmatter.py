@@ -1,5 +1,6 @@
-import sys
-
 from principia.core import frontmatter as _frontmatter
+from principia.core.frontmatter import *  # noqa: F403
 
-sys.modules[__name__] = _frontmatter
+
+def __getattr__(name: str) -> object:
+    return getattr(_frontmatter, name)
