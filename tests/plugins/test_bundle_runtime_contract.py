@@ -33,11 +33,7 @@ def test_claude_bundle_uses_packaged_manage_entrypoint() -> None:
 
 
 def test_claude_bundle_has_no_legacy_manage_references() -> None:
-    bundle_text_files = [
-        path
-        for path in BUNDLE_ROOT.rglob("*")
-        if path.is_file() and path.suffix in {".md", ".json"}
-    ]
+    bundle_text_files = [path for path in BUNDLE_ROOT.rglob("*") if path.is_file() and path.suffix in {".md", ".json"}]
 
     for path in bundle_text_files:
         text = path.read_text()

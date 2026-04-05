@@ -4,6 +4,36 @@ All notable changes to this project are documented in this file.
 
 The format is inspired by Keep a Changelog, but organized around the release-note sections used for Principia releases: Features, Changed, Fixes, Docs, Packaging, Upgrade Notes, and Verification.
 
+## [0.4.0b1] - 2026-04-05
+
+### Features
+
+- Added built-distribution verification for the packaged Principia runtime, including wheel install coverage for the Codex runner and bundled agent/config assets.
+
+### Changed
+
+- Clarified the canonical install surfaces for both plugin bundles: Claude via `plugins/claude` and Codex via the repo-local marketplace entry targeting `plugins/codex`.
+
+### Docs
+
+- Rewrote the installation sections in the top-level README and both bundle READMEs around the currently verified local install and smoke-test flows.
+
+### Packaging
+
+- Bumped Principia, Codex plugin, and Claude plugin metadata to `0.4.0b1`.
+
+### Upgrade Notes
+
+- Treat `0.4.0b1` as the first beta aimed at real-project validation from a full repository checkout.
+
+### Verification
+
+- `uv run ruff check scripts/ tests/ principia`
+- `uv run ruff format --check scripts/ tests/`
+- `uv run python -m mypy scripts/`
+- `uv run python -m pytest tests/ -q`
+- `447 passed`
+
 ## [0.4.0a3] - 2026-04-05
 
 ### Changed

@@ -4,6 +4,12 @@ Canonical repo-local `plugins/codex` bundle for Principia.
 
 Install Principia in Codex from the canonical `plugins/codex` surface inside a full Principia checkout.
 
+## Local marketplace install
+
+The repository publishes a repo-local Codex marketplace entry at `.agents/plugins/marketplace.json`, with `source.path` set to `./plugins/codex`.
+
+Open the full Principia checkout in Codex, then install the `principia` plugin from the repo-local marketplace. This keeps the Codex bundle aligned with the official `plugins/<name>` structure while still using the shared runtime from the checkout.
+
 This bundle is Codex-native. It uses the packaged runner to talk to the shared Principia engine:
 
 ```bash

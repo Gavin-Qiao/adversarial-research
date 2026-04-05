@@ -4,6 +4,16 @@ Canonical Claude Code plugin bundle for Principia.
 
 Install from `plugins/claude` inside a full Principia checkout. The canonical Claude bundle lives under `plugins/claude` and is allowed to diverge from the old root plugin files where the runtime commands need to differ.
 
+## Local install and smoke test
+
+Use Claude Code's local plugin-dir flow while developing the bundle:
+
+```bash
+claude --plugin-dir ./plugins/claude
+```
+
+After Claude starts, run `/help` to confirm the namespaced Principia skills are available from the canonical bundle.
+
 ## Runtime
 
 The canonical Claude bundle uses the packaged Principia CLI instead of the old root plugin wrapper:

@@ -22,6 +22,38 @@ Both bundles run against the same Principia runtime and shared repo content. The
 
 Requires **Python 3.10+** (stdlib only -- no pip packages at runtime).
 
+### Claude Code
+
+Use the canonical Claude bundle directly from the checkout:
+
+```bash
+claude --plugin-dir ./plugins/claude
+```
+
+After Claude starts, run `/help` to confirm the namespaced Principia skills are loaded from `plugins/claude`.
+
+### Codex
+
+Codex uses the repo-local marketplace entry at `.agents/plugins/marketplace.json`, which points to `./plugins/codex`.
+
+Open the Principia checkout in Codex, then install the `principia` plugin from the repo-local marketplace. The installed bundle uses the packaged runtime entrypoint under `principia/cli/codex_runner.py`.
+
+### Packaged Runtime Verification
+
+Release verification should prove that the built package, not just the editable checkout, can load the bundled agent and config assets:
+
+```bash
+uv build --wheel --out-dir dist
+uv venv .tmp/principia-wheel
+uv pip install --python .tmp/principia-wheel/bin/python dist/principia-*.whl
+```
+
+From that clean environment, verify the packaged CLI still works:
+
+```bash
+.tmp/principia-wheel/bin/python -m principia.cli.codex_runner --root design build
+```
+
 ## Quick Start
 
 ```
