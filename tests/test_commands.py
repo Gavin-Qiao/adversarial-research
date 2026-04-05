@@ -127,15 +127,12 @@ class TestCmdValidate:
     def test_reports_deleted_dependency_target_after_incremental_rebuild(self, research_dir):
         claim_a = research_dir / "claims" / "claim-1-a"
         claim_a.mkdir(parents=True)
-        (claim_a / "claim.md").write_text(
-            "---\nid: a1\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# A\n"
-        )
+        (claim_a / "claim.md").write_text("---\nid: a1\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# A\n")
 
         claim_b = research_dir / "claims" / "claim-2-b"
         claim_b.mkdir(parents=True)
         (claim_b / "claim.md").write_text(
-            "---\nid: b1\ntype: claim\nstatus: pending\ndate: 2026-01-01\n"
-            "depends_on: [a1]\n---\n\n# B\n"
+            "---\nid: b1\ntype: claim\nstatus: pending\ndate: 2026-01-01\ndepends_on: [a1]\n---\n\n# B\n"
         )
 
         rc, _out, _err = run_manage(research_dir, "build")

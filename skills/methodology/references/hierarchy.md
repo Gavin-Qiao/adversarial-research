@@ -62,4 +62,3 @@ When a node is disproven:
 - **partial**: Arbiter verdict — claim holds under some conditions but not universally
 - **weakened**: A dependency was disproven; confidence reduced but claim not directly disproven
 - **inconclusive**: Evidence was ambiguous; no clear verdict
-

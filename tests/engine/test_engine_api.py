@@ -33,13 +33,7 @@ def test_engine_instances_stay_bound_to_their_own_roots(tmp_path: Path) -> None:
     claim_dir = root_a / "claims" / "claim-1-test"
     claim_dir.mkdir(parents=True)
     (claim_dir / "claim.md").write_text(
-        "---\n"
-        "id: h1-test\n"
-        "type: claim\n"
-        "status: active\n"
-        "date: 2026-01-01\n"
-        "---\n\n"
-        "# Test claim\n",
+        "---\nid: h1-test\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Test claim\n",
         encoding="utf-8",
     )
 
@@ -65,13 +59,7 @@ def test_engine_relative_root_stays_bound_after_cwd_change(tmp_path: Path) -> No
     claim_dir = workspace_a / "design" / "claims" / "claim-1-test"
     claim_dir.mkdir(parents=True)
     (claim_dir / "claim.md").write_text(
-        "---\n"
-        "id: h1-test\n"
-        "type: claim\n"
-        "status: active\n"
-        "date: 2026-01-01\n"
-        "---\n\n"
-        "# Test claim\n",
+        "---\nid: h1-test\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Test claim\n",
         encoding="utf-8",
     )
 
@@ -101,13 +89,7 @@ def test_engine_instances_are_isolated_under_concurrent_use(tmp_path: Path) -> N
     claim_dir = root_a / "claims" / "claim-1-test"
     claim_dir.mkdir(parents=True)
     (claim_dir / "claim.md").write_text(
-        "---\n"
-        "id: h1-test\n"
-        "type: claim\n"
-        "status: active\n"
-        "date: 2026-01-01\n"
-        "---\n\n"
-        "# Test claim\n",
+        "---\nid: h1-test\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Test claim\n",
         encoding="utf-8",
     )
 

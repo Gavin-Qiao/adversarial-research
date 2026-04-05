@@ -7,7 +7,7 @@ from principia.api.types import BuildResult, DashboardResult
 from principia.core.commands import get_dashboard_payload
 from principia.core.db import build_db
 from principia.core.reports import generate_results_report
-from principia.core.validation import collect_validation_result
+from principia.core.validation import ValidationResult, collect_validation_result
 
 
 @dataclass
@@ -36,7 +36,7 @@ class PrincipiaEngine:
     def dashboard_result(self) -> DashboardResult:
         return DashboardResult(payload=get_dashboard_payload(self.root))
 
-    def validate(self) -> dict[str, object]:
+    def validate(self) -> ValidationResult:
         return collect_validation_result(self.root)
 
     def results(self) -> dict[str, object]:

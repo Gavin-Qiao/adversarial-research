@@ -1,16 +1,34 @@
+default_install_hook_types:
+  - pre-commit
+  - pre-push
+
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.7
+  - repo: local
     hooks:
-      - id: ruff
-        args: [--fix]
-      - id: ruff-format
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.14.1
-    hooks:
-      - id: mypy
-        additional_dependencies: []
-        args: [--config-file=pyproject.toml]
+      - id: ci-ruff-check
+        name: ci ruff check
+        entry: uv run ruff check scripts/ tests/
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+      - id: ci-ruff-format-check
+        name: ci ruff format check
+        entry: uv run ruff format --check scripts/ tests/
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+      - id: ci-pytest
+        name: ci pytest
+        entry: uv run python -m pytest tests/ -q
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+      - id: ci-mypy
+        name: ci mypy
+        entry: uv run python -m mypy scripts/
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:

@@ -41,8 +41,7 @@ def test_manage_wrapper_prefers_local_package_over_pythonpath(tmp_path: Path) ->
     (fake_package / "principia" / "__init__.py").write_text("", encoding="utf-8")
     (fake_cli / "__init__.py").write_text("", encoding="utf-8")
     (fake_cli / "manage.py").write_text(
-        "def main() -> None:\n"
-        "    print('EXTERNAL PRINCIPIA')\n",
+        "def main() -> None:\n    print('EXTERNAL PRINCIPIA')\n",
         encoding="utf-8",
     )
 

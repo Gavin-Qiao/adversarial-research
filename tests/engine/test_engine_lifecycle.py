@@ -26,13 +26,7 @@ def test_engine_validate_and_results_stay_bound_to_root(tmp_path: Path) -> None:
     claim_dir = root_a / "claims" / "claim-1-test"
     claim_dir.mkdir(parents=True)
     (claim_dir / "claim.md").write_text(
-        "---\n"
-        "id: h1-test\n"
-        "type: claim\n"
-        "status: active\n"
-        "date: 2026-01-01\n"
-        "---\n\n"
-        "# Test claim\n",
+        "---\nid: h1-test\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Test claim\n",
         encoding="utf-8",
     )
 

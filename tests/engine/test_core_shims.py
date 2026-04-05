@@ -17,9 +17,10 @@ def test_flagged_shims_follow_import_star_pattern() -> None:
     project_root = Path(__file__).resolve().parents[2]
 
     assert "from principia.core.config import *  # noqa: F403" in (project_root / "scripts" / "config.py").read_text()
-    assert "from principia.core.frontmatter import *  # noqa: F403" in (
-        project_root / "scripts" / "frontmatter.py"
-    ).read_text()
+    assert (
+        "from principia.core.frontmatter import *  # noqa: F403"
+        in (project_root / "scripts" / "frontmatter.py").read_text()
+    )
     assert "from principia.core.db import *  # noqa: F403" in (project_root / "scripts" / "db.py").read_text()
 
 
@@ -91,13 +92,7 @@ def test_prompt_generation_uses_repo_agent_instructions(tmp_path: Path) -> None:
     (tmp_path / "context" / "assumptions").mkdir(parents=True)
     (tmp_path / ".db").mkdir()
     (claim_dir / "claim.md").write_text(
-        "---\n"
-        "id: h1-test\n"
-        "type: claim\n"
-        "status: active\n"
-        "date: 2026-01-01\n"
-        "---\n\n"
-        "# Test claim\n",
+        "---\nid: h1-test\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Test claim\n",
         encoding="utf-8",
     )
 

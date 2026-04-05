@@ -7,6 +7,7 @@ import json
 import sys
 from collections import defaultdict
 from pathlib import Path
+from typing import TypedDict
 
 from . import config as _cfg
 from .db import build_db
@@ -19,6 +20,14 @@ from .ids import VALID_ATTACK_TYPES, VALID_STATUSES, VALID_TYPES
 _VALID_VERDICTS = {"PROVEN", "DISPROVEN", "PARTIAL", "INCONCLUSIVE"}
 _VALID_SEVERITIES = {"fatal", "serious", "minor", "none"}
 _VALID_CONFIDENCES_PASTE = {"high", "moderate", "low"}
+
+
+class ValidationResult(TypedDict, total=False):
+    valid: bool
+    error_count: int
+    errors: list[str]
+    node_count: int
+    edge_count: int
 
 
 def _find_field(text: str, field_name: str) -> str | None:
@@ -126,7 +135,7 @@ def cmd_validate_paste(args: argparse.Namespace) -> None:
     print(f"OK: Valid {agent} result ({len(content.strip())} characters).")
 
 
-def collect_validation_result(root: Path | None = None) -> dict[str, object]:
+def collect_validation_result(root: Path | None = None) -> ValidationResult:
     """Run integrity checks on a workspace and return the structured result."""
     workspace_root = _cfg.RESEARCH_DIR.resolve() if root is None else root.resolve()
     conn = build_db(root=workspace_root)  # Always rebuild for freshness
@@ -232,7 +241,7 @@ def collect_validation_result(root: Path | None = None) -> dict[str, object]:
                 f"(relation={edge['relation']})"
             )
 
-    result: dict[str, object] = {
+    result: ValidationResult = {
         "valid": len(errors) == 0,
         "error_count": len(errors),
         "errors": errors,

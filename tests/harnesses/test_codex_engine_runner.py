@@ -76,7 +76,7 @@ def test_engine_runner_uses_uniform_engine_dispatch():
     runner_path = Path("harnesses/codex/scripts/engine_runner.py")
     runner_text = runner_path.read_text(encoding="utf-8")
 
-    assert 'payload = getattr(engine, args.command)()' in runner_text
+    assert "payload = getattr(engine, args.command)()" in runner_text
 
 
 def test_engine_runner_prefers_repo_local_principia_over_pythonpath(tmp_path):
