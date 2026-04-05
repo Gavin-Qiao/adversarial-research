@@ -840,6 +840,86 @@ class TestCmdPostVerdict:
         assert rc != 0
 
 
+class TestReplaceVerdictCascadeRevert:
+    """Regression: replace-verdict must revert transitive cascade and reset confidence."""
+
+    def test_transitive_cascade_reverted(self, research_dir):
+        """Given root→b→c, disprove root, then replace-verdict: both b and c must revert."""
+        from frontmatter import parse_frontmatter
+
+        from config import init_paths
+
+        init_paths(research_dir)
+
+        # Create root claim (will be disproven)
+        root = research_dir / "claims" / "claim-1-root"
+        root.mkdir(parents=True)
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+            (root / role).mkdir()
+        (root / "claim.md").write_text(
+            "---\nid: h1-root\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Root\n"
+        )
+        # Architect + adversary + experimenter + verdict
+        (root / "architect" / "round-1").mkdir()
+        (root / "architect" / "round-1" / "result.md").write_text(
+            "---\nid: a1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Proposal\n"
+        )
+        (root / "adversary" / "round-1").mkdir()
+        (root / "adversary" / "round-1" / "result.md").write_text(
+            "---\nid: r1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Attack\n\n**Severity**: Minor\n"
+        )
+        (root / "experimenter" / "results").mkdir()
+        (root / "experimenter" / "results" / "output.md").write_text(
+            "---\nid: e1\ntype: evidence\nstatus: active\ndate: 2026-01-01\n---\n\n# Results\n"
+        )
+        (root / "arbiter" / "results").mkdir()
+        (root / "arbiter" / "results" / "verdict.md").write_text(
+            "---\nid: v1\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n"
+            "**Verdict**: DISPROVEN\n**Confidence**: high\n"
+        )
+
+        # Create claim b (depends on root)
+        b = research_dir / "claims" / "claim-2-b"
+        b.mkdir(parents=True)
+        (b / "claim.md").write_text(
+            "---\nid: h2-b\ntype: claim\nstatus: active\ndate: 2026-01-01\n"
+            "depends_on: [h1-root]\nconfidence: high\n---\n\n# B\n"
+        )
+
+        # Create claim c (depends on b — transitive dep on root)
+        c = research_dir / "claims" / "claim-3-c"
+        c.mkdir(parents=True)
+        (c / "claim.md").write_text(
+            "---\nid: h3-c\ntype: claim\nstatus: active\ndate: 2026-01-01\n"
+            "depends_on: [h2-b]\nconfidence: high\n---\n\n# C\n"
+        )
+
+        # Build, then post-verdict to trigger cascade
+        run_manage(research_dir, "build")
+        run_manage(research_dir, "post-verdict", "claims/claim-1-root")
+
+        # Verify cascade happened
+        b_meta = parse_frontmatter((b / "claim.md").read_text())
+        c_meta = parse_frontmatter((c / "claim.md").read_text())
+        assert b_meta["status"] == "weakened"
+        assert c_meta["status"] == "weakened"
+
+        # Now replace-verdict — should revert both b and c
+        rc, _out, _ = run_manage(research_dir, "replace-verdict", "claims/claim-1-root")
+        assert rc == 0
+
+        # Both must be reverted to pending with confidence cleared
+        b_meta = parse_frontmatter((b / "claim.md").read_text())
+        c_meta = parse_frontmatter((c / "claim.md").read_text())
+        assert b_meta["status"] == "pending", f"b should be pending, got {b_meta['status']}"
+        assert c_meta["status"] == "pending", f"c should be pending, got {c_meta['status']}"
+
+        # Root itself should be active with falsified_by cleared
+        root_meta = parse_frontmatter((root / "claim.md").read_text())
+        assert root_meta["status"] == "active"
+        assert not root_meta.get("falsified_by")
+
+
 class TestBreadcrumb:
     def test_understand_breadcrumb(self, research_dir):
         """investigate-next includes breadcrumb for understand phase."""

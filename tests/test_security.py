@@ -53,3 +53,16 @@ class TestPathTraversal:
     def test_rejects_absolute_path(self, research_dir):
         rc, _out, _ = run_manage(research_dir, "new", "/etc/passwd")
         assert rc != 0
+
+    def test_rejects_sibling_prefix_traversal(self, research_dir):
+        """Regression: ../design-evil must not pass containment check via string prefix match."""
+        # research_dir is e.g. /tmp/.../design — ../design-evil shares the prefix
+        rc, out, _ = run_manage(research_dir, "extend-debate", f"../{research_dir.name}-evil", "--to", "5")
+        assert rc != 0
+        assert "escapes" in out.lower() or "error" in out.lower()
+
+    def test_rejects_sibling_prefix_on_new(self, research_dir):
+        """Same sibling-prefix check applies to the 'new' command."""
+        rc, out, _ = run_manage(research_dir, "new", f"../{research_dir.name}-evil/probe")
+        assert rc != 0
+        assert "escapes" in out.lower() or "error" in out.lower()
