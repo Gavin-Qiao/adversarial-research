@@ -19,8 +19,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Principia",
-    "shortDescription": "Adversarial design workflow for Codex.",
-    "longDescription": "Use Principia inside Codex to decompose, test, falsify, and synthesize algorithm ideas through a structured workflow.",
+    "shortDescription": "Task 4 scaffold for a Principia Codex workflow.",
+    "longDescription": "Task 4 only provides the static Codex harness scaffold. Use Principia inside Codex after Task 5 wires the functional workflow for decomposition, testing, falsification, and synthesis.",
     "developerName": "Principia",
     "category": "Productivity",
     "capabilities": [

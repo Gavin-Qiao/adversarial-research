@@ -37,7 +37,7 @@ Requires **Python 3.10+** (stdlib only -- no pip packages at runtime) and **Clau
 
 ### Codex Harness
 
-Codex can use the repository-local harness in `harnesses/codex`. Select the Principia plugin from this repo's marketplace metadata so harness selection stays tied to the checkout instead of a global install.
+Codex can point at the repository-local harness scaffold in `harnesses/codex`. Task 4 adds the static plugin metadata and marketplace entry; Task 5 turns that scaffold into a functional workflow. Select the Principia plugin from this repo's marketplace metadata so harness selection stays tied to the checkout instead of a global install.
 
 ## Quick Start
 
