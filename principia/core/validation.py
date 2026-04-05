@@ -8,6 +8,7 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+from . import config as _cfg
 from .db import build_db
 from .ids import VALID_ATTACK_TYPES, VALID_STATUSES, VALID_TYPES
 
@@ -125,22 +126,22 @@ def cmd_validate_paste(args: argparse.Namespace) -> None:
     print(f"OK: Valid {agent} result ({len(content.strip())} characters).")
 
 
-def cmd_validate(args: argparse.Namespace) -> None:
-    """Run integrity checks on the database."""
-    conn = build_db()  # Always rebuild for freshness
+def collect_validation_result(root: Path | None = None) -> dict[str, object]:
+    """Run integrity checks on a workspace and return the structured result."""
+    workspace_root = _cfg.RESEARCH_DIR.resolve() if root is None else root.resolve()
+    conn = build_db(root=workspace_root)  # Always rebuild for freshness
     errors = []
 
     # Check for duplicate IDs by scanning source files (the DB won't have dupes
     # because build skips them, but we need to detect the conflicting source files)
-    from . import config as _cfg
     from .db import discover_md_files
     from .frontmatter import SCALAR_FRONTMATTER_KEYS, get_scalar_frontmatter
     from .frontmatter import parse_frontmatter as _parse_fm
     from .ids import derive_id as _derive_id
 
     id_to_file: dict[str, str] = {}
-    for fpath in discover_md_files():
-        rel = str(fpath.relative_to(_cfg.RESEARCH_DIR))
+    for fpath in discover_md_files(workspace_root):
+        rel = str(fpath.relative_to(workspace_root))
         try:
             text = fpath.read_text(encoding="utf-8")
         except (UnicodeDecodeError, ValueError):
@@ -231,15 +232,24 @@ def cmd_validate(args: argparse.Namespace) -> None:
                 f"(relation={edge['relation']})"
             )
 
+    result: dict[str, object] = {
+        "valid": len(errors) == 0,
+        "error_count": len(errors),
+        "errors": errors,
+    }
+    if not errors:
+        result["node_count"] = conn.execute("SELECT COUNT(*) as c FROM nodes").fetchone()["c"]
+        result["edge_count"] = conn.execute("SELECT COUNT(*) as c FROM edges").fetchone()["c"]
+    conn.close()
+    return result
+
+
+def cmd_validate(args: argparse.Namespace) -> None:
+    """Run integrity checks on the database."""
+    result = collect_validation_result()
+    errors = result["errors"]
+
     if getattr(args, "json", False):
-        result = {
-            "valid": len(errors) == 0,
-            "error_count": len(errors),
-            "errors": errors,
-        }
-        if not errors:
-            result["node_count"] = conn.execute("SELECT COUNT(*) as c FROM nodes").fetchone()["c"]
-            result["edge_count"] = conn.execute("SELECT COUNT(*) as c FROM edges").fetchone()["c"]
         print(json.dumps(result, indent=2))
         if errors:
             sys.exit(1)
@@ -251,6 +261,6 @@ def cmd_validate(args: argparse.Namespace) -> None:
             print(f"  - {e}")
         sys.exit(1)
     else:
-        node_count = conn.execute("SELECT COUNT(*) as c FROM nodes").fetchone()["c"]
-        edge_count = conn.execute("SELECT COUNT(*) as c FROM edges").fetchone()["c"]
+        node_count = result["node_count"]
+        edge_count = result["edge_count"]
         print(f"Validation passed: {node_count} nodes, {edge_count} edges, 0 errors.")

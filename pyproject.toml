@@ -1,6 +1,10 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "principia"
-version = "0.4.0a1"
+version = "0.4.0a2"
 requires-python = ">=3.10"
 description = "Design algorithms from first principles through adversarial testing"
 
@@ -35,3 +39,9 @@ warn_return_any = true
 warn_unused_configs = true
 check_untyped_defs = true
 disallow_untyped_defs = false
+
+[tool.setuptools.package-data]
+principia = ["agents/*.md", "config/*.yaml"]
+
+[tool.setuptools.packages.find]
+include = ["principia*"]

@@ -1,19 +1,13 @@
 from __future__ import annotations
 
-import io
-import json
-from argparse import Namespace
-from contextlib import redirect_stdout, suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
 
 from principia.api.types import BuildResult, DashboardResult
-from principia.core.commands import cmd_dashboard
-from principia.core.config import init_paths
+from principia.core.commands import get_dashboard_payload
 from principia.core.db import build_db
-from principia.core.reports import cmd_results
-from principia.core.validation import cmd_validate
+from principia.core.reports import generate_results_report
+from principia.core.validation import collect_validation_result
 
 
 @dataclass
@@ -21,14 +15,14 @@ class PrincipiaEngine:
     root: Path
 
     def __post_init__(self) -> None:
-        init_paths(self.root)
+        self.root = self.root.resolve()
 
     def build(self) -> dict[str, int]:
         result = self.build_result()
         return {"node_count": result.node_count, "edge_count": result.edge_count}
 
     def build_result(self) -> BuildResult:
-        conn = build_db()
+        conn = build_db(root=self.root)
         try:
             node_count = conn.execute("SELECT COUNT(*) AS c FROM nodes").fetchone()["c"]
             edge_count = conn.execute("SELECT COUNT(*) AS c FROM edges").fetchone()["c"]
@@ -40,25 +34,15 @@ class PrincipiaEngine:
         return dict(self.dashboard_result().payload)
 
     def dashboard_result(self) -> DashboardResult:
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            cmd_dashboard(Namespace())
-        return DashboardResult(payload=json.loads(buf.getvalue()))
+        return DashboardResult(payload=get_dashboard_payload(self.root))
 
     def validate(self) -> dict[str, object]:
-        buf = io.StringIO()
-        with redirect_stdout(buf), suppress(SystemExit):
-            cmd_validate(Namespace(json=True))
-        return cast(dict[str, object], json.loads(buf.getvalue()))
+        return collect_validation_result(self.root)
 
     def results(self) -> dict[str, object]:
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            cmd_results(Namespace())
-
-        results_path = self.root / "RESULTS.md"
+        results_path, message = generate_results_report(self.root)
         return {
             "results_path": str(results_path),
             "exists": results_path.exists(),
-            "message": buf.getvalue().strip(),
+            "message": message,
         }

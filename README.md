@@ -4,10 +4,10 @@
 
 **Turn a philosophical principle into a working algorithm through rigorous adversarial testing.**
 
-[![Version](https://img.shields.io/badge/version-0.4.0a1-blue.svg)](https://github.com/Gavin-Qiao/principia/releases)
+[![Version](https://img.shields.io/badge/version-0.4.0a2-blue.svg)](https://github.com/Gavin-Qiao/principia/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-420_passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-432_passing-brightgreen.svg)]()
 [![Claude Code](https://img.shields.io/badge/Claude_Code-plugin-blueviolet.svg)](https://docs.anthropic.com/en/docs/claude-code)
 
 You start with an insight. Principia decomposes it into testable claims, stress-tests each through structured debate and empirical experiments, and composes the surviving pieces into a theory you can build on.
@@ -25,7 +25,9 @@ Choose a harness after you clone this repository.
 - [Claude harness](harnesses/claude/README.md)
 - [Codex harness](harnesses/codex/README.md)
 
-Principia keeps one shared Python engine in this repo and exposes it through harness-specific wrappers. The Claude harness continues to use the repo's Claude-facing agent, skill, and hook layout. The Codex harness uses the repo-local plugin under `harnesses/codex/`.
+Principia keeps one shared Python engine in this repo and exposes it through harness-specific wrappers. The Claude harness continues to use the repo's Claude-facing agent, skill, and hook layout. The Codex harness uses the repo-local plugin under `harnesses/codex/` and must be used from a full Principia checkout, because it depends on shared repo content such as `principia/`, `agents/`, and `config/`.
+
+The packaged Python distribution now bundles the shared `agents/` instructions and `config/orchestration.yaml`, so package-only imports can still generate prompts and load orchestration config without a repo-shaped checkout. The `PrincipiaEngine` API is instance-bound per workspace root, so separate engine instances can operate on different workspaces without rebinding global path state.
 
 Requires **Python 3.10+** (stdlib only -- no pip packages at runtime).
 

@@ -11,6 +11,9 @@ def test_codex_plugin_manifest_exists() -> None:
     assert manifest['skills'] == './skills/'
     assert manifest['interface']['displayName'] == 'Principia'
     assert manifest['interface']['category'] == 'Productivity'
+    assert "repo-local" in manifest['interface']['shortDescription']
+    assert "full Principia checkout" in manifest['interface']['longDescription']
+    assert "unsupported" in manifest['interface']['longDescription']
 
 
 def test_marketplace_exposes_principia_plugin() -> None:

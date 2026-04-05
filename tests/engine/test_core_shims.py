@@ -1,5 +1,7 @@
+import shutil
 import subprocess
 import sys
+from argparse import Namespace
 from pathlib import Path
 
 
@@ -67,3 +69,91 @@ cmd_results(Namespace())
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_package_config_resolves_repo_assets() -> None:
+    from principia.core import config as cfg
+    from principia.core.orchestration import load_config
+
+    assert cfg.DEFAULT_ORCH_CONFIG.exists()
+    assert (cfg.PLUGIN_ROOT / "agents" / "architect.md").exists()
+
+    roles = [r.get("name") for r in load_config(cfg.DEFAULT_ORCH_CONFIG).get("roles", []) if isinstance(r, dict)]
+    assert {"architect", "adversary", "experimenter", "arbiter"} <= set(roles)
+
+
+def test_prompt_generation_uses_repo_agent_instructions(tmp_path: Path) -> None:
+    from principia.core.commands import cmd_prompt
+    from principia.core.config import init_paths
+
+    claim_dir = tmp_path / "claims" / "claim-1-test"
+    claim_dir.mkdir(parents=True)
+    (tmp_path / "context" / "assumptions").mkdir(parents=True)
+    (tmp_path / ".db").mkdir()
+    (claim_dir / "claim.md").write_text(
+        "---\n"
+        "id: h1-test\n"
+        "type: claim\n"
+        "status: active\n"
+        "date: 2026-01-01\n"
+        "---\n\n"
+        "# Test claim\n",
+        encoding="utf-8",
+    )
+
+    init_paths(tmp_path)
+    cmd_prompt(Namespace(path="claims/claim-1-test"))
+
+    prompt = (claim_dir / "architect" / "round-1" / "prompt.md").read_text(encoding="utf-8")
+    assert "Do NOT attempt to read files from the codebase" in prompt
+
+
+def test_package_only_distribution_resolves_packaged_assets(tmp_path: Path) -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    package_root = tmp_path / "package-only"
+    shutil.copytree(project_root / "principia", package_root / "principia")
+
+    code = """
+from argparse import Namespace
+from pathlib import Path
+
+from principia.core import config as cfg
+from principia.core.commands import cmd_prompt
+from principia.core.orchestration import load_config
+
+design_root = Path.cwd() / "design"
+claim_dir = design_root / "claims" / "claim-1-test"
+claim_dir.mkdir(parents=True)
+(design_root / "context" / "assumptions").mkdir(parents=True)
+(design_root / ".db").mkdir()
+(claim_dir / "claim.md").write_text(
+    "---\\n"
+    "id: h1-test\\n"
+    "type: claim\\n"
+    "status: active\\n"
+    "date: 2026-01-01\\n"
+    "---\\n\\n"
+    "# Test claim\\n",
+    encoding="utf-8",
+)
+
+cfg.init_paths(design_root)
+cmd_prompt(Namespace(path="claims/claim-1-test"))
+roles = [r.get("name") for r in load_config(cfg.DEFAULT_ORCH_CONFIG).get("roles", []) if isinstance(r, dict)]
+prompt = (claim_dir / "architect" / "round-1" / "prompt.md").read_text(encoding="utf-8")
+
+assert cfg.DEFAULT_ORCH_CONFIG.exists()
+assert {"architect", "adversary", "experimenter", "arbiter"} <= set(roles)
+assert "Do NOT attempt to read files from the codebase" in prompt
+print("OK")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        env={"PYTHONPATH": str(package_root)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "OK" in result.stdout

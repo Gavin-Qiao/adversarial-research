@@ -96,5 +96,18 @@ def rel_path_from_root(p: Path) -> str:
 # Plugin-level paths
 # ---------------------------------------------------------------------------
 
-PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+_PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _resolve_plugin_root() -> Path:
+    """Prefer the repo root, but fall back to packaged assets when present."""
+    candidates = (_REPO_ROOT, _PACKAGE_ROOT)
+    for candidate in candidates:
+        if (candidate / "config" / "orchestration.yaml").exists() and (candidate / "agents").exists():
+            return candidate
+    return _REPO_ROOT
+
+
+PLUGIN_ROOT = _resolve_plugin_root()
 DEFAULT_ORCH_CONFIG = PLUGIN_ROOT / "config" / "orchestration.yaml"

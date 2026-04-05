@@ -8,6 +8,7 @@ def test_readme_mentions_harness_selection() -> None:
     assert "harnesses/claude/README.md" in text
     assert "harnesses/codex/README.md" in text
     assert "shared Python engine" in text
+    assert "full Principia checkout" in text
 
 
 def test_claude_harness_readme_describes_repo_model() -> None:
@@ -25,3 +26,6 @@ def test_codex_harness_readme_describes_native_wrapper() -> None:
     assert "Install Principia in Codex" in text
     assert "Codex-native" in text
     assert "shared Principia engine" in text
+    assert "full Principia checkout" in text
+    assert "repo-local" in text
+    assert "unsupported" in text

@@ -25,10 +25,33 @@ from .ids import derive_id, infer_type_from_path
 # ---------------------------------------------------------------------------
 
 
-def discover_md_files() -> list[Path]:
+def _workspace_root(root: Path | None = None) -> Path:
+    if root is None:
+        return _cfg.RESEARCH_DIR.resolve()
+    return root.resolve()
+
+
+def _workspace_context_dir(root: Path) -> Path:
+    return root / "context"
+
+
+def _workspace_db_path(root: Path) -> Path:
+    return root / ".db" / "research.db"
+
+
+def _workspace_rel_path(root: Path, path: Path) -> str:
+    return str(path.relative_to(root))
+
+
+def discover_md_files(root: Path | None = None) -> list[Path]:
     """Find all .md files under claims/, legacy cycles/, and context/."""
+    research_root = _workspace_root(root)
     files = []
-    for root_dir in (_cfg.RESEARCH_DIR / "claims", _cfg.RESEARCH_DIR / "cycles", _cfg.CONTEXT_DIR):
+    for root_dir in (
+        research_root / "claims",
+        research_root / "cycles",
+        _workspace_context_dir(research_root),
+    ):
         if not root_dir.exists():
             continue
         for p in sorted(root_dir.rglob("*.md")):
@@ -36,18 +59,19 @@ def discover_md_files() -> list[Path]:
     return files
 
 
-def _find_duplicate_ids(files: list[Path]) -> list[tuple[str, str, str]]:
+def _find_duplicate_ids(files: list[Path], *, root: Path | None = None) -> list[tuple[str, str, str]]:
     """Return duplicate ID collisions as (id, first_rel, duplicate_rel).
 
     This scans current files directly so incremental builds can detect duplicate
     IDs even when one duplicate was skipped during a previous full rebuild and
     therefore never entered the file tracker.
     """
+    research_root = _workspace_root(root)
     seen: dict[str, str] = {}
     duplicates: list[tuple[str, str, str]] = []
 
     for fpath in files:
-        rel = rel_path_from_root(fpath)
+        rel = _workspace_rel_path(research_root, fpath)
         try:
             text = fpath.read_text(encoding="utf-8")
         except (UnicodeDecodeError, ValueError):
@@ -177,10 +201,11 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
         _set_schema_version(conn, 3)
 
 
-def _get_or_create_db() -> sqlite3.Connection:
+def _get_or_create_db(root: Path | None = None) -> sqlite3.Connection:
     """Open (or create) the database and run migrations."""
-    _cfg.DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(_cfg.DB_PATH))
+    db_path = _workspace_db_path(_workspace_root(root))
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -188,14 +213,15 @@ def _get_or_create_db() -> sqlite3.Connection:
     return conn
 
 
-def init_db() -> sqlite3.Connection:
+def init_db(root: Path | None = None) -> sqlite3.Connection:
     """Create a fresh database (full rebuild). Preserves ledger, coder_artifacts, and dispatches."""
+    db_path = _workspace_db_path(_workspace_root(root))
     preserved_ledger: list[tuple] = []
     preserved_artifacts: list[tuple] = []
     preserved_dispatches: list[tuple] = []
-    if _cfg.DB_PATH.exists():
+    if db_path.exists():
         try:
-            old = sqlite3.connect(str(_cfg.DB_PATH))
+            old = sqlite3.connect(str(db_path))
             old.row_factory = sqlite3.Row
             has_agent_col = _has_column(old, "ledger", "agent")
             preserved_ledger = [
@@ -211,9 +237,9 @@ def init_db() -> sqlite3.Connection:
             old.close()
         except Exception:
             pass
-        _cfg.DB_PATH.unlink()
+        db_path.unlink()
 
-    conn = _get_or_create_db()
+    conn = _get_or_create_db(root)
 
     if preserved_ledger:
         conn.executemany(
@@ -275,11 +301,18 @@ def _scalar_meta(
     return value
 
 
-def _parse_and_upsert(conn: sqlite3.Connection, fpath: Path, seen_ids: dict[str, str] | None = None) -> str | None:
+def _parse_and_upsert(
+    conn: sqlite3.Connection,
+    fpath: Path,
+    seen_ids: dict[str, str] | None = None,
+    *,
+    root: Path | None = None,
+) -> str | None:
     """Parse a single markdown file and upsert its node + edges into the DB.
 
     Returns the node ID, or None if the file couldn't be parsed."""
-    rel = rel_path_from_root(fpath)
+    research_root = _workspace_root(root)
+    rel = _workspace_rel_path(research_root, fpath)
     try:
         text = fpath.read_text(encoding="utf-8")
     except (UnicodeDecodeError, ValueError):
@@ -432,17 +465,19 @@ def _post_build_check(conn: sqlite3.Connection) -> None:
         print(f"WARNING: {len(loops)} self-loop(s) found. Run 'validate' for details.", file=sys.stderr)
 
 
-def build_db(force: bool = False) -> sqlite3.Connection:
+def build_db(force: bool = False, root: Path | None = None) -> sqlite3.Connection:
     """Build the database. Incremental by default — only re-parses changed files.
 
     Args:
         force: If True, do a full rebuild (delete DB, recreate from scratch).
     """
-    if force or not _cfg.DB_PATH.exists():
-        conn = init_db()
-        return _full_build(conn)
+    research_root = _workspace_root(root)
+    db_path = _workspace_db_path(research_root)
+    if force or not db_path.exists():
+        conn = init_db(research_root)
+        return _full_build(conn, research_root)
 
-    conn = _get_or_create_db()
+    conn = _get_or_create_db(research_root)
 
     # Check if file_tracker table exists (might be a v1 DB just migrated)
     try:
@@ -451,8 +486,8 @@ def build_db(force: bool = False) -> sqlite3.Connection:
         # No file_tracker yet — do a full build
         return _full_build(conn)
 
-    files = discover_md_files()
-    duplicates = _find_duplicate_ids(files)
+    files = discover_md_files(research_root)
+    duplicates = _find_duplicate_ids(files, root=research_root)
     if duplicates:
         print(
             f"WARNING: {len(duplicates)} duplicate ID collision(s) detected. "
@@ -460,7 +495,7 @@ def build_db(force: bool = False) -> sqlite3.Connection:
             file=sys.stderr,
         )
         conn.close()
-        return build_db(force=True)
+        return build_db(force=True, root=research_root)
 
     tracked: dict[str, float] = {
         r["file_path"]: r["mtime"] for r in conn.execute("SELECT file_path, mtime FROM file_tracker").fetchall()
@@ -471,7 +506,7 @@ def build_db(force: bool = False) -> sqlite3.Connection:
     unchanged = 0
 
     for fpath in files:
-        rel = rel_path_from_root(fpath)
+        rel = _workspace_rel_path(research_root, fpath)
         mtime = fpath.stat().st_mtime
         if rel not in tracked:
             new_files.append(fpath)
@@ -483,7 +518,7 @@ def build_db(force: bool = False) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys=OFF")
 
     # Remove nodes for deleted files
-    current_paths = {rel_path_from_root(f) for f in files}
+    current_paths = {_workspace_rel_path(research_root, f) for f in files}
     deleted = 0
     for tracked_path in list(tracked.keys()):
         if tracked_path not in current_paths:
@@ -495,15 +530,15 @@ def build_db(force: bool = False) -> sqlite3.Connection:
     seen_ids: dict[str, str] = {}
     for row in conn.execute("SELECT id, file_path FROM nodes").fetchall():
         fp = row["file_path"]
-        if fp in current_paths and fp not in {rel_path_from_root(f) for f in changed + new_files}:
+        if fp in current_paths and fp not in {_workspace_rel_path(research_root, f) for f in changed + new_files}:
             seen_ids[row["id"]] = fp
 
     # Parse changed + new files while FK checks are deferred so references to
     # temporarily missing or permanently removed nodes remain queryable.
     for fpath in changed + new_files:
-        rel = rel_path_from_root(fpath)
+        rel = _workspace_rel_path(research_root, fpath)
         _clear_file_state(conn, rel)
-        _parse_and_upsert(conn, fpath, seen_ids)
+        _parse_and_upsert(conn, fpath, seen_ids, root=research_root)
     conn.execute("PRAGMA foreign_keys=ON")
 
     conn.commit()
@@ -517,13 +552,14 @@ def build_db(force: bool = False) -> sqlite3.Connection:
     return conn
 
 
-def _full_build(conn: sqlite3.Connection) -> sqlite3.Connection:
+def _full_build(conn: sqlite3.Connection, root: Path | None = None) -> sqlite3.Connection:
     """Full rebuild: parse all files."""
     conn.execute("PRAGMA foreign_keys=OFF")
-    files = discover_md_files()
+    research_root = _workspace_root(root)
+    files = discover_md_files(research_root)
     seen_ids: dict[str, str] = {}
     for fpath in files:
-        _parse_and_upsert(conn, fpath, seen_ids)
+        _parse_and_upsert(conn, fpath, seen_ids, root=research_root)
     conn.execute("PRAGMA foreign_keys=ON")
     conn.commit()
     total = conn.execute("SELECT COUNT(*) as c FROM nodes").fetchone()["c"]

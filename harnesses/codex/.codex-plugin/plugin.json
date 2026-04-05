@@ -1,6 +1,6 @@
 {
   "name": "principia",
-  "version": "0.4.0a1",
+  "version": "0.4.0a2",
   "description": "Design algorithms from first principles through adversarial testing.",
   "author": {
     "name": "Principia",
@@ -19,8 +19,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Principia",
-    "shortDescription": "Task 4 scaffold for a Principia Codex workflow.",
-    "longDescription": "Task 4 only provides the static Codex harness scaffold. Use Principia inside Codex after Task 5 wires the functional workflow for decomposition, testing, falsification, and synthesis.",
+    "shortDescription": "A repo-local Codex harness for a full Principia checkout.",
+    "longDescription": "Use Principia in Codex from the repo-local `harnesses/codex` surface inside a full Principia checkout. This harness depends on shared repo content including `principia/`, `agents/`, and `config/`; copying `harnesses/codex` by itself is unsupported.",
     "developerName": "Principia",
     "category": "Productivity",
     "capabilities": [

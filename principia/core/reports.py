@@ -14,6 +14,12 @@ from .frontmatter import get_body, readable_id
 def _primary_claim_path_sql(column: str = "file_path") -> str:
     return f"({column} LIKE 'claims/claim-%/claim.md' OR {column} LIKE 'cycles/%/frontier.md')"
 
+
+def _workspace_root(root: Path | None = None) -> Path:
+    if root is None:
+        return _cfg.RESEARCH_DIR.resolve()
+    return root.resolve()
+
 # ---------------------------------------------------------------------------
 # Command: status -> PROGRESS.md
 # ---------------------------------------------------------------------------
@@ -327,16 +333,17 @@ def _format_investigation_breadcrumb(state: dict[str, Any], research_dir: Path) 
 # ---------------------------------------------------------------------------
 
 
-def cmd_results(args: argparse.Namespace) -> None:
-    """Generate a single RESULTS.md summarising the entire design investigation."""
-    conn = build_db()
+def generate_results_report(root: Path | None = None) -> tuple[Path, str]:
+    """Generate RESULTS.md for a workspace and return its path and status message."""
+    research_root = _workspace_root(root)
+    conn = build_db(root=research_root)
 
     lines: list[str] = ["# Design Results", ""]
 
     # --- Original question/principle ---
     # Try to read from blueprint or framework
     for name in ("blueprint.md",):
-        bp = _cfg.RESEARCH_DIR / name
+        bp = research_root / name
         if bp.exists():
             body = get_body(bp.read_text(encoding="utf-8"))
             # Extract first paragraph as the principle
@@ -363,7 +370,7 @@ def cmd_results(args: argparse.Namespace) -> None:
     # Scan verdict files directly — DB frontmatter status is unreliable
     # (verdict nodes typically have status: active, not the actual verdict)
     found_verdicts = False
-    for root_dir in (_cfg.RESEARCH_DIR / "claims", _cfg.RESEARCH_DIR / "cycles"):
+    for root_dir in (research_root / "claims", research_root / "cycles"):
         if not root_dir.exists():
             continue
         for verdict_file in sorted(root_dir.rglob("verdict.md")):
@@ -382,7 +389,7 @@ def cmd_results(args: argparse.Namespace) -> None:
         lines.append("")
 
     # --- Synthesis ---
-    synthesis = _cfg.RESEARCH_DIR / "synthesis.md"
+    synthesis = research_root / "synthesis.md"
     if synthesis.exists():
         lines.append("## Synthesis")
         lines.append("")
@@ -391,7 +398,7 @@ def cmd_results(args: argparse.Namespace) -> None:
         lines.append("")
 
     # --- Composition ---
-    composition = _cfg.RESEARCH_DIR / "composition.md"
+    composition = research_root / "composition.md"
     if composition.exists():
         lines.append("## Composed Algorithm")
         lines.append("")
@@ -432,6 +439,13 @@ def cmd_results(args: argparse.Namespace) -> None:
 
     # --- Write ---
     content = "\n".join(lines) + "\n"
-    results_path = _cfg.RESEARCH_DIR / "RESULTS.md"
+    results_path = research_root / "RESULTS.md"
     _cfg._atomic_write(results_path, content)
-    print(f"Generated: {results_path}")
+    conn.close()
+    return results_path, f"Generated: {results_path}"
+
+
+def cmd_results(args: argparse.Namespace) -> None:
+    """Generate a single RESULTS.md summarising the entire design investigation."""
+    _, message = generate_results_report()
+    print(message)

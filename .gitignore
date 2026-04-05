@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
+.db/
 design/.db/
+*.egg-info/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/

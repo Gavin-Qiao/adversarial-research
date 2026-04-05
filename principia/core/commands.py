@@ -952,18 +952,19 @@ def cmd_autonomy_config(args: argparse.Namespace) -> None:
     print(json.dumps(result))
 
 
-def cmd_dashboard(args: argparse.Namespace) -> None:
-    """Single-view control panel: phase, active claim, last verdict, blockers, config."""
+def get_dashboard_payload(root: Path | None = None) -> dict[str, object]:
+    """Build the dashboard payload for a workspace without printing."""
     from .orchestration import detect_investigation_state, load_config, read_autonomy_config
 
+    research_root = _cfg.RESEARCH_DIR.resolve() if root is None else root.resolve()
     config = load_config(_cfg.DEFAULT_ORCH_CONFIG)
-    conn = build_db()
+    conn = build_db(root=research_root)
 
     # Investigation state
-    inv_state = detect_investigation_state(_cfg.RESEARCH_DIR, config)
+    inv_state = detect_investigation_state(research_root, config)
     phase = inv_state.get("phase", "unknown")
     action = inv_state.get("action", "unknown")
-    breadcrumb = _format_investigation_breadcrumb(inv_state, _cfg.RESEARCH_DIR)
+    breadcrumb = _format_investigation_breadcrumb(inv_state, research_root)
 
     # Active claim
     active_claim = inv_state.get("sub_unit")
@@ -1016,7 +1017,7 @@ def cmd_dashboard(args: argparse.Namespace) -> None:
     # Autonomy config
     autonomy = read_autonomy_config(_cfg.DEFAULT_ORCH_CONFIG)
 
-    result = {
+    result: dict[str, object] = {
         "phase": phase,
         "action": action,
         "breadcrumb": breadcrumb,
@@ -1028,7 +1029,13 @@ def cmd_dashboard(args: argparse.Namespace) -> None:
         "pending_decisions": decisions,
         "autonomy": autonomy,
     }
-    print(json.dumps(result, indent=2))
+    conn.close()
+    return result
+
+
+def cmd_dashboard(args: argparse.Namespace) -> None:
+    """Single-view control panel: phase, active claim, last verdict, blockers, config."""
+    print(json.dumps(get_dashboard_payload(), indent=2))
 
 
 def cmd_reopen(args: argparse.Namespace) -> None:

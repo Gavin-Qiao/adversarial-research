@@ -1,4 +1,6 @@
 import json
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -75,3 +77,78 @@ def test_engine_runner_uses_uniform_engine_dispatch():
     runner_text = runner_path.read_text(encoding="utf-8")
 
     assert 'payload = getattr(engine, args.command)()' in runner_text
+
+
+def test_engine_runner_prefers_repo_local_principia_over_pythonpath(tmp_path):
+    fake_package = tmp_path / "fake"
+    fake_api = fake_package / "principia" / "api"
+    fake_api.mkdir(parents=True)
+    (fake_package / "principia" / "__init__.py").write_text("", encoding="utf-8")
+    (fake_api / "__init__.py").write_text("", encoding="utf-8")
+    (fake_api / "engine.py").write_text(
+        "class PrincipiaEngine:\n"
+        "    def __init__(self, root):\n"
+        "        self.root = root\n"
+        "    def build(self):\n"
+        "        return {'node_count': 999, 'edge_count': 111}\n",
+        encoding="utf-8",
+    )
+
+    design_root = tmp_path / "design"
+    (design_root / "claims").mkdir(parents=True)
+    (design_root / "context" / "assumptions").mkdir(parents=True)
+    (design_root / ".db").mkdir()
+
+    project_root = Path(__file__).resolve().parents[2]
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join([str(fake_package), str(project_root)])
+    result = subprocess.run(
+        [
+            sys.executable,
+            "harnesses/codex/scripts/engine_runner.py",
+            "--root",
+            str(design_root),
+            "build",
+        ],
+        cwd=project_root,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["node_count"] == 0
+    assert payload["edge_count"] == 0
+
+
+def test_engine_runner_errors_cleanly_for_standalone_harness_copy(tmp_path):
+    standalone_root = tmp_path / "standalone"
+    harness_root = standalone_root / "harnesses" / "codex"
+    shutil.copytree(Path("harnesses/codex"), harness_root)
+
+    design_root = standalone_root / "design"
+    (design_root / "claims").mkdir(parents=True)
+    (design_root / "context" / "assumptions").mkdir(parents=True)
+    (design_root / ".db").mkdir()
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(harness_root / "scripts" / "engine_runner.py"),
+            "--root",
+            str(design_root),
+            "build",
+        ],
+        cwd=standalone_root,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={},
+    )
+
+    assert result.returncode != 0
+    assert result.stdout == ""
+    assert "full Principia repository checkout" in result.stderr
+    assert "harnesses/codex" in result.stderr
