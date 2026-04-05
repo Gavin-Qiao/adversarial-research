@@ -234,3 +234,7 @@ def main() -> None:
     args = parser.parse_args()
     init_paths(args.root)
     args.func(args)
+
+
+if __name__ == "__main__":
+    main()

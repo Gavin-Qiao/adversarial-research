@@ -5,8 +5,9 @@ from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 project_root = str(_PROJECT_ROOT)
-if project_root not in sys.path:
-    sys.path.append(project_root)
+if project_root in sys.path:
+    sys.path.remove(project_root)
+sys.path.insert(0, project_root)
 
 
 def __getattr__(name: str) -> object:
