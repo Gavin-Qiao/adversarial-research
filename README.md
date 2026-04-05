@@ -20,7 +20,7 @@ Principia ships as a full repository checkout with one shared packaged runtime u
 
 Both bundles run against the same Principia runtime and shared repo content. The Claude bundle is the Claude Code surface. The Codex bundle is the repo-local plugin surface. A full Principia checkout remains the install surface for both because the bundles depend on `principia/`, `agents/`, and `config/`.
 
-Requires **Python 3.10+** (stdlib only -- no pip packages at runtime).
+Requires **Python 3.12+** (stdlib only -- no pip packages at runtime).
 
 ### Claude Code
 

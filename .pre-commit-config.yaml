@@ -19,13 +19,13 @@ repos:
         stages: [pre-commit]
       - id: ci-pytest
         name: ci pytest
-        entry: uv run python -m pytest tests/ -q
+        entry: uv run --python 3.12 python -m pytest tests/ -q
         language: system
         pass_filenames: false
         stages: [pre-push]
       - id: ci-mypy
         name: ci mypy
-        entry: uv run python -m mypy scripts/
+        entry: uv run --python 3.12 python -m mypy scripts/
         language: system
         pass_filenames: false
         stages: [pre-push]

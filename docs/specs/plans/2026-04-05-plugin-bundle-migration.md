@@ -6,7 +6,7 @@
 
 **Architecture:** Keep `principia/` as the only shared runtime, move Claude and Codex integration files into provider-specific plugin bundles, and route both harnesses through packaged entrypoints under `principia.cli`. Codex becomes the first-class marketplace target at `./plugins/codex`, while Claude moves into `plugins/claude` without changing its high-level feature set.
 
-**Tech Stack:** Python 3.10+, `uv`, setuptools package data, Claude Code plugin manifests, Codex plugin manifests and marketplace metadata, pytest, Ruff, mypy
+**Tech Stack:** Python 3.12+, `uv`, setuptools package data, Claude Code plugin manifests, Codex plugin manifests and marketplace metadata, pytest, Ruff, mypy
 
 **Spec:** [docs/specs/2026-04-05-plugin-bundle-migration-design.md](/Users/mohan/Desktop/principia/docs/specs/2026-04-05-plugin-bundle-migration-design.md)
 

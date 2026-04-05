@@ -4,6 +4,37 @@ All notable changes to this project are documented in this file.
 
 The format is inspired by Keep a Changelog, but organized around the release-note sections used for Principia releases: Features, Changed, Fixes, Docs, Packaging, Upgrade Notes, and Verification.
 
+## [0.4.0b2] - 2026-04-05
+
+### Changed
+
+- Raised the supported Python floor to 3.12 and aligned the local pre-push hooks with the same interpreter target used in CI.
+
+### Fixes
+
+- Removed the post-beta CI regression where tests imported Python 3.11+ stdlib features while the project still claimed 3.10 support.
+- Eliminated the remaining CI/pre-commit parity gap by making the workflow and local hooks run pytest and mypy through explicit `uv run --python 3.12 ...` commands.
+
+### Docs
+
+- Updated the top-level support statement and planning notes to reflect the Python 3.12+ baseline.
+
+### Packaging
+
+- Bumped Principia, Codex plugin, and Claude plugin metadata to `0.4.0b2`.
+
+### Upgrade Notes
+
+- Python 3.10 and 3.11 are no longer supported for Principia development or runtime verification; use Python 3.12+.
+
+### Verification
+
+- `uv run ruff check scripts/ tests/ principia`
+- `uv run ruff format --check scripts/ tests/`
+- `uv run --python 3.12 python -m mypy scripts/`
+- `uv run --python 3.12 python -m pytest tests/ -q`
+- `448 passed`
+
 ## [0.4.0b1] - 2026-04-05
 
 ### Features

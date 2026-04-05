@@ -1,6 +1,5 @@
-from pathlib import Path
-
 import tomllib
+from pathlib import Path
 
 
 def test_readme_opening_mentions_plugin_bundle_choice() -> None:
@@ -31,7 +30,7 @@ def test_readme_installation_documents_verified_bundle_flows() -> None:
 def test_changelog_tracks_recent_releases() -> None:
     text = Path("CHANGELOG.md").read_text()
 
-    assert "## [0.4.0b1] - 2026-04-05" in text
+    assert "## [0.4.0b2] - 2026-04-05" in text
     assert "## [0.3.3] - 2026-04-04" in text
     assert "### Features" in text
     assert "### Fixes" in text
@@ -40,7 +39,7 @@ def test_changelog_tracks_recent_releases() -> None:
 def test_release_metadata_versions_stay_aligned() -> None:
     expected_version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
 
-    assert expected_version == "0.4.0b1"
+    assert expected_version == "0.4.0b2"
     assert f"## [{expected_version}] - 2026-04-05" in Path("CHANGELOG.md").read_text()
     assert f'"version": "{expected_version}"' in Path("plugins/codex/.codex-plugin/plugin.json").read_text()
     assert f'"version": "{expected_version}"' in Path("plugins/claude/.claude-plugin/plugin.json").read_text()

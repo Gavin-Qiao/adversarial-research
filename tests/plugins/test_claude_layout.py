@@ -1,7 +1,6 @@
 import json
-from pathlib import Path
-
 import tomllib
+from pathlib import Path
 
 
 def test_claude_plugin_bundle_layout() -> None:

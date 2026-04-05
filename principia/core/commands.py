@@ -8,7 +8,7 @@ import os
 import re
 import sqlite3
 import sys
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -739,7 +739,7 @@ def cmd_log_dispatch(args: argparse.Namespace) -> None:
     conn.execute(
         "INSERT INTO dispatches (timestamp, cycle_id, agent, action, round, details) VALUES (?, ?, ?, ?, ?, ?)",
         (
-            datetime.now(timezone.utc).isoformat(),
+            datetime.now(UTC).isoformat(),
             args.cycle,
             args.agent,
             args.action,

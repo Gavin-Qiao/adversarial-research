@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.10", "3.12"]
+        python-version: ["3.12"]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
@@ -20,10 +20,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --dev
       - name: Tests
-        run: uv run python -m pytest tests/ -q
+        run: uv run --python 3.12 python -m pytest tests/ -q
       - name: Lint
         run: uv run ruff check scripts/ tests/
       - name: Format check
         run: uv run ruff format --check scripts/ tests/
       - name: Type check
-        run: uv run python -m mypy scripts/
+        run: uv run --python 3.12 python -m mypy scripts/
