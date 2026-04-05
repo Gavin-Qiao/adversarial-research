@@ -1,6 +1,11 @@
 # Codex Skills
 
-This directory contains the mirrored Principia Codex skills under the canonical `plugins/codex` bundle.
+This directory contains the canonical Principia Codex skills under `plugins/codex`.
 
-They are preserved here during the migration from `harnesses/codex`.
-Some command examples still reference the legacy harness runner path and will be rewired in the packaged-runtime migration task.
+The packaged runner powers the JSON engine commands:
+
+```bash
+uv run python -m principia.cli.codex_runner --root design <command>
+```
+
+Use it for `build`, `dashboard`, `validate`, and `results`. Some workflow actions still call `principia.cli.manage`, so the bundle is not fully runner-backed yet.

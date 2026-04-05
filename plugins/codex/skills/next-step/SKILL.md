@@ -8,7 +8,7 @@ description: Determine and execute the next Principia workflow action from Codex
 Check the current workflow state first:
 
 ```bash
-uv run python harnesses/codex/scripts/engine_runner.py --root design dashboard
+uv run python -m principia.cli.codex_runner --root design dashboard
 ```
 
 Then advance with the package CLI:

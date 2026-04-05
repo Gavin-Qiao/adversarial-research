@@ -1,6 +1,6 @@
 ---
 name: status
-description: Inspect the current Principia workflow state in Codex without scraping generated reports.
+description: Inspect the current Principia workflow state in Codex through the packaged runner without scraping generated reports.
 ---
 
 # Status
@@ -8,7 +8,7 @@ description: Inspect the current Principia workflow state in Codex without scrap
 Use the runner-backed dashboard view:
 
 ```bash
-uv run python harnesses/codex/scripts/engine_runner.py --root design dashboard
+uv run python -m principia.cli.codex_runner --root design dashboard
 ```
 
 Present the Codex-native summary from the JSON payload:

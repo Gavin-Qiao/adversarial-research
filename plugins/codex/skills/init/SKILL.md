@@ -1,6 +1,6 @@
 ---
 name: init
-description: Initialize a Principia design workspace inside Codex and confirm the engine can build it.
+description: Initialize a Principia design workspace inside Codex and confirm the packaged runner can build it.
 ---
 
 # Init
@@ -19,8 +19,8 @@ If the user supplied a principle or project title, write it to `design/.north-st
 Then verify the workspace is wired:
 
 ```bash
-uv run python harnesses/codex/scripts/engine_runner.py --root design build
-uv run python harnesses/codex/scripts/engine_runner.py --root design dashboard
+uv run python -m principia.cli.codex_runner --root design build
+uv run python -m principia.cli.codex_runner --root design dashboard
 ```
 
 In Codex, report the JSON summary and point the user to `next-step` for advancing the workflow.

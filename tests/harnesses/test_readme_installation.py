@@ -30,12 +30,12 @@ def test_claude_harness_readme_describes_repo_model() -> None:
     assert "hooks/" in text
 
 
-def test_codex_harness_readme_describes_native_wrapper() -> None:
-    text = Path("harnesses/codex/README.md").read_text()
+def test_codex_bundle_readme_describes_native_wrapper() -> None:
+    text = Path("plugins/codex/README.md").read_text()
 
-    assert "Install Principia in Codex" in text
-    assert "Codex-native" in text
-    assert "shared Principia engine" in text
+    assert "Principia Codex Bundle" in text
+    assert "plugins/codex" in text
     assert "full Principia checkout" in text
-    assert "repo-local" in text
+    assert "shared repo content" in text
+    assert "uv run python -m principia.cli.codex_runner --root design dashboard" in text
     assert "unsupported" in text
