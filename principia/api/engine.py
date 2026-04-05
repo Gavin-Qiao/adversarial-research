@@ -3,7 +3,7 @@ from __future__ import annotations
 import io
 import json
 from argparse import Namespace
-from contextlib import redirect_stdout
+from contextlib import redirect_stdout, suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -46,11 +46,8 @@ class PrincipiaEngine:
 
     def validate(self) -> dict[str, object]:
         buf = io.StringIO()
-        with redirect_stdout(buf):
-            try:
-                cmd_validate(Namespace(json=True))
-            except SystemExit:
-                pass
+        with redirect_stdout(buf), suppress(SystemExit):
+            cmd_validate(Namespace(json=True))
         return json.loads(buf.getvalue())
 
     def results(self) -> dict[str, object]:
