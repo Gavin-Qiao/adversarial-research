@@ -21,11 +21,12 @@ def test_flagged_shims_follow_import_star_pattern() -> None:
     assert "from principia.core.db import *  # noqa: F403" in (project_root / "scripts" / "db.py").read_text()
 
 
-def test_manage_script_does_not_bootstrap_sys_path() -> None:
+def test_manage_script_does_not_bootstrap_legacy_scripts_path() -> None:
     project_root = Path(__file__).resolve().parents[2]
     manage_text = (project_root / "scripts" / "manage.py").read_text()
 
-    assert "sys.path.insert" not in manage_text
+    assert '"scripts"' not in manage_text
+    assert "sys.path.insert(0, project_root)" in manage_text
 
 
 def test_legacy_shims_expose_private_helpers() -> None:
