@@ -13,8 +13,8 @@ Regenerate PROGRESS.md and FOUNDATIONS.md from the current state of all design f
 ## Usage
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design status
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design assumptions
+uv run python -m principia.cli.manage --root design status
+uv run python -m principia.cli.manage --root design assumptions
 ```
 
 Then read and present the key sections from `design/PROGRESS.md`:

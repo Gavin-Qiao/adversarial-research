@@ -23,13 +23,13 @@ Determine the next step and dispatch the appropriate agent. Supports both intern
 
    **Investigation-level** (no specific claim):
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design investigate-next
+   uv run python -m principia.cli.manage --root design investigate-next
    ```
    Print the `breadcrumb` from the JSON output. Handle the action per the design skill's phase documentation (understand sub-steps, divide, test, synthesize).
 
    **Per-claim** (specific claim path provided):
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design next $ARGUMENTS
+   uv run python -m principia.cli.manage --root design next $ARGUMENTS
    ```
    Parse the JSON output and handle the per-claim state:
 
@@ -39,11 +39,11 @@ Determine the next step and dispatch the appropriate agent. Supports both intern
 
    - **`dispatch_architect`**: Get context:
      ```bash
-     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design context <claim-path>
+     uv run python -m principia.cli.manage --root design context <claim-path>
      ```
      Check `dispatch_mode`:
      - **internal**: Dispatch `@architect` with the context. Save result to `result_path`.
-     - **external**: Run `manage.py prompt <claim-path>` and tell user where the prompt file was written. Tell user to paste the result back.
+     - **external**: Run `uv run python -m principia.cli.manage --root design prompt <claim-path>` and tell user where the prompt file was written. Tell user to paste the result back.
 
    - **`dispatch_adversary`**: Same as architect. For rounds 2+, the context automatically includes previous attacks.
 
@@ -63,19 +63,19 @@ Determine the next step and dispatch the appropriate agent. Supports both intern
 
    - **`dispatch_reviewer`** (only when `auto_review: false` in orchestration.yaml): The system expects manual review before post-verdict bookkeeping. Review the verdict at `<claim-path>/arbiter/results/verdict.md`, then run post-verdict manually:
      ```bash
-     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design post-verdict <claim-path>
+     uv run python -m principia.cli.manage --root design post-verdict <claim-path>
      ```
 
    - **`post_verdict`**: Run bookkeeping:
      ```bash
-     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design post-verdict <claim-path>
+     uv run python -m principia.cli.manage --root design post-verdict <claim-path>
      ```
 
    - **`complete_proven`**: Report: "Claim proven (confidence: X)." Show suggestion.
    - **`complete_disproven`**: Report: "Claim disproven. Cascade applied." Show what was weakened.
    - **`complete_partial`** / **`complete_inconclusive`**: Check autonomy mode:
      ```bash
-     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design autonomy-config
+     uv run python -m principia.cli.manage --root design autonomy-config
      ```
      - **Checkpoints mode**: Present options from state JSON via AskUserQuestion.
      - **Yolo mode**: Accept the result automatically. Report the verdict and continue.
@@ -84,7 +84,7 @@ Determine the next step and dispatch the appropriate agent. Supports both intern
 
    - **`error`**: Tell user and ask what they want to do.
 
-3. **After dispatch**: Save result to `result_path`. Run `manage.py next <claim-path>` again. If there's an immediate next step, continue. If `complete_*` or `waiting`, stop and report.
+3. **After dispatch**: Save result to `result_path`. Run `uv run python -m principia.cli.manage --root design next <claim-path>` again. If there's an immediate next step, continue. If `complete_*` or `waiting`, stop and report.
 
 ## Handling Pasted Results
 
@@ -94,7 +94,7 @@ When the user pastes text that looks like an agent result (contains sections lik
 2. Save paste to a temp file
 3. Validate:
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design validate-paste --agent <name> --file <temp-path>
+   uv run python -m principia.cli.manage --root design validate-paste --agent <name> --file <temp-path>
    ```
 4. If valid: copy to the correct `result_path` and continue workflow
 5. If invalid: report what's wrong — "This doesn't look like a valid {agent} result. Missing: {sections}. Please re-paste or switch to internal dispatch."

@@ -36,13 +36,13 @@ Bootstrap a new principia algorithm design project in the current working direct
 
 4. Run the initial build:
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design build
+   uv run python -m principia.cli.manage --root design build
    ```
 
 5. Generate initial PROGRESS.md and FOUNDATIONS.md:
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design status
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design assumptions
+   uv run python -m principia.cli.manage --root design status
+   uv run python -m principia.cli.manage --root design assumptions
    ```
 
 6. Add `design/.db/` to `.gitignore` if not already present.

@@ -27,7 +27,7 @@ If the user's input contains `--quick` or the question is a single focused claim
 1. **Understand**: Skip Research (no scout). Brief discussion (1-2 questions max). Inspection runs.
 2. **Divide**: Scaffold single claim directly (skip synthesizer decomposition):
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design scaffold claim <slugified-question>
+   uv run python -m principia.cli.manage --root design scaffold claim <slugified-question>
    ```
 3. **Test**: 1 debate round, then experimenter, then verdict.
 4. **Synthesize**: Generate RESULTS.md directly.
@@ -40,12 +40,12 @@ Use `investigate-next --quick` throughout.
 
 1. **Initialize** (if not already done):
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design build
+   uv run python -m principia.cli.manage --root design build
    ```
 
 2. **Get the current state**:
    ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design investigate-next
+   uv run python -m principia.cli.manage --root design investigate-next
    ```
    Print the `breadcrumb` field to show the user where they are.
 
@@ -99,7 +99,7 @@ When ready, run `investigate-next` to get the next state.
 - Tell synthesizer to produce `blueprint.md` with a claim registry (3-7 claims)
 - Verify registry parses:
   ```bash
-  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design parse-framework
+  uv run python -m principia.cli.manage --root design parse-framework
   ```
 - If decomposition involves hard math, dispatch `@deep-thinker`, then re-dispatch `@synthesizer` with the analysis
 - Report: `[Divide] Decomposing into testable claims...`
@@ -107,10 +107,10 @@ When ready, run `investigate-next` to get the next state.
 **Action: `scaffold`**
 - For each claim in the `claims` list, scaffold:
   ```bash
-  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design scaffold claim <claim-id>
+  uv run python -m principia.cli.manage --root design scaffold claim <claim-id>
   ```
 - Write the claim statement to `claim.md`
-- After scaffolding, run `manage.py build`
+- After scaffolding, run `uv run python -m principia.cli.manage --root design build`
 - For each claim, show the user: claim statement, maturity, dependencies, falsification criterion
 - **Checkpoints mode**: Ask: "Investigate deeper (spawn sub-investigation) or treat as atomic?"
   - If deeper: spawn child principia (see Recursive Structure below)
@@ -120,7 +120,7 @@ When ready, run `investigate-next` to get the next state.
 **Action: `scaffold_quick`** (quick mode only)
 - Scaffold a single claim directly from the principle:
   ```bash
-  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design scaffold claim <slugified-principle> \
+  uv run python -m principia.cli.manage --root design scaffold claim <slugified-principle> \
     --statement "<principle>" --falsification "<user-provided or auto-generated>"
   ```
 - Write the principle as the claim statement
@@ -135,14 +135,14 @@ When ready, run `investigate-next` to get the next state.
 - The state includes `cycle` (claim name) and `sub_unit` (claim path)
 - Read `.config.md` to check dispatch mode for the conductor
 - If **internal**: Dispatch `@conductor` with the claim path, claim statement, and reference to `config/protocol.md`
-- If **external**: Generate conductor prompt with `manage.py prompt <path>` and tell user to paste result
+- If **external**: Generate conductor prompt with `uv run python -m principia.cli.manage --root design prompt <path>` and tell user to paste result
 - After conductor completes, call `investigate-next` again (it will return `record_verdict`)
 - Report: `[Test > <claim>] Dispatching @conductor`
 
 **Action: `record_verdict`**
 - Run post-verdict bookkeeping:
   ```bash
-  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design post-verdict <path>
+  uv run python -m principia.cli.manage --root design post-verdict <path>
   ```
 - Report the verdict to the user with breadcrumb
 - Call `investigate-next` again — if more claims remain, it returns the next `test_claim`
@@ -171,7 +171,7 @@ When `investigate-next` returns a claim with `complete_partial` or `complete_inc
   1. Dispatch `@synthesizer` to produce only `design/synthesis.md` (analysis of what was disproven and why)
 - Generate RESULTS.md:
   ```bash
-  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design results
+  uv run python -m principia.cli.manage --root design results
   ```
 - Read `design/RESULTS.md` and present the final design to the user
 - Report: `[Synthesize] Composing final design from N proven claims...`
@@ -184,7 +184,7 @@ When `investigate-next` returns a claim with `complete_partial` or `complete_inc
 
 At the start of the design process, check the autonomy mode:
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design autonomy-config
+uv run python -m principia.cli.manage --root design autonomy-config
 ```
 This returns JSON: `{"mode": "checkpoints", "checkpoint_at": [...]}`. Cache the result for the session.
 
@@ -193,16 +193,16 @@ This returns JSON: `{"mode": "checkpoints", "checkpoint_at": [...]}`. Cache the 
 
 Throughout this skill, actions marked "Checkpoints mode" or "Yolo mode" depend on this setting. To change mode, edit `config/orchestration.yaml` and set `autonomy.mode` to `yolo`.
 
-4. **After each action**, run `manage.py investigate-next` again and go to step 3. Continue until `complete`.
+4. **After each action**, run `uv run python -m principia.cli.manage --root design investigate-next` again and go to step 3. Continue until `complete`.
 
 ## Dispatch Mode
 
 Read `design/.config.md` before each agent dispatch. For each agent:
 - **internal**: Dispatch as Claude Code subagent via `@agent-name`
-- **external**: Run `manage.py prompt <path>` to generate a self-contained prompt. Tell user: "Prompt written to `<path>`. Copy it to your preferred tool, then paste the result back."
+- **external**: Run `uv run python -m principia.cli.manage --root design prompt <path>` to generate a self-contained prompt. Tell user: "Prompt written to `<path>`. Copy it to your preferred tool, then paste the result back."
 
 When user pastes a result for external dispatch:
-1. Validate with: `manage.py validate-paste --agent <name> --file <path>`
+1. Validate with: `uv run python -m principia.cli.manage --root design validate-paste --agent <name> --file <path>`
 2. If valid: save to the correct `result_path` and continue
 3. If invalid: tell the user what's wrong and ask to re-paste
 
@@ -226,7 +226,7 @@ After each state transition, output the breadcrumb from the JSON state:
 ## Notes
 
 - The conductor follows `config/protocol.md` for routing rules
-- All dispatches are logged via `manage.py log-dispatch`
+- All dispatches are logged via `uv run python -m principia.cli.manage --root design log-dispatch`
 - A clean disproval is a valid, productive result
 - Deep Thinker is available in ALL phases but only for specific mathematical/theoretical questions
 - Scout and Experimenter are available in Understand and Test phases only

@@ -16,8 +16,8 @@ Check the current project:
 
 ```bash
 if [ -d design ]; then
-  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design investigate-next 2>/dev/null
-  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design autonomy-config 2>/dev/null
+  uv run python -m principia.cli.manage --root design investigate-next 2>/dev/null
+  uv run python -m principia.cli.manage --root design autonomy-config 2>/dev/null
 fi
 ```
 

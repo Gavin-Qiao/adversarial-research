@@ -14,7 +14,7 @@ Create the directory structure for a new claim.
 ## Usage
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design scaffold $ARGUMENTS
+uv run python -m principia.cli.manage --root design scaffold $ARGUMENTS
 ```
 
 Examples:

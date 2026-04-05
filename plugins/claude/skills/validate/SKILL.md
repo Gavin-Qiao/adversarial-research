@@ -13,7 +13,7 @@ Run integrity checks on the design database.
 ## Usage
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design validate
+uv run python -m principia.cli.manage --root design validate
 ```
 
 ## Checks performed
