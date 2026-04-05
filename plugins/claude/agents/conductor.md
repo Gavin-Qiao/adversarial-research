@@ -229,7 +229,7 @@ uv run python -m principia.cli.manage --root design log-dispatch \
 
 ## Protocol
 
-Read `config/protocol.md` at the start of every cycle. The protocol specifies:
+Read `principia/config/protocol.md` at the start of every cycle. The protocol specifies:
 - Routing rules based on claim maturity (these inform your side-channel decisions)
 - When to dispatch experimenter mid-debate
 - When to dispatch scout

@@ -152,3 +152,39 @@ print("OK")
 
     assert result.returncode == 0, result.stderr
     assert "OK" in result.stdout
+
+
+def test_runtime_resolved_agent_instructions_use_packaged_manage_entrypoint() -> None:
+    experimenter_command = "uv run python -m principia.cli.manage --root design codebook"
+    conductor_command = "uv run python -m principia.cli.manage --root design next <claim-path>"
+
+    for path in (
+        Path("agents/experimenter.md"),
+        Path("principia/agents/experimenter.md"),
+    ):
+        text = path.read_text(encoding="utf-8")
+        assert experimenter_command in text
+        assert "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" not in text
+        assert "python3 scripts/manage.py" not in text
+
+    for path in (
+        Path("agents/conductor.md"),
+        Path("principia/agents/conductor.md"),
+    ):
+        text = path.read_text(encoding="utf-8")
+        assert conductor_command in text
+        assert "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" not in text
+        assert "python3 scripts/manage.py" not in text
+
+
+def test_packaged_protocol_doc_is_shipped_and_referenced() -> None:
+    protocol_path = Path("principia/config/protocol.md")
+    assert protocol_path.exists()
+
+    for path in (
+        Path("agents/conductor.md"),
+        Path("principia/agents/conductor.md"),
+        Path("agents/synthesizer.md"),
+        Path("principia/agents/synthesizer.md"),
+    ):
+        assert "principia/config/protocol.md" in path.read_text(encoding="utf-8")

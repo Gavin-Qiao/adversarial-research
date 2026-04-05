@@ -63,13 +63,13 @@ Structure your results as:
 
 **Before starting work**, check what already exists:
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design codebook
+uv run python -m principia.cli.manage --root design codebook
 ```
 This shows all functions, generators, and benchmarks created in prior cycles. **Reuse existing code** instead of rebuilding.
 
 **After completing any experiment**, register your artifacts:
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design register \
+uv run python -m principia.cli.manage --root design register \
   --id <short-id> --name "<name>" --type <function|class|script|dataset> \
   --path "<file-path>" --description "<what it does>" --cycle "<cycle-id>"
 ```

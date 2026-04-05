@@ -41,7 +41,7 @@ check_untyped_defs = true
 disallow_untyped_defs = false
 
 [tool.setuptools.package-data]
-principia = ["agents/*.md", "config/*.yaml"]
+principia = ["agents/*.md", "config/*.md", "config/*.yaml"]
 
 [tool.setuptools.packages.find]
 include = ["principia*"]

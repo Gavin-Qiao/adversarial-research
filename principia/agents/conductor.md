@@ -78,7 +78,7 @@ new evidence or new reasoning. If you concede, shift to a fundamentally
 different framework — do not patch.
 
 ## Prior Art
-[Context files from manage.py context]
+[Context files from `uv run python -m principia.cli.manage --root design context`]
 ```
 
 ### For @adversary
@@ -112,8 +112,8 @@ Give the architect and adversary DIFFERENT prior art to prevent premature agreem
 ### For @experimenter
 - Include the specific claim to test and the proposed method.
 - Extract the `falsification` field from `claim.md` frontmatter (written by the synthesizer). Embed it verbatim: "Pre-registered falsification criterion: [value]. Your experiment MUST test this specific criterion." If no falsification field exists, instruct the experimenter to define the criterion before running experiments.
-- Start with: "Before starting, run `python3 scripts/manage.py --root design codebook` to see existing artifacts."
-- End with: "After completing, you MUST register your artifacts with `python3 scripts/manage.py --root design register ...`"
+- Start with: "Before starting, run `uv run python -m principia.cli.manage --root design codebook` to see existing artifacts."
+- End with: "After completing, you MUST register your artifacts with `uv run python -m principia.cli.manage --root design register ...`"
 
 ### For @scout
 - Include the specific question and what's already known (to avoid redundant search).
@@ -141,7 +141,7 @@ Monitor for premature convergence: if both agents agree by round 2 without subst
 The state machine decides what to do next. Do NOT improvise routing — call this command:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design next <claim-path>
+uv run python -m principia.cli.manage --root design next <claim-path>
 ```
 
 The JSON output tells you:
@@ -150,12 +150,12 @@ The JSON output tells you:
 - `context_files`: what files to read for prompt construction
 - `result_path`: where to save the result
 
-Follow the action. After dispatching an agent and saving its result, call `manage.py next` again to get the next action. Repeat until the state is `complete_*`.
+Follow the action. After dispatching an agent and saving its result, call `uv run python -m principia.cli.manage --root design next` again to get the next action. Repeat until the state is `complete_*`.
 
 After every dispatch, log it:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design log-dispatch \
+uv run python -m principia.cli.manage --root design log-dispatch \
   --cycle <cycle-id> --agent <agent-name> --action dispatch --round <N>
 ```
 
@@ -172,7 +172,7 @@ These don't change the main flow — the state machine ignores them. The next ma
 Log side-channel dispatches:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design log-dispatch \
+uv run python -m principia.cli.manage --root design log-dispatch \
   --cycle <cycle-id> --agent experimenter --action side_dispatch --details "checking claim X"
 ```
 
@@ -188,7 +188,7 @@ Save to `{claim-path}/deep-thinker/analysis-{N}.md`. Include the deep-thinker's 
 Log deep-thinker dispatches:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design log-dispatch \
+uv run python -m principia.cli.manage --root design log-dispatch \
   --cycle <cycle-id> --agent deep-thinker --action side_dispatch --details "question: ..."
 ```
 
@@ -197,7 +197,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design log-dispatch \
 If the adversary is still finding **fatal** or **serious** flaws near the round limit and the debate is making progress (architect is genuinely shifting frameworks, not just patching), extend the debate:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design extend-debate <claim-path> --to <N>
+uv run python -m principia.cli.manage --root design extend-debate <claim-path> --to <N>
 ```
 
 This overrides `max_rounds` for this specific claim. The state machine will continue the debate loop instead of forcing the experimenter.
@@ -214,7 +214,7 @@ This overrides `max_rounds` for this specific claim. The state machine will cont
 Log the extension:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design log-dispatch \
+uv run python -m principia.cli.manage --root design log-dispatch \
   --cycle <cycle-id> --agent self --action override --details "extended debate to N rounds: <reason>"
 ```
 
@@ -223,24 +223,24 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design log-dispatch \
 If you override the state machine for other reasons (e.g., the adversary rated severity as minor but you assess it's actually serious, or you skip remaining rounds), log it:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design log-dispatch \
+uv run python -m principia.cli.manage --root design log-dispatch \
   --cycle <cycle-id> --agent self --action override --details "reason for override"
 ```
 
 ## Protocol
 
-Read `config/protocol.md` at the start of every cycle. The protocol specifies:
+Read `principia/config/protocol.md` at the start of every cycle. The protocol specifies:
 - Routing rules based on claim maturity (these inform your side-channel decisions)
 - When to dispatch experimenter mid-debate
 - When to dispatch scout
 - When to conclude
 - How many debate rounds to run
 
-The protocol guides your judgment for **side-channel decisions** (mid-debate scout dispatches, early termination). The state machine (`manage.py next`) handles the **main control flow** (architect → adversary → experimenter → arbiter). When in doubt, follow `manage.py next`.
+The protocol guides your judgment for **side-channel decisions** (mid-debate scout dispatches, early termination). The state machine (`uv run python -m principia.cli.manage --root design next`) handles the **main control flow** (architect → adversary → experimenter → arbiter). When in doubt, follow `uv run python -m principia.cli.manage --root design next`.
 
 ## Saving Results
 
-After each agent dispatch, save the result to the file indicated by `result_path` from `manage.py next`. Standard locations:
+After each agent dispatch, save the result to the file indicated by `result_path` from `uv run python -m principia.cli.manage --root design next`. Standard locations:
 - Architect: `{claim-path}/architect/round-{N}/result.md`
 - Adversary: `{claim-path}/adversary/round-{N}/result.md`
 - Experimenter: `{claim-path}/experimenter/results/output.md` (or `check-{N}.md` for mid-debate side-channel checks)
@@ -248,7 +248,7 @@ After each agent dispatch, save the result to the file indicated by `result_path
 
 ## Verdict
 
-When `manage.py next` returns `dispatch_arbiter`, YOU are the arbiter. Write your verdict to `{claim-path}/arbiter/results/verdict.md`.
+When `uv run python -m principia.cli.manage --root design next` returns `dispatch_arbiter`, YOU are the arbiter. Write your verdict to `{claim-path}/arbiter/results/verdict.md`.
 
 ### Verdict thresholds
 
