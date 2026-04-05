@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from db import build_db
-from frontmatter import get_body, parse_frontmatter, readable_id
+from frontmatter import get_body, readable_id
 
 import config as _cfg
 
@@ -344,41 +344,27 @@ def cmd_results(args: argparse.Namespace) -> None:
     lines.append("## Claims")
     lines.append("")
 
+    from orchestration import extract_confidence, extract_verdict, load_config
+
+    orch_config = load_config(_cfg.DEFAULT_ORCH_CONFIG)
     claims_dir = _cfg.RESEARCH_DIR / "claims"
 
-    # Gather all verdict nodes
-    verdicts = conn.execute("SELECT id, status, confidence FROM nodes WHERE type = 'verdict' ORDER BY id").fetchall()
-
-    if verdicts:
-        for v in verdicts:
-            vid = v["id"]
-            status = v["status"] or "pending"
-            confidence = v["confidence"] or "unknown"
-            display_status = status.upper()
-            lines.append(f"### {vid}")
-            lines.append(f"- **Verdict**: {display_status}")
-            lines.append(f"- **Confidence**: {confidence}")
+    # Scan verdict files directly — DB frontmatter status is unreliable
+    # (verdict nodes typically have status: active, not the actual verdict)
+    found_verdicts = False
+    if claims_dir.exists():
+        for verdict_file in sorted(claims_dir.rglob("verdict.md")):
+            found_verdicts = True
+            claim_dir = verdict_file.parent.parent.parent  # arbiter/results/verdict.md → claim dir
+            claim_name = claim_dir.name
+            verdict_val = extract_verdict(verdict_file, orch_config)
+            confidence_val = extract_confidence(verdict_file)
+            lines.append(f"### {claim_name}")
+            lines.append(f"- **Verdict**: {verdict_val}")
+            lines.append(f"- **Confidence**: {confidence_val}")
             lines.append("")
-    else:
-        # Fall back to scanning directories
-        for search_dir in (claims_dir,):
-            if not search_dir.exists():
-                continue
-            for verdict_file in sorted(search_dir.rglob("verdict.md")):
-                rel = str(verdict_file.relative_to(_cfg.RESEARCH_DIR))
-                text = verdict_file.read_text(encoding="utf-8")
-                meta = parse_frontmatter(text)
-                body_preview = get_body(text).strip().splitlines()[:3]
-                lines.append(f"### {rel}")
-                if meta.get("status"):
-                    status = meta["status"]
-                    display = status.upper()
-                    lines.append(f"- **Verdict**: {display}")
-                for bline in body_preview:
-                    lines.append(f"> {bline}")
-                lines.append("")
 
-    if not verdicts and not claims_dir.exists():
+    if not found_verdicts:
         lines.append("No claims investigated yet.")
         lines.append("")
 

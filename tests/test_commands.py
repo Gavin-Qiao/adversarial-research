@@ -630,6 +630,26 @@ class TestCmdResults:
         assert "Synthesis" in content
         assert "All claims converge" in content
 
+    def test_results_shows_actual_verdict_not_frontmatter_status(self, research_dir):
+        """Regression: RESULTS.md must show PROVEN/DISPROVEN, not frontmatter status like 'active'."""
+        from config import init_paths
+
+        init_paths(research_dir)
+        claim = research_dir / "claims" / "claim-1-test"
+        claim.mkdir(parents=True)
+        (claim / "claim.md").write_text("---\nid: h1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Test\n")
+        arb = claim / "arbiter" / "results"
+        arb.mkdir(parents=True)
+        (arb / "verdict.md").write_text(
+            "---\nid: v1\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n"
+            "**Verdict**: PROVEN\n**Confidence**: high\n"
+        )
+        run_manage(research_dir, "results")
+        content = (research_dir / "RESULTS.md").read_text()
+        assert "PROVEN" in content, "RESULTS.md should show PROVEN, not 'ACTIVE'"
+        assert "high" in content, "RESULTS.md should show confidence 'high'"
+        assert "ACTIVE" not in content, "RESULTS.md should not show frontmatter status 'ACTIVE'"
+
     def test_list_empty(self, research_dir):
         rc, out, _ = run_manage(research_dir, "list")
         assert rc == 0

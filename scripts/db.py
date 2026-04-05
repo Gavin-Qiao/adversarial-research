@@ -416,9 +416,16 @@ def build_db(force: bool = False) -> sqlite3.Connection:
             conn.execute("DELETE FROM file_tracker WHERE file_path = ?", (tracked_path,))
             deleted += 1
 
+    # Pre-populate seen_ids from unchanged nodes so incremental builds
+    # still enforce first-wins duplicate-ID semantics
+    seen_ids: dict[str, str] = {}
+    for row in conn.execute("SELECT id, file_path FROM nodes").fetchall():
+        fp = row["file_path"]
+        if fp in current_paths and fp not in {rel_path_from_root(f) for f in changed + new_files}:
+            seen_ids[row["id"]] = fp
+
     # Parse changed + new files (defer FK checks — edges may reference nodes from unchanged files)
     conn.execute("PRAGMA foreign_keys=OFF")
-    seen_ids: dict[str, str] = {}
     for fpath in changed + new_files:
         _parse_and_upsert(conn, fpath, seen_ids)
     conn.execute("PRAGMA foreign_keys=ON")

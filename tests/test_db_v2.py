@@ -354,6 +354,44 @@ class TestResearchBuilder:
 # ---------------------------------------------------------------------------
 
 
+class TestDuplicateIdIncrementalBuild:
+    """Regression: incremental build must not let a duplicate ID overwrite the first-wins winner."""
+
+    def test_incremental_preserves_first_wins(self, research_dir):
+        """Full build skips dupe, then incremental build must also skip it."""
+        # Create two files with same ID
+        d1 = research_dir / "claims" / "claim-1-alpha" / "architect" / "round-1"
+        d1.mkdir(parents=True)
+        (d1 / "result.md").write_text("---\nid: dupe\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# Alpha\n")
+        d2 = research_dir / "claims" / "claim-2-beta" / "architect" / "round-1"
+        d2.mkdir(parents=True)
+        (d2 / "result.md").write_text(
+            "---\nid: dupe\ntype: evidence\nstatus: active\ndate: 2026-01-01\n---\n\n# Beta\n"
+        )
+
+        # Full build — first file wins
+        conn = build_db(force=True)
+        row = conn.execute("SELECT type, file_path FROM nodes WHERE id = 'dupe'").fetchone()
+        first_type = row["type"]
+        first_path = row["file_path"]
+
+        # Touch the duplicate file to make it "changed" for incremental build
+        import time
+
+        time.sleep(0.05)
+        d2_file = d2 / "result.md"
+        d2_file.write_text(d2_file.read_text())  # rewrite to update mtime
+
+        # Incremental build — must NOT overwrite the winner
+        conn2 = build_db()
+        row2 = conn2.execute("SELECT type, file_path FROM nodes WHERE id = 'dupe'").fetchone()
+        assert row2["type"] == first_type, (
+            f"Incremental build overwrote first-wins node: was {first_type} at {first_path}, "
+            f"now {row2['type']} at {row2['file_path']}"
+        )
+        assert row2["file_path"] == first_path
+
+
 class TestNewFrontmatterFields:
     def test_maturity_persists(self, research_dir):
         path = research_dir / "claims" / "claim-1-test" / "claim.md"
