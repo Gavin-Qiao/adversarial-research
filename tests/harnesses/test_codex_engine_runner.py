@@ -1,10 +1,10 @@
 import json
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+import principia.cli.codex_runner as codex_runner
 from principia.api.engine import PrincipiaEngine
 
 
@@ -16,7 +16,8 @@ def test_engine_runner_build_command(tmp_path):
     result = subprocess.run(
         [
             sys.executable,
-            "harnesses/codex/scripts/engine_runner.py",
+            "-m",
+            "principia.cli.codex_runner",
             "--root",
             str(tmp_path),
             "build",
@@ -44,7 +45,8 @@ def test_engine_runner_validate_command_exits_nonzero_on_invalid_workspace(tmp_p
     result = subprocess.run(
         [
             sys.executable,
-            "harnesses/codex/scripts/engine_runner.py",
+            "-m",
+            "principia.cli.codex_runner",
             "--root",
             str(tmp_path),
             "validate",
@@ -73,13 +75,17 @@ def test_engine_exposes_all_runner_commands(tmp_path):
 
 
 def test_engine_runner_uses_uniform_engine_dispatch():
-    runner_path = Path("harnesses/codex/scripts/engine_runner.py")
+    runner_path = Path("principia/cli/codex_runner.py")
     runner_text = runner_path.read_text(encoding="utf-8")
 
     assert "payload = getattr(engine, args.command)()" in runner_text
 
 
-def test_engine_runner_prefers_repo_local_principia_over_pythonpath(tmp_path):
+def test_codex_runner_module_exposes_main():
+    assert callable(codex_runner.main)
+
+
+def test_codex_runner_build_uses_repository_principia_package(tmp_path):
     fake_package = tmp_path / "fake"
     fake_api = fake_package / "principia" / "api"
     fake_api.mkdir(parents=True)
@@ -105,7 +111,8 @@ def test_engine_runner_prefers_repo_local_principia_over_pythonpath(tmp_path):
     result = subprocess.run(
         [
             sys.executable,
-            "harnesses/codex/scripts/engine_runner.py",
+            "-m",
+            "principia.cli.codex_runner",
             "--root",
             str(design_root),
             "build",
@@ -121,34 +128,3 @@ def test_engine_runner_prefers_repo_local_principia_over_pythonpath(tmp_path):
     payload = json.loads(result.stdout)
     assert payload["node_count"] == 0
     assert payload["edge_count"] == 0
-
-
-def test_engine_runner_errors_cleanly_for_standalone_harness_copy(tmp_path):
-    standalone_root = tmp_path / "standalone"
-    harness_root = standalone_root / "harnesses" / "codex"
-    shutil.copytree(Path("harnesses/codex"), harness_root)
-
-    design_root = standalone_root / "design"
-    (design_root / "claims").mkdir(parents=True)
-    (design_root / "context" / "assumptions").mkdir(parents=True)
-    (design_root / ".db").mkdir()
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(harness_root / "scripts" / "engine_runner.py"),
-            "--root",
-            str(design_root),
-            "build",
-        ],
-        cwd=standalone_root,
-        capture_output=True,
-        text=True,
-        check=False,
-        env={},
-    )
-
-    assert result.returncode != 0
-    assert result.stdout == ""
-    assert "full Principia repository checkout" in result.stderr
-    assert "harnesses/codex" in result.stderr
