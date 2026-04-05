@@ -15,7 +15,7 @@ uv run ruff check scripts/ tests/
 uv run ruff format scripts/ tests/
 
 # Type check
-uv run mypy scripts/
+uv run python -m mypy scripts/
 ```
 
 ## Architecture

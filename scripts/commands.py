@@ -29,6 +29,15 @@ from reports import _format_investigation_breadcrumb
 
 import config as _cfg
 
+
+def _check_path_containment(sub_path: str) -> None:
+    """Verify a relative path stays within RESEARCH_DIR. Exits on traversal."""
+    resolved = (_cfg.RESEARCH_DIR / sub_path).resolve()
+    if not str(resolved).startswith(str(_cfg.RESEARCH_DIR.resolve())):
+        print("ERROR: Path escapes the research directory.")
+        sys.exit(1)
+
+
 # ---------------------------------------------------------------------------
 # Command: new
 # ---------------------------------------------------------------------------
@@ -257,6 +266,7 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
 
     config = load_config(_cfg.DEFAULT_ORCH_CONFIG)
     sub_path = args.path
+    _check_path_containment(sub_path)
     target = _cfg.RESEARCH_DIR / sub_path
 
     verdict_file = target / "arbiter" / "results" / "verdict.md"
@@ -326,9 +336,9 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
         "INSERT INTO ledger (timestamp, event, node_id, details, agent) VALUES (?, ?, ?, ?, ?)",
         (
             today,
-            "post_verdict",
+            verdict.lower(),
             node_id or "unknown",
-            f"Verdict: {verdict}, Confidence: {confidence}, File: {verdict_rel}",
+            f"Confidence: {confidence}, File: {verdict_rel}",
             "arbiter",
         ),
     )
@@ -688,6 +698,8 @@ def cmd_next(args: argparse.Namespace) -> None:
 
     config = load_config(_cfg.DEFAULT_ORCH_CONFIG)
     sub_path = args.path
+    if sub_path != "auto":
+        _check_path_containment(sub_path)
     if sub_path == "auto":
         found = find_active_subunit(_cfg.RESEARCH_DIR)
         if not found:
@@ -726,6 +738,7 @@ def cmd_context(args: argparse.Namespace) -> None:
     """Assemble context document for the next agent."""
     from orchestration import assemble_context, detect_state, list_context_files, load_config
 
+    _check_path_containment(args.path)
     config = load_config(_cfg.DEFAULT_ORCH_CONFIG)
     state = detect_state(_cfg.RESEARCH_DIR, args.path, config)
     agent = state["action"].removeprefix("dispatch_") if state["action"].startswith("dispatch_") else ""
@@ -748,6 +761,7 @@ def cmd_prompt(args: argparse.Namespace) -> None:
         load_config,
     )
 
+    _check_path_containment(args.path)
     config = load_config(_cfg.DEFAULT_ORCH_CONFIG)
     state = detect_state(_cfg.RESEARCH_DIR, args.path, config)
     agent = state.get("agent")
@@ -944,11 +958,16 @@ def cmd_reopen(args: argparse.Namespace) -> None:
     # Update DB
     conn.execute("UPDATE nodes SET status = 'active' WHERE id = ?", (node_id,))
 
-    # Remove post-verdict marker if present
+    # Remove post-verdict marker and verdict file so state machine doesn't
+    # treat the claim as complete via mtime fallback
     claim_dir = fpath.parent
     marker = claim_dir / ".post_verdict_done"
     if marker.exists():
         marker.unlink()
+    verdict_file = claim_dir / "arbiter" / "results" / "verdict.md"
+    if verdict_file.exists():
+        verdict_file.unlink()
+        print(f"   Removed verdict: {verdict_file.relative_to(_cfg.RESEARCH_DIR)}")
 
     # Ledger entry
     today = date.today().isoformat()
@@ -965,6 +984,7 @@ def cmd_reopen(args: argparse.Namespace) -> None:
 def cmd_replace_verdict(args: argparse.Namespace) -> None:
     """Delete existing verdict and reset claim to experimenter-done state."""
     sub_path = args.path
+    _check_path_containment(sub_path)
     target = _cfg.RESEARCH_DIR / sub_path
 
     if not target.exists():
@@ -976,6 +996,36 @@ def cmd_replace_verdict(args: argparse.Namespace) -> None:
         print(f"ERROR: No verdict file found at {verdict_file}")
         sys.exit(1)
 
+    # If claim was disproven, clear falsified_by and revert weakened dependents
+    claim_file = target / "claim.md"
+    if claim_file.exists():
+        claim_meta = parse_frontmatter(claim_file.read_text(encoding="utf-8"))
+        if claim_meta.get("status") == "disproven":
+            # Revert cascade: rebuild will clear orphan edges, but we need to
+            # reset weakened dependents that were cascaded from this claim
+            conn = build_db()
+            node_id = claim_meta.get("id")
+            if node_id:
+                weakened = conn.execute(
+                    "SELECT n.id, n.file_path FROM nodes n "
+                    "JOIN edges e ON e.source_id = n.id AND e.target_id = ? "
+                    "WHERE n.status = 'weakened'",
+                    (node_id,),
+                ).fetchall()
+                for w in weakened:
+                    wp = _cfg.RESEARCH_DIR / w["file_path"]
+                    if wp.exists():
+                        _update_frontmatter_in_file(wp, {"status": "pending"})
+                        print(f"Reverted: {w['id']} weakened → pending")
+        # Clear falsified_by from frontmatter
+        updates = {"status": "active"}
+        if claim_meta.get("falsified_by"):
+            updates["falsified_by"] = ""
+        if not _update_frontmatter_in_file(claim_file, updates):
+            print(f"WARN: Could not update frontmatter in {claim_file}")
+    else:
+        claim_meta = {}
+
     # Remove verdict file
     verdict_file.unlink()
     print(f"Removed: {verdict_file.relative_to(_cfg.RESEARCH_DIR)}")
@@ -986,15 +1036,9 @@ def cmd_replace_verdict(args: argparse.Namespace) -> None:
         marker.unlink()
         print("Removed: .post_verdict_done marker")
 
-    # Reset claim.md status to active
-    claim_file = target / "claim.md"
-    if claim_file.exists() and not _update_frontmatter_in_file(claim_file, {"status": "active"}):
-        print(f"WARN: Could not update frontmatter in {claim_file}")
-
     # Ledger entry
     conn = build_db()
     today = date.today().isoformat()
-    claim_meta = parse_frontmatter(claim_file.read_text(encoding="utf-8")) if claim_file.exists() else {}
     node_id = claim_meta.get("id", sub_path)
     conn.execute(
         "INSERT INTO ledger (timestamp, event, node_id, details, agent) VALUES (?, ?, ?, ?, ?)",
@@ -1007,6 +1051,7 @@ def cmd_replace_verdict(args: argparse.Namespace) -> None:
 
 def cmd_extend_debate(args: argparse.Namespace) -> None:
     """Extend max debate rounds for a specific claim."""
+    _check_path_containment(args.path)
     target = _cfg.RESEARCH_DIR / args.path
     if not target.exists():
         print(f"ERROR: Path not found: {target}")
