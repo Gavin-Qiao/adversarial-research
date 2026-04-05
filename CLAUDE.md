@@ -32,7 +32,7 @@ Eight agents in `agents/`, thirteen skills in `skills/`, config in `config/orche
 
 ## Conventions
 
-- All manage.py invocations use `--root design` (the working directory created by `/principia:init`)
+- All manage.py invocations use `--root principia` (the working directory created by `/principia:init`)
 - Custom YAML parser — no PyYAML dependency. Only supports single-line values and inline lists `[a, b]`
 - Atomic file writes via temp file + `os.replace()`
 - Path globals live in `config.py`, accessed via `import config as _cfg` then `_cfg.RESEARCH_DIR`

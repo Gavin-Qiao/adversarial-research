@@ -13,7 +13,7 @@ Algorithm design proceeds through adversarial cycles where design proposals are 
 ## Hierarchy
 
 ```
-design/
+principia/
 ├── .north-star.md          # Refined principle (Understand > discuss)
 ├── .context.md             # Codebase findings (Understand > inspect)
 ├── context/

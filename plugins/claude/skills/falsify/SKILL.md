@@ -14,7 +14,7 @@ Mark a design node as disproven and cascade the status change to all transitive 
 ## Usage
 
 ```bash
-uv run python -m principia.cli.manage --root design falsify $ARGUMENTS
+uv run python -m principia.cli.manage --root principia falsify $ARGUMENTS
 ```
 
 Examples:

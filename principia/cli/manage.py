@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Principia — design management system for algorithm design from first principles.
+Principia — repository-centered management system for algorithm design from first principles.
 
 User-facing commands:
     scaffold <level> <name> Create claim structure (legacy: cycle/unit/sub-unit)
@@ -69,22 +69,22 @@ def __getattr__(name: str) -> object:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Principia design management system",
+        description="Principia repository-centered design management system",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=textwrap.dedent("""\
             Examples:
-              python manage.py --root design scaffold claim enrichment
-              python manage.py --root design validate
-              python manage.py --root design status
-              python manage.py --root design results
-              python manage.py --root design query "SELECT id, status FROM nodes WHERE type='claim'"
+              python manage.py --root principia scaffold claim enrichment
+              python manage.py --root principia validate
+              python manage.py --root principia status
+              python manage.py --root principia results
+              python manage.py --root principia query "SELECT id, status FROM nodes WHERE type='claim'"
         """),
     )
     parser.add_argument(
         "--root",
         type=Path,
-        default=Path("design"),
-        help="Path to design root directory (default: design/)",
+        default=Path("principia"),
+        help="Path to Principia workspace root directory (default: principia/)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 

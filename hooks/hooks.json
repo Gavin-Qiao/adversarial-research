@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if [ -d design/claims ] || [ -d design/context ]; then python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/manage.py\" --root design build 2>&1 | tail -5; fi",
+            "command": "if [ -d principia/claims ] || [ -d principia/context ]; then python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/manage.py\" --root principia build 2>&1 | tail -5; fi",
             "timeout": 10
           }
         ]

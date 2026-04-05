@@ -29,9 +29,7 @@ def init_paths(root: Path) -> None:
     """Configure all path globals from the given research root directory."""
     global RESEARCH_DIR, DB_PATH, CONTEXT_DIR, PROGRESS_PATH, FOUNDATIONS_PATH
     RESEARCH_DIR = root.resolve()
-    db_dir = RESEARCH_DIR / ".db"
-    db_dir.mkdir(parents=True, exist_ok=True)
-    DB_PATH = db_dir / "research.db"
+    DB_PATH = RESEARCH_DIR / ".db" / "research.db"
     CONTEXT_DIR = RESEARCH_DIR / "context"
     PROGRESS_PATH = RESEARCH_DIR / "PROGRESS.md"
     FOUNDATIONS_PATH = RESEARCH_DIR / "FOUNDATIONS.md"

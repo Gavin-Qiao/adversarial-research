@@ -15,10 +15,10 @@ Create a new markdown file in the design log with auto-generated YAML frontmatte
 
 Run:
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design new "$ARGUMENTS"
+uv run python -m principia.cli.manage --root principia new "$ARGUMENTS"
 ```
 
-The path should be relative to `design/`. Examples:
+The path should be relative to `principia/`. Examples:
 - `claims/claim-1-enrichment/architect/round-1/prompt.md`
 - `claims/claim-1-enrichment/experimenter/results/output.md`
 - `context/assumptions/my-assumption.md`

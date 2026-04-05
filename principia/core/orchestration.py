@@ -11,7 +11,7 @@ import contextlib
 import re
 import sqlite3
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 # ---------------------------------------------------------------------------
 # YAML-subset parser (stdlib only, no PyYAML)
@@ -290,6 +290,88 @@ def read_autonomy_config(config_path: Path | None = None) -> dict[str, Any]:
         "mode": autonomy.get("mode", "checkpoints"),
         "checkpoint_at": autonomy.get("checkpoint_at", ["understand", "divide", "test", "synthesize"]),
     }
+
+
+class RepoConfig(TypedDict):
+    dispatch: dict[str, str]
+    workflow_autonomy: str | None
+    sidecars: dict[str, str]
+
+
+def read_repo_config(research_dir: Path) -> RepoConfig:
+    """Read repo-local Principia preferences from .config.md.
+
+    The file remains human-editable markdown. Existing dispatch lines continue to
+    work, while init can also persist repo-local workflow and sidecar defaults.
+    """
+    dispatch_defaults: dict[str, str] = {
+        "scout": "internal",
+        "architect": "internal",
+        "adversary": "internal",
+        "experimenter": "internal",
+        "arbiter": "internal",
+        "synthesizer": "internal",
+        "deep-thinker": "internal",
+    }
+    sidecar_defaults: dict[str, str] = {
+        "deep-thinker": "ask",
+        "researcher": "ask",
+        "coder": "ask",
+    }
+    result: RepoConfig = {
+        "dispatch": dispatch_defaults.copy(),
+        "workflow_autonomy": None,
+        "sidecars": sidecar_defaults.copy(),
+    }
+
+    config_file = research_dir / ".config.md"
+    if not config_file.exists():
+        return result
+
+    dispatch_aliases = {
+        "scout": "scout",
+        "architect": "architect",
+        "adversary": "adversary",
+        "experimenter": "experimenter",
+        "arbiter": "arbiter",
+        "synthesizer": "synthesizer",
+        "deep thinker": "deep-thinker",
+        "deep-thinker": "deep-thinker",
+    }
+    sidecar_aliases = {
+        "deep thinker sidecar": "deep-thinker",
+        "deep-thinker sidecar": "deep-thinker",
+        "researcher sidecar": "researcher",
+        "coder sidecar": "coder",
+    }
+
+    text = config_file.read_text(encoding="utf-8")
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("- ") or ":" not in line:
+            continue
+        content = line[2:].strip()
+        key, _, raw_val = content.partition(":")
+        normalized_key = " ".join(key.strip().lower().replace("_", " ").split())
+        normalized_val = raw_val.strip().lower().split("(")[0].strip()
+        if normalized_key in dispatch_aliases and normalized_val in ("internal", "external"):
+            result["dispatch"][dispatch_aliases[normalized_key]] = normalized_val
+            continue
+        if normalized_key in ("workflow autonomy", "autonomy mode", "autonomy") and normalized_val in (
+            "checkpoints",
+            "yolo",
+        ):
+            result["workflow_autonomy"] = normalized_val
+            continue
+        if normalized_key in sidecar_aliases:
+            if normalized_val in ("ask", "auto", "off"):
+                result["sidecars"][sidecar_aliases[normalized_key]] = normalized_val
+            elif normalized_val == "always":
+                result["sidecars"][sidecar_aliases[normalized_key]] = "auto"
+            elif normalized_val == "never":
+                result["sidecars"][sidecar_aliases[normalized_key]] = "off"
+
+    return result
 
 
 def _get_roles_config(config: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -873,31 +955,7 @@ Based on the context above, produce your output following the format specified i
 
 def read_dispatch_config(research_dir: Path) -> dict[str, str]:
     """Parse .config.md and return {{agent: 'internal'|'external'}}."""
-    config_file = research_dir / ".config.md"
-    defaults = {
-        "scout": "internal",
-        "architect": "internal",
-        "adversary": "internal",
-        "experimenter": "internal",
-        "arbiter": "internal",
-        "synthesizer": "internal",
-        "deep-thinker": "internal",
-    }
-    if not config_file.exists():
-        return defaults
-
-    text = config_file.read_text(encoding="utf-8")
-    for line in text.splitlines():
-        line = line.strip()
-        if line.startswith("- ") and ":" in line:
-            content = line[2:].strip()
-            key, _, val = content.partition(":")
-            key = key.strip().lower()
-            val = val.strip().lower().split("(")[0].strip()  # strip "(always)" etc.
-            if key in defaults and val in ("internal", "external"):
-                defaults[key] = val
-
-    return defaults
+    return read_repo_config(research_dir)["dispatch"]
 
 
 # ---------------------------------------------------------------------------

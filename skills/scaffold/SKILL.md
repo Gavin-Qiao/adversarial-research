@@ -14,11 +14,11 @@ Create the directory structure for a new claim.
 ## Usage
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design scaffold $ARGUMENTS
+uv run python -m principia.cli.manage --root principia scaffold $ARGUMENTS
 ```
 
 Examples:
-- `scaffold claim topology-preservation` -- creates `design/claims/claim-1-topology-preservation/` with `claim.md` and role subdirectories (`architect/`, `adversary/`, `experimenter/`, `arbiter/`, `scout/`)
+- `scaffold claim topology-preservation` -- creates `principia/claims/claim-1-topology-preservation/` with `claim.md` and role subdirectories (`architect/`, `adversary/`, `experimenter/`, `arbiter/`, `scout/`)
 
 ## What gets created
 

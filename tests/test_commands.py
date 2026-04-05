@@ -1930,8 +1930,55 @@ class TestAutonomyConfig:
         assert result["mode"] == "checkpoints"
         assert "understand" in result["checkpoint_at"]
 
+    def test_autonomy_config_honors_repo_local_override(self, research_dir):
+        import json
+
+        (research_dir / ".config.md").write_text(
+            "# Principia Configuration\n\n- Workflow Autonomy: yolo\n",
+            encoding="utf-8",
+        )
+
+        rc, out, _ = run_manage(research_dir, "autonomy-config")
+        assert rc == 0, f"autonomy-config failed: {out}"
+        result = json.loads(out)
+        assert result["mode"] == "yolo"
+        assert "understand" in result["checkpoint_at"]
+
 
 class TestCmdDashboard:
+    def test_reports_missing_workspace_before_bootstrap(self, tmp_path):
+        import json
+
+        research_dir = tmp_path / "principia"
+        rc, out, _ = run_manage(research_dir, "dashboard")
+        assert rc == 0
+        result = json.loads(out[out.find("{") :])
+        assert result["init"]["status"] == "missing_workspace"
+        assert result["init"]["workspace_exists"] is False
+
+    def test_reports_init_discussion_state_without_north_star(self, research_dir):
+        import json
+
+        rc, out, _ = run_manage(research_dir, "dashboard")
+        assert rc == 0
+        result = json.loads(out)
+        assert result["init"]["status"] == "discussion_in_progress"
+        assert result["init"]["north_star_locked"] is False
+        assert result["preferences"]["workflow_autonomy"] == "checkpoints"
+        assert result["preferences"]["sidecars"]["deep-thinker"] == "ask"
+
+    def test_reports_ready_for_claims_after_north_star_is_locked(self, research_dir):
+        import json
+
+        (research_dir / ".north-star.md").write_text("# Locked principle\n", encoding="utf-8")
+        (research_dir / ".context.md").write_text("# Context\n", encoding="utf-8")
+
+        rc, out, _ = run_manage(research_dir, "dashboard")
+        assert rc == 0
+        result = json.loads(out)
+        assert result["init"]["north_star_locked"] is True
+        assert result["init"]["status"] in {"ready_for_claims", "north_star_locked"}
+
     def test_counts_legacy_cycle_claims(self, research_dir):
         import json
 

@@ -56,7 +56,7 @@ from principia.core import config as cfg
 from principia.core.commands import cmd_autonomy_config
 from principia.core.reports import cmd_results
 
-cfg.init_paths(Path.cwd() / "design")
+cfg.init_paths(Path.cwd() / "principia")
 cmd_autonomy_config(Namespace())
 cmd_results(Namespace())
 """
@@ -116,7 +116,7 @@ from principia.core import config as cfg
 from principia.core.commands import cmd_prompt
 from principia.core.orchestration import load_config
 
-design_root = Path.cwd() / "design"
+design_root = Path.cwd() / "principia"
 claim_dir = design_root / "claims" / "claim-1-test"
 claim_dir.mkdir(parents=True)
 (design_root / "context" / "assumptions").mkdir(parents=True)
@@ -155,8 +155,8 @@ print("OK")
 
 
 def test_runtime_resolved_agent_instructions_use_packaged_manage_entrypoint() -> None:
-    experimenter_command = "uv run python -m principia.cli.manage --root design codebook"
-    conductor_command = "uv run python -m principia.cli.manage --root design next <claim-path>"
+    experimenter_command = "uv run python -m principia.cli.manage --root principia codebook"
+    conductor_command = "uv run python -m principia.cli.manage --root principia next <claim-path>"
 
     for path in (
         Path("agents/experimenter.md"),

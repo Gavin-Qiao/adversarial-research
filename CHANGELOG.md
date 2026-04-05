@@ -4,6 +4,42 @@ All notable changes to this project are documented in this file.
 
 The format is inspired by Keep a Changelog, but organized around the release-note sections used for Principia releases: Features, Changed, Fixes, Docs, Packaging, Upgrade Notes, and Verification.
 
+## [0.4.0b3] - 2026-04-05
+
+### Features
+
+- Redesigned `/principia:init` around a guided repository-first onboarding flow, with explicit init status and repo-local preferences surfaced through the shared dashboard payload.
+
+### Changed
+
+- Hard-migrated the canonical workspace root from `design/` to `principia/` across the shared CLI defaults, Codex bundle, Claude bundle, hooks, agent instructions, and user-facing docs.
+- Added repo-local parsing for workflow autonomy and sidecar preferences from `principia/.config.md`, so harnesses can keep init in a thorough discussion phase until the north star is explicitly locked.
+
+### Fixes
+
+- Removed the config-path side effect where merely inspecting dashboard/status state could create `.db/` under the workspace root.
+- Synced the legacy root `skills/` mirror and orchestration comments with the new `principia/` workspace contract so no tracked compatibility surface still instructs users to work under `design/`.
+
+### Docs
+
+- Updated the top-level README and both harness surfaces to describe `/principia:init` as the active front door and to reference the `principia/` workspace layout consistently.
+
+### Packaging
+
+- Bumped Principia, Codex plugin, and Claude plugin metadata to `0.4.0b3`.
+
+### Upgrade Notes
+
+- Existing users should treat `principia/` as the only supported workspace root. Any remaining `design/` workspace should be migrated before continuing.
+
+### Verification
+
+- `uv run ruff check scripts/ tests/ principia`
+- `uv run ruff format --check scripts/ tests/ principia`
+- `uv run --python 3.12 python -m mypy scripts/`
+- `uv run --python 3.12 python -m pytest tests/ -q`
+- `452 passed`
+
 ## [0.4.0b2] - 2026-04-05
 
 ### Changed

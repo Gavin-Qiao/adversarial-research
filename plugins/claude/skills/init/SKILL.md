@@ -1,21 +1,21 @@
 ---
 name: init
-description: Initialize a new principia algorithm design project. Use when the user wants to start a new design project, set up the design directory structure, or bootstrap the principia system.
+description: Initialize a new Principia repository workspace. Use when the user wants to start a new Principia project, set up the principia directory structure, or bootstrap the system.
 argument-hint: [project-title]
 allowed-tools:
   - Bash
   - Write
 ---
 
-# Initialize Design Project
+# Initialize Principia Project
 
-Bootstrap a new principia algorithm design project in the current working directory.
+Bootstrap a new principia workspace in the current working directory.
 
 ## Steps
 
-1. Create the `design/` directory structure:
+1. Create the `principia/` directory structure:
    ```
-   design/
+   principia/
    ├── claims/          # Flat claim directories (claim-N-name/)
    ├── context/         # Background surveys, tracked assumptions
    │   └── assumptions/
@@ -23,7 +23,7 @@ Bootstrap a new principia algorithm design project in the current working direct
    └── .db/             # SQLite database (auto-generated)
    ```
 
-2. If the user provided a project title or principle, create `design/.north-star.md`:
+2. If the user provided a project title or principle, create `principia/.north-star.md`:
    ```markdown
    # [User's principle or title]
 
@@ -32,22 +32,22 @@ Bootstrap a new principia algorithm design project in the current working direct
 
    If no title/principle was provided, do NOT create `.north-star.md` — the Understand phase will create it through discussion.
 
-3. Do NOT create `design/.context.md` — the Understand phase's inspection sub-step creates this.
+3. Do NOT create `principia/.context.md` — the Understand phase's inspection sub-step creates this.
 
 4. Run the initial build:
    ```bash
-   uv run python -m principia.cli.manage --root design build
+   uv run python -m principia.cli.manage --root principia build
    ```
 
 5. Generate initial PROGRESS.md and FOUNDATIONS.md:
    ```bash
-   uv run python -m principia.cli.manage --root design status
-   uv run python -m principia.cli.manage --root design assumptions
+   uv run python -m principia.cli.manage --root principia status
+   uv run python -m principia.cli.manage --root principia assumptions
    ```
 
-6. Add `design/.db/` to `.gitignore` if not already present.
+6. Add `principia/.db/` to `.gitignore` if not already present.
 
-7. Save default config to `design/.config.md`. This file controls **agent dispatch mode only** (internal = subagent, external = prompt file for copy/paste). It does NOT control workflow behavior -- that's in `config/orchestration.yaml`.
+7. Save default config to `principia/.config.md`. This file controls **agent dispatch mode only** (internal = subagent, external = prompt file for copy/paste). It does NOT control workflow behavior -- that's in `config/orchestration.yaml`.
    ```markdown
    # Design Configuration
 
@@ -70,5 +70,5 @@ Inform the user:
 - Use `/principia:step` to advance manually, one agent at a time
 - Use `/principia:status` to see progress
 - Use `/principia:help` for a full command reference
-- All agents run as Claude Code subagents by default. To use external LLMs for any agent, edit `design/.config.md` and set it to `external` — the system will generate a self-contained prompt you can paste into any LLM. Note: external dispatch requires manual copy/paste, so it is incompatible with yolo mode.
+- All agents run as Claude Code subagents by default. To use external LLMs for any agent, edit `principia/.config.md` and set it to `external` — the system will generate a self-contained prompt you can paste into any LLM. Note: external dispatch requires manual copy/paste, so it is incompatible with yolo mode.
 - Autonomy mode (checkpoints vs yolo for overnight runs) is in `config/orchestration.yaml`

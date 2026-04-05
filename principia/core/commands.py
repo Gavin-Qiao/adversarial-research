@@ -57,9 +57,7 @@ def _primary_claim_path_sql(column: str = "file_path") -> str:
 
 
 def _is_primary_claim_path(file_path: str) -> bool:
-    return (
-        file_path.startswith("claims/claim-") and file_path.endswith("/claim.md")
-    ) or (
+    return (file_path.startswith("claims/claim-") and file_path.endswith("/claim.md")) or (
         file_path.startswith("cycles/") and file_path.endswith("/frontier.md")
     )
 
@@ -429,15 +427,15 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
     today = date.today().isoformat()
     verdict_rel = str(verdict_file.relative_to(_cfg.RESEARCH_DIR)) if verdict_file.exists() else ""
     conn.execute(
-            "INSERT INTO ledger (timestamp, event, node_id, details, agent) VALUES (?, ?, ?, ?, ?)",
-            (
-                today,
-                verdict.lower(),
-                node_id,
-                f"Confidence: {confidence}, File: {verdict_rel}",
-                "arbiter",
-            ),
-        )
+        "INSERT INTO ledger (timestamp, event, node_id, details, agent) VALUES (?, ?, ?, ?, ?)",
+        (
+            today,
+            verdict.lower(),
+            node_id,
+            f"Confidence: {confidence}, File: {verdict_rel}",
+            "arbiter",
+        ),
+    )
     try:
         conn.commit()
     except sqlite3.Error as exc:
@@ -946,17 +944,50 @@ def cmd_parse_framework(args: argparse.Namespace) -> None:
 
 def cmd_autonomy_config(args: argparse.Namespace) -> None:
     """Output autonomy configuration as JSON."""
-    from .orchestration import read_autonomy_config
+    from .orchestration import read_autonomy_config, read_repo_config
 
     result = read_autonomy_config(_cfg.DEFAULT_ORCH_CONFIG)
+    repo_config = read_repo_config(_cfg.RESEARCH_DIR)
+    if repo_config.get("workflow_autonomy") in ("checkpoints", "yolo"):
+        result["mode"] = repo_config["workflow_autonomy"]
     print(json.dumps(result))
+
+
+def _build_init_status(workspace_exists: bool, research_root: Path, inv_state: dict[str, Any]) -> dict[str, object]:
+    north_star_path = research_root / ".north-star.md"
+    context_path = research_root / ".context.md"
+    config_path = research_root / ".config.md"
+    claims_dir = research_root / "claims"
+    claims_scaffolded = claims_dir.exists() and any(child.is_dir() for child in claims_dir.iterdir())
+
+    if not workspace_exists:
+        status = "missing_workspace"
+    elif not north_star_path.exists():
+        status = "discussion_in_progress"
+    elif inv_state.get("action") in {"divide", "scaffold", "scaffold_quick"} and not claims_scaffolded:
+        status = "ready_for_claims"
+    elif inv_state.get("phase") == "understand":
+        status = "north_star_locked"
+    else:
+        status = "workflow_active"
+
+    return {
+        "status": status,
+        "workspace_root": str(research_root),
+        "workspace_exists": workspace_exists,
+        "north_star_locked": north_star_path.exists(),
+        "context_exists": context_path.exists(),
+        "config_exists": config_path.exists(),
+        "claims_scaffolded": claims_scaffolded,
+    }
 
 
 def get_dashboard_payload(root: Path | None = None) -> dict[str, object]:
     """Build the dashboard payload for a workspace without printing."""
-    from .orchestration import detect_investigation_state, load_config, read_autonomy_config
+    from .orchestration import detect_investigation_state, load_config, read_autonomy_config, read_repo_config
 
     research_root = _cfg.RESEARCH_DIR.resolve() if root is None else root.resolve()
+    workspace_exists = research_root.exists()
     config = load_config(_cfg.DEFAULT_ORCH_CONFIG)
     conn = build_db(root=research_root)
 
@@ -1014,8 +1045,15 @@ def get_dashboard_payload(root: Path | None = None) -> dict[str, object]:
     ).fetchall()
     decisions = [{"id": d["id"], "status": d["status"], "file": d["file_path"]} for d in pending_decisions]
 
+    # Repo-local config
+    repo_config = read_repo_config(research_root)
+
     # Autonomy config
     autonomy = read_autonomy_config(_cfg.DEFAULT_ORCH_CONFIG)
+    if repo_config.get("workflow_autonomy") in ("checkpoints", "yolo"):
+        autonomy["mode"] = repo_config["workflow_autonomy"]
+
+    init = _build_init_status(workspace_exists, research_root, inv_state)
 
     result: dict[str, object] = {
         "phase": phase,
@@ -1028,6 +1066,12 @@ def get_dashboard_payload(root: Path | None = None) -> dict[str, object]:
         "blocked": blocked_claims,
         "pending_decisions": decisions,
         "autonomy": autonomy,
+        "init": init,
+        "preferences": {
+            "workflow_autonomy": repo_config.get("workflow_autonomy") or autonomy["mode"],
+            "sidecars": repo_config["sidecars"],
+            "dispatch": repo_config["dispatch"],
+        },
     }
     conn.close()
     return result
@@ -1035,7 +1079,7 @@ def get_dashboard_payload(root: Path | None = None) -> dict[str, object]:
 
 def cmd_dashboard(args: argparse.Namespace) -> None:
     """Single-view control panel: phase, active claim, last verdict, blockers, config."""
-    print(json.dumps(get_dashboard_payload(), indent=2))
+    print(json.dumps(get_dashboard_payload(root=_cfg.RESEARCH_DIR), indent=2))
 
 
 def cmd_reopen(args: argparse.Namespace) -> None:

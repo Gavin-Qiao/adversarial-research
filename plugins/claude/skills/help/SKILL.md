@@ -16,18 +16,18 @@ Check the current project:
 
 ```bash
 if [ -d design ]; then
-  uv run python -m principia.cli.manage --root design investigate-next 2>/dev/null
-  uv run python -m principia.cli.manage --root design autonomy-config 2>/dev/null
+  uv run python -m principia.cli.manage --root principia investigate-next 2>/dev/null
+  uv run python -m principia.cli.manage --root principia autonomy-config 2>/dev/null
 fi
 ```
 
-Also check if `design/.config.md` exists and whether any agents are set to `external`.
+Also check if `principia/.config.md` exists and whether any agents are set to `external`.
 
 ## Step 2: Present Help
 
 Based on what you found, present ONE of these variants:
 
-### If no `design/` directory exists:
+### If no `principia/` directory exists:
 
 > **Principia** turns a philosophical principle into a working algorithm through adversarial testing.
 >
@@ -43,7 +43,7 @@ Based on what you found, present ONE of these variants:
 
 Then show the full commands table and agents list from the reference section below.
 
-### If `design/` exists and investigation is active:
+### If `principia/` exists and investigation is active:
 
 Show a **status-first** response:
 
@@ -57,15 +57,15 @@ Show a **status-first** response:
    - `complete_partial` → "A claim was partially proven. Run `/principia:step` to decide: narrow the claim, gather more evidence, or accept and move on."
    - `complete_inconclusive` → "A claim was inconclusive. Run `/principia:step` to decide: try a different approach, gather more evidence, or defer."
    - `synthesize` → "All claims tested. Run `/principia:step` to synthesize, or `/principia:design` to finish automatically."
-   - `complete` → "Investigation complete! Run `/principia:status` to see results, or read `design/RESULTS.md`."
+   - `complete` → "Investigation complete! Run `/principia:status` to see results, or read `principia/RESULTS.md`."
 3. **Current config**: Report autonomy mode (checkpoints/yolo) and whether any agents are external.
 4. **Quick reference**: Show the commands table below.
 
-### If `design/` exists but investigation is complete:
+### If `principia/` exists but investigation is complete:
 
-> Your investigation is **complete**. See `design/RESULTS.md` for the full summary.
+> Your investigation is **complete**. See `principia/RESULTS.md` for the full summary.
 >
-> To start a new investigation, remove or rename the `design/` directory and run `/principia:init`.
+> To start a new investigation, remove or rename the `principia/` directory and run `/principia:init`.
 
 Then show the commands table.
 
@@ -105,4 +105,4 @@ Then show the commands table.
 | **Checkpoints** (default) | Pauses between phases for your input | `autonomy.mode: checkpoints` |
 | **Yolo** | Fully automated, for overnight runs | `autonomy.mode: yolo` |
 
-Autonomy is configured in `config/orchestration.yaml`. Agent dispatch mode (internal vs external) is in `design/.config.md`.
+Autonomy is configured in `config/orchestration.yaml`. Agent dispatch mode (internal vs external) is in `principia/.config.md`.

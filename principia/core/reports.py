@@ -20,6 +20,7 @@ def _workspace_root(root: Path | None = None) -> Path:
         return _cfg.RESEARCH_DIR.resolve()
     return root.resolve()
 
+
 # ---------------------------------------------------------------------------
 # Command: status -> PROGRESS.md
 # ---------------------------------------------------------------------------
@@ -133,11 +134,7 @@ def cmd_status(args: argparse.Namespace) -> None:
 
     lines.append("## Claim log")
     lines.append("")
-    claim_nodes = conn.execute(
-        "SELECT * FROM nodes "
-        f"WHERE {_primary_claim_path_sql()} "
-        "ORDER BY file_path"
-    ).fetchall()
+    claim_nodes = conn.execute(f"SELECT * FROM nodes WHERE {_primary_claim_path_sql()} ORDER BY file_path").fetchall()
     if claim_nodes:
         lines.append("| Claim | Status | File |")
         lines.append("|-------|--------|------|")

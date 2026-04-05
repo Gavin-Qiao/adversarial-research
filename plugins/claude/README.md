@@ -14,14 +14,16 @@ claude --plugin-dir ./plugins/claude
 
 After Claude starts, run `/help` to confirm the namespaced Principia skills are available from the canonical bundle.
 
+The intended first command is `/principia:init`, which now treats `principia/` as the canonical workspace root.
+
 ## Runtime
 
 The canonical Claude bundle uses the packaged Principia CLI instead of the old root plugin wrapper:
 
 ```bash
-uv run python -m principia.cli.manage --root design build
-uv run python -m principia.cli.manage --root design investigate-next
-uv run python -m principia.cli.manage --root design next <claim-path>
+uv run python -m principia.cli.manage --root principia build
+uv run python -m principia.cli.manage --root principia investigate-next
+uv run python -m principia.cli.manage --root principia next <claim-path>
 ```
 
 Use `plugins/claude/skills` for workflow commands, `plugins/claude/agents` for orchestration roles, and `plugins/claude/hooks/hooks.json` for session hooks.

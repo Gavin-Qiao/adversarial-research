@@ -8,13 +8,13 @@ description: Reopen a completed Principia claim and restore the workflow state i
 Reopen the claim:
 
 ```bash
-uv run python -m principia.cli.manage --root design reopen <node-id>
+uv run python -m principia.cli.manage --root principia reopen <node-id>
 ```
 
 Then refresh with:
 
 ```bash
-uv run python -m principia.cli.codex_runner --root design dashboard
+uv run python -m principia.cli.codex_runner --root principia dashboard
 ```
 
 In Codex, explain what was reopened, whether weakened dependents were restored, and what the dashboard now shows as the next action.

@@ -29,7 +29,7 @@ def test_codex_skills_readme_matches_current_bundle_content() -> None:
 
 def test_codex_skills_use_packaged_runner_commands() -> None:
     bundle_root = Path("plugins/codex/skills")
-    runner_command = "uv run python -m principia.cli.codex_runner --root design"
+    runner_command = "uv run python -m principia.cli.codex_runner --root principia"
 
     skill_files = [
         "init/SKILL.md",

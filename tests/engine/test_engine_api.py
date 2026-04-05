@@ -51,12 +51,12 @@ def test_engine_relative_root_stays_bound_after_cwd_change(tmp_path: Path) -> No
     workspace_b = tmp_path / "workspace-b"
 
     for workspace in (workspace_a, workspace_b):
-        design_root = workspace / "design"
-        (design_root / "claims").mkdir(parents=True)
-        (design_root / "context" / "assumptions").mkdir(parents=True)
-        (design_root / ".db").mkdir()
+        principia_root = workspace / "principia"
+        (principia_root / "claims").mkdir(parents=True)
+        (principia_root / "context" / "assumptions").mkdir(parents=True)
+        (principia_root / ".db").mkdir()
 
-    claim_dir = workspace_a / "design" / "claims" / "claim-1-test"
+    claim_dir = workspace_a / "principia" / "claims" / "claim-1-test"
     claim_dir.mkdir(parents=True)
     (claim_dir / "claim.md").write_text(
         "---\nid: h1-test\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Test claim\n",
@@ -66,7 +66,7 @@ def test_engine_relative_root_stays_bound_after_cwd_change(tmp_path: Path) -> No
     old_cwd = Path.cwd()
     try:
         os.chdir(workspace_a)
-        engine = PrincipiaEngine(root=Path("design"))
+        engine = PrincipiaEngine(root=Path("principia"))
         assert engine.build()["node_count"] == 1
 
         os.chdir(workspace_b)

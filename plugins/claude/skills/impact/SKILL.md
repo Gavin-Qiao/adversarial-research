@@ -13,7 +13,7 @@ Show what nodes would be affected if a given node were disproven, without making
 ## Usage
 
 ```bash
-uv run python -m principia.cli.manage --root design cascade $ARGUMENTS
+uv run python -m principia.cli.manage --root principia cascade $ARGUMENTS
 ```
 
 ## Output

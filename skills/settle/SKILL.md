@@ -14,7 +14,7 @@ Mark a design node as proven, recording the decision in the audit ledger.
 ## Usage
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design settle $ARGUMENTS
+uv run python -m principia.cli.manage --root principia settle $ARGUMENTS
 ```
 
 Examples:

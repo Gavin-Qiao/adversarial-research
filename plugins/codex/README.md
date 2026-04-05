@@ -10,12 +10,14 @@ The repository publishes a repo-local Codex marketplace entry at `.agents/plugin
 
 Open the full Principia checkout in Codex, then install the `principia` plugin from the repo-local marketplace. This keeps the Codex bundle aligned with the official `plugins/<name>` structure while still using the shared runtime from the checkout.
 
+The intended first command is `/principia:init`. In Codex, init is a guided repo ritual: it inspects the current project, scaffolds `principia/` if needed, collects autonomy and sidecar preferences, and stays in discussion until the north star is explicitly locked.
+
 This bundle is Codex-native. It uses the packaged runner to talk to the shared Principia engine:
 
 ```bash
-uv run python -m principia.cli.codex_runner --root design dashboard
-uv run python -m principia.cli.codex_runner --root design validate
-uv run python -m principia.cli.codex_runner --root design results
+uv run python -m principia.cli.codex_runner --root principia dashboard
+uv run python -m principia.cli.codex_runner --root principia validate
+uv run python -m principia.cli.codex_runner --root principia results
 ```
 
 The bundle depends on shared repo content, including `principia/`, `agents/`, and `config/`. Copying `plugins/codex` by itself is unsupported.

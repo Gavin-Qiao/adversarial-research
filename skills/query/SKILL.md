@@ -13,7 +13,7 @@ Run read-only SQL against the design SQLite database.
 ## Usage
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" --root design query "$ARGUMENTS"
+uv run python -m principia.cli.manage --root principia query "$ARGUMENTS"
 ```
 
 ## Available tables

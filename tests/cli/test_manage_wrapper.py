@@ -31,7 +31,8 @@ def test_package_manage_module_runs_help() -> None:
     )
 
     assert result.returncode == 0
-    assert "Principia design management system" in result.stdout
+    assert "Principia repository-centered design management system" in result.stdout
+    assert "Path to Principia workspace root directory" in result.stdout
 
 
 def test_manage_wrapper_prefers_local_package_over_pythonpath(tmp_path: Path) -> None:
@@ -57,5 +58,5 @@ def test_manage_wrapper_prefers_local_package_over_pythonpath(tmp_path: Path) ->
     )
 
     assert result.returncode == 0
-    assert "Principia design management system" in result.stdout
+    assert "Principia repository-centered design management system" in result.stdout
     assert "EXTERNAL PRINCIPIA" not in result.stdout

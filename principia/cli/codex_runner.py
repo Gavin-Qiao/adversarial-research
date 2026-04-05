@@ -9,7 +9,7 @@ from principia.api.engine import PrincipiaEngine
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--root", type=Path, required=True)
+    parser.add_argument("--root", type=Path, default=Path("principia"))
     parser.add_argument("command", choices=["build", "dashboard", "validate", "results"])
     args = parser.parse_args()
 

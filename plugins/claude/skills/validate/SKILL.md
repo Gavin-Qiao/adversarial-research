@@ -13,7 +13,7 @@ Run integrity checks on the design database.
 ## Usage
 
 ```bash
-uv run python -m principia.cli.manage --root design validate
+uv run python -m principia.cli.manage --root principia validate
 ```
 
 ## Checks performed

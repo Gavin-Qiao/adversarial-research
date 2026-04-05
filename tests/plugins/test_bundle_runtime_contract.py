@@ -1,7 +1,7 @@
 from pathlib import Path
 
 BUNDLE_ROOT = Path("plugins/claude")
-PACKAGED_MANAGE = "uv run python -m principia.cli.manage --root design"
+PACKAGED_MANAGE = "uv run python -m principia.cli.manage --root principia"
 LEGACY_MANAGE_PATHS = ("${CLAUDE_PLUGIN_ROOT}/scripts/manage.py", "scripts/manage.py")
 REPRESENTATIVE_FILES = (
     "README.md",

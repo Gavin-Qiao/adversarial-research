@@ -8,7 +8,7 @@ description: Regenerate Principia RESULTS.md through the packaged Codex runner a
 Generate the summary through the adapter:
 
 ```bash
-uv run python -m principia.cli.codex_runner --root design results
+uv run python -m principia.cli.codex_runner --root principia results
 ```
 
 Use the returned JSON to confirm whether `RESULTS.md` was generated and where it lives. Read the file only if the user asks for the rendered narrative.

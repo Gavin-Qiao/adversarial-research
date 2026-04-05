@@ -13,11 +13,11 @@ Regenerate PROGRESS.md and FOUNDATIONS.md from the current state of all design f
 ## Usage
 
 ```bash
-uv run python -m principia.cli.manage --root design status
-uv run python -m principia.cli.manage --root design assumptions
+uv run python -m principia.cli.manage --root principia status
+uv run python -m principia.cli.manage --root principia assumptions
 ```
 
-Then read and present the key sections from `design/PROGRESS.md`:
+Then read and present the key sections from `principia/PROGRESS.md`:
 - **Current blockers**: Active nodes blocking pending work
 - **What is proven**: Claims that have been established
 - **What is disproven**: Claims that have been refuted

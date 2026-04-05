@@ -92,7 +92,7 @@ severity_keywords:
 auto_review: true
 
 # --- Skill-layer configuration (read by skills, not by orchestration.py) ---
-# These sections document behavior for the design/step skills.
+# These sections document behavior for the Principia step skills.
 # The Python state machine does not read them.
 
 # v0.3: Understand phase sub-steps

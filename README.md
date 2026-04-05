@@ -51,19 +51,20 @@ uv pip install --python .tmp/principia-wheel/bin/python dist/principia-*.whl
 From that clean environment, verify the packaged CLI still works:
 
 ```bash
-.tmp/principia-wheel/bin/python -m principia.cli.codex_runner --root design build
+.tmp/principia-wheel/bin/python -m principia.cli.codex_runner --root principia build
 ```
 
 ## Quick Start
 
 ```
-/principia:init "Topological Enrichment"
-/principia:design "Persistent homology captures information that clustering
-algorithms discard. An algorithm that preserves topological features during
-hierarchical merging should produce more faithful cluster boundaries."
+/principia:init
+/principia:status
+/principia:step
 ```
 
-That's it. Principia runs four phases automatically:
+`/principia:init` is the front door. It inspects the repo, scaffolds `principia/`, asks about autonomy and sidecar preferences, and conducts the discussion that locks the north star before the deeper workflow begins.
+
+After init, Principia runs four phases:
 
 ```mermaid
 graph LR
@@ -232,7 +233,7 @@ Principia uses 8 specialized agents. Each has a specific role and constrained ac
 
 | Command | What it does |
 |---------|-------------|
-| `/principia:init [title]` | Bootstrap a new project |
+| `/principia:init [title]` | Inspect the repo, scaffold `principia/`, and guide north-star setup |
 | `/principia:design "<principle>" [--quick]` | Full pipeline: principle to algorithm |
 | `/principia:step [path]` | Advance one step manually |
 | `/principia:status` | Regenerate PROGRESS.md |
@@ -289,14 +290,19 @@ The conductor can override `max_rounds` for a specific claim via `extend-debate`
 
 ### Dispatch mode
 
-Created by `/principia:init` in `design/.config.md`:
+Created by `/principia:init` in `principia/.config.md`:
 
 - **internal** (default): agents run as Claude Code subagents
 - **external**: generates a self-contained prompt you can paste into any LLM
 
+Init also stores repo-local workflow preferences there, including:
+
+- workflow autonomy for post-init phases
+- sidecar defaults for deep thinker, researcher, and coder assistance
+
 ## Research Tracking
 
-Principia maintains a SQLite database (`design/.db/research.db`) with an append-only audit trail:
+Principia maintains a SQLite database (`principia/.db/research.db`) with an append-only audit trail:
 
 | Table | What it tracks |
 |-------|---------------|
@@ -312,8 +318,8 @@ The ledger and dispatches survive database rebuilds -- your research history is 
 ## Directory Structure
 
 ```
-design/
-├── .north-star.md                  # Refined principle
+principia/
+├── .north-star.md                  # Locked north star for this repo
 ├── .context.md                     # Codebase inspection findings
 ├── claims/                         # One directory per testable claim
 │   └── claim-N-name/

@@ -8,13 +8,13 @@ description: Reset a completed Principia claim so a verdict can be re-run from C
 Reset the claim with:
 
 ```bash
-uv run python -m principia.cli.manage --root design replace-verdict <claim-path>
+uv run python -m principia.cli.manage --root principia replace-verdict <claim-path>
 ```
 
 Then inspect the refreshed workflow:
 
 ```bash
-uv run python -m principia.cli.codex_runner --root design dashboard
+uv run python -m principia.cli.codex_runner --root principia dashboard
 ```
 
 In Codex, describe that the verdict was cleared, note any reopened state, and use the dashboard payload to tell the user what step is now expected.

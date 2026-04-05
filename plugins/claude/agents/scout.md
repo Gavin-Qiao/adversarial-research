@@ -69,5 +69,5 @@ Structure your findings as:
 ## File Output
 
 Save the compiled research to the appropriate location:
-- **Claim-level research** (dispatched mid-cycle for a specific claim): `design/claims/claim-N-name/scout/results/result.md`
-- **Context building** (dispatched before cycles for background): `design/context/survey-<topic>.md`
+- **Claim-level research** (dispatched mid-cycle for a specific claim): `principia/claims/claim-N-name/scout/results/result.md`
+- **Context building** (dispatched before cycles for background): `principia/context/survey-<topic>.md`

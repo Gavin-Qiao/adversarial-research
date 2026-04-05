@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if [ -d design/claims ] || [ -d design/context ]; then tmp=$(mktemp); uv run python -m principia.cli.manage --root design build >\"$tmp\" 2>&1; status=$?; tail -5 \"$tmp\"; rm -f \"$tmp\"; exit $status; fi",
+            "command": "if [ -d principia/claims ] || [ -d principia/context ]; then tmp=$(mktemp); uv run python -m principia.cli.manage --root principia build >\"$tmp\" 2>&1; status=$?; tail -5 \"$tmp\"; rm -f \"$tmp\"; exit $status; fi",
             "timeout": 10
           }
         ]
