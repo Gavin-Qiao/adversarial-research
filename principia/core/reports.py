@@ -357,7 +357,7 @@ def cmd_results(args: argparse.Namespace) -> None:
     lines.append("## Claims")
     lines.append("")
 
-    from orchestration import extract_confidence, extract_verdict, load_config
+    from .orchestration import extract_confidence, extract_verdict, load_config
 
     orch_config = load_config(_cfg.DEFAULT_ORCH_CONFIG)
     # Scan verdict files directly — DB frontmatter status is unreliable

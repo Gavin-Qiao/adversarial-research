@@ -260,7 +260,7 @@ def cmd_falsify(args: argparse.Namespace) -> None:
             )
 
     # Apply cascade to dependents — weaken them
-    from orchestration import attenuate_confidence
+    from .orchestration import attenuate_confidence
 
     for dep_id, dep_fp, dep_status in affected:
         if dep_status != "disproven":
@@ -355,7 +355,7 @@ def cmd_settle(args: argparse.Namespace) -> None:
 
 def cmd_post_verdict(args: argparse.Namespace) -> None:
     """Automate post-verdict bookkeeping (update statuses, cascade, regenerate reports)."""
-    from orchestration import extract_confidence, extract_verdict, load_config
+    from .orchestration import extract_confidence, extract_verdict, load_config
 
     config = load_config(_cfg.DEFAULT_ORCH_CONFIG)
     sub_path = args.path
@@ -404,7 +404,7 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
             changes.append(f"Disproven: {node_id} by {verdict_id}")
             # Cascade — weaken dependents
             cascade_targets = _find_cascade_targets(conn, node_id)
-            from orchestration import attenuate_confidence
+            from .orchestration import attenuate_confidence
 
             for dep_id, dep_fp, dep_status in cascade_targets:
                 if dep_status != "disproven":
@@ -782,7 +782,7 @@ def cmd_dispatch_log(args: argparse.Namespace) -> None:
 
 def cmd_next(args: argparse.Namespace) -> None:
     """Determine next action for a claim (or legacy sub-unit)."""
-    from orchestration import (
+    from .orchestration import (
         compute_paths,
         detect_state,
         extract_confidence,
@@ -832,7 +832,7 @@ def cmd_next(args: argparse.Namespace) -> None:
 
 def cmd_context(args: argparse.Namespace) -> None:
     """Assemble context document for the next agent."""
-    from orchestration import assemble_context, detect_state, list_context_files, load_config
+    from .orchestration import assemble_context, detect_state, list_context_files, load_config
 
     _check_path_containment(args.path)
     config = load_config(_cfg.DEFAULT_ORCH_CONFIG)
@@ -848,7 +848,7 @@ def cmd_context(args: argparse.Namespace) -> None:
 
 def cmd_prompt(args: argparse.Namespace) -> None:
     """Generate self-contained prompt for external agent dispatch."""
-    from orchestration import (
+    from .orchestration import (
         assemble_context,
         compute_paths,
         detect_state,
@@ -891,7 +891,7 @@ def cmd_prompt(args: argparse.Namespace) -> None:
 
 def cmd_waves(args: argparse.Namespace) -> None:
     """Show execution waves based on dependency topological sort."""
-    from orchestration import compute_waves
+    from .orchestration import compute_waves
 
     waves = compute_waves(_cfg.RESEARCH_DIR)
     if not waves:
@@ -918,7 +918,7 @@ def cmd_waves(args: argparse.Namespace) -> None:
 
 def cmd_investigate_next(args: argparse.Namespace) -> None:
     """Determine next action for the full investigation."""
-    from orchestration import detect_investigation_state, load_config
+    from .orchestration import detect_investigation_state, load_config
 
     config = load_config(_cfg.DEFAULT_ORCH_CONFIG)
     quick = getattr(args, "quick", False)
@@ -933,7 +933,7 @@ def cmd_investigate_next(args: argparse.Namespace) -> None:
 
 def cmd_parse_framework(args: argparse.Namespace) -> None:
     """Parse claim registry from blueprint.md (or legacy framework.md)."""
-    from orchestration import parse_framework
+    from .orchestration import parse_framework
 
     framework_path = _cfg.RESEARCH_DIR / "blueprint.md"
     claims = parse_framework(framework_path)
@@ -946,7 +946,7 @@ def cmd_parse_framework(args: argparse.Namespace) -> None:
 
 def cmd_autonomy_config(args: argparse.Namespace) -> None:
     """Output autonomy configuration as JSON."""
-    from orchestration import read_autonomy_config
+    from .orchestration import read_autonomy_config
 
     result = read_autonomy_config(_cfg.DEFAULT_ORCH_CONFIG)
     print(json.dumps(result))
@@ -954,7 +954,7 @@ def cmd_autonomy_config(args: argparse.Namespace) -> None:
 
 def cmd_dashboard(args: argparse.Namespace) -> None:
     """Single-view control panel: phase, active claim, last verdict, blockers, config."""
-    from orchestration import detect_investigation_state, load_config, read_autonomy_config
+    from .orchestration import detect_investigation_state, load_config, read_autonomy_config
 
     config = load_config(_cfg.DEFAULT_ORCH_CONFIG)
     conn = build_db()
