@@ -28,8 +28,11 @@ Python modules in `principia/` are the shared engine (stdlib-only, no pip packag
 
 `scripts/` remains as a compatibility shim layer for legacy entrypoints.
 
-- `harnesses/claude/` contains the Claude-specific wrapper for the existing Claude Code surface.
-- `harnesses/codex/` contains the Codex-native plugin scaffold and workflow adapter.
+- `plugins/claude/` contains the canonical Claude Code bundle.
+- `plugins/codex/` contains the canonical Codex bundle and workflow adapter.
+- `harnesses/claude/` remains as a compatibility note that redirects older Claude-facing docs to `plugins/claude/`.
+
+The legacy `harnesses/codex/` surface and root `.claude-plugin/` distribution have been removed.
 
 Eight agents in `agents/`, thirteen skills in `skills/`, config in `config/orchestration.yaml`.
 
@@ -41,4 +44,4 @@ Eight agents in `agents/`, thirteen skills in `skills/`, config in `config/orche
 - Path globals live in `config.py`, accessed via `import config as _cfg` then `_cfg.RESEARCH_DIR`
 - Node IDs derived from file paths: `claims/claim-1/` -> `h1-`
 - Tests import from the module that defines the function (e.g., `from db import build_db`, `from ids import derive_id`)
-- Keep docs accurate to the current harness layout: README should point users to harness-specific installation instructions, not a single-plugin-only flow.
+- Keep docs accurate to the current plugin-bundle layout: README should point users to the canonical `plugins/claude` and `plugins/codex` installation surfaces, not removed legacy harness roots.

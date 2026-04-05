@@ -1,6 +1,6 @@
 # Principia
 
-Claude Code plugin that turns a philosophical principle into a working algorithm through adversarial testing.
+Claude Code instructions for Principia. The canonical Claude bundle now lives under `plugins/claude/`; this root doc remains as a repo-level compatibility and orientation file.
 
 ## Commands
 
@@ -20,17 +20,13 @@ uv run python -m mypy scripts/
 
 ## Architecture
 
-Python modules in `scripts/` (stdlib-only, no pip packages at runtime):
+Python modules in `principia/` are the shared engine (stdlib-only, no pip packages at runtime):
 
-- **manage.py** (~275 lines) — CLI entrypoint with argparse
-- **commands.py** (~1,000 lines) — all CLI command handlers
-- **db.py** (~525 lines) — SQLite schema, migrations, build, cascade logic
-- **reports.py** (~440 lines) — PROGRESS.md, FOUNDATIONS.md, RESULTS.md generators
-- **validation.py** (~230 lines) — artifact schemas and integrity checks
-- **ids.py** (~85 lines) — constants and node ID derivation
-- **config.py** (~100 lines) — shared path globals and utilities
-- **orchestration.py** (~1,225 lines) — state machine, context assembly, severity/verdict parsing
-- **frontmatter.py** (~155 lines) — dependency-free YAML subset parser
+- **api/** — structured engine API used by harness adapters
+- **cli/** — package-owned CLI entrypoints
+- **core/** — database, orchestration, reporting, validation, and command logic
+
+`scripts/` remains as a compatibility shim layer for legacy entrypoints.
 
 Eight agents in `agents/`, thirteen skills in `skills/`, config in `config/orchestration.yaml`.
 

@@ -2,7 +2,7 @@
 
 Canonical Claude Code plugin bundle for Principia.
 
-Install from `plugins/claude` inside a full Principia checkout. This bundle is the Claude-specific surface and is allowed to diverge from the root plugin files where the canonical runtime commands need to differ.
+Install from `plugins/claude` inside a full Principia checkout. The canonical Claude bundle lives under `plugins/claude` and is allowed to diverge from the old root plugin files where the runtime commands need to differ.
 
 ## Runtime
 
@@ -21,4 +21,4 @@ Use `plugins/claude/skills` for workflow commands, `plugins/claude/agents` for o
 - `.claude-plugin/plugin.json`: Claude plugin manifest
 - `.claude-plugin/marketplace.json`: canonical Claude marketplace metadata
 
-The root `.claude-plugin/` surface remains in the repository for now, but the canonical Claude bundle lives under `plugins/claude`.
+The legacy root `.claude-plugin/` distribution has been removed. `plugins/claude` is the canonical Claude bundle.

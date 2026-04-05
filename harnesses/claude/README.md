@@ -1,27 +1,20 @@
-# Principia Claude Harness
+# Principia Claude Compatibility Note
 
-This repository still supports Claude Code through the existing Claude-facing Principia layout at the repo root.
+This directory is kept as a compatibility note for older Claude-facing references. The canonical Claude Code bundle now lives in [`plugins/claude/README.md`](../../plugins/claude/README.md).
 
 ## Install
 
-Clone this repository and point Claude Code at the checkout that contains Principia:
+Follow the canonical Claude bundle instructions in `plugins/claude/README.md`.
+
+For local development, point Claude Code at the canonical bundle directory:
 
 ```bash
-/plugin marketplace add Gavin-Qiao/principia
-/plugin install principia
-```
-
-For local development, use the repository root as the plugin source so Claude loads the same shared Principia engine and repo assets:
-
-```bash
-claude --plugin-dir /path/to/principia
+claude --plugin-dir /path/to/principia/plugins/claude
 ```
 
 ## Layout
 
-- `agents/`: Claude agent definitions
-- `skills/`: Claude skill definitions
-- `hooks/`: Claude hook wiring
+- `plugins/claude/`: canonical Claude bundle
 - `principia/`: shared engine package used by every harness
 
-The Codex harness lives separately under `harnesses/codex/` and uses the same shared engine.
+The legacy root Claude plugin surface has been removed.

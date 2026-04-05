@@ -37,23 +37,13 @@ def test_claude_plugin_bundle_layout() -> None:
     assert plugin["keywords"] == bundle_manifest["keywords"]
 
 
-def test_root_claude_surface_keeps_core_metadata_aligned() -> None:
-    root_root = Path(".claude-plugin")
-    bundle_root = Path("plugins/claude/.claude-plugin")
+def test_legacy_claude_plugin_surfaces_are_removed() -> None:
+    assert not Path(".claude-plugin").exists()
+    assert not Path("harnesses/codex").exists()
 
-    root_manifest = json.loads((root_root / "plugin.json").read_text())
-    bundle_manifest = json.loads((bundle_root / "plugin.json").read_text())
 
-    core_fields = ("name", "description", "license", "keywords", "author", "repository")
+def test_claude_compatibility_note_redirects_to_canonical_bundle() -> None:
+    text = Path("harnesses/claude/README.md").read_text()
 
-    for field in core_fields:
-        assert root_manifest[field] == bundle_manifest[field]
-
-    root_marketplace = json.loads((root_root / "marketplace.json").read_text())
-    bundle_marketplace = json.loads((bundle_root / "marketplace.json").read_text())
-
-    assert root_marketplace["name"] == bundle_marketplace["name"]
-    assert root_marketplace["owner"] == bundle_marketplace["owner"]
-    assert root_marketplace["metadata"]["description"] == bundle_marketplace["metadata"]["description"]
-    assert root_marketplace["plugins"][0]["name"] == bundle_marketplace["plugins"][0]["name"]
-    assert root_marketplace["plugins"][0]["source"] == bundle_marketplace["plugins"][0]["source"]
+    assert "../../plugins/claude/README.md" in text
+    assert "canonical Claude Code bundle" in text
