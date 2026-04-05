@@ -126,10 +126,24 @@ def cmd_validate(args: argparse.Namespace) -> None:
     conn = build_db()  # Always rebuild for freshness
     errors = []
 
-    # Check for duplicate IDs (shouldn't happen with PRIMARY KEY, but check source files)
-    rows = conn.execute("SELECT id, COUNT(*) as cnt FROM nodes GROUP BY id HAVING cnt > 1").fetchall()
-    for r in rows:
-        errors.append(f"Duplicate ID: {r['id']} appears {r['cnt']} times")
+    # Check for duplicate IDs by scanning source files (the DB won't have dupes
+    # because build skips them, but we need to detect the conflicting source files)
+    from db import discover_md_files
+    from frontmatter import parse_frontmatter as _parse_fm
+    from ids import derive_id as _derive_id
+
+    import config as _cfg
+
+    id_to_file: dict[str, str] = {}
+    for fpath in discover_md_files():
+        rel = str(fpath.relative_to(_cfg.RESEARCH_DIR))
+        text = fpath.read_text(encoding="utf-8")
+        meta = _parse_fm(text)
+        node_id = meta.get("id") or _derive_id(rel)
+        if node_id in id_to_file:
+            errors.append(f"Duplicate ID: '{node_id}' in both {id_to_file[node_id]} and {rel}")
+        else:
+            id_to_file[node_id] = rel
 
     # Check required fields
     for row in conn.execute("SELECT * FROM nodes").fetchall():

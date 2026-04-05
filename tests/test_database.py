@@ -97,8 +97,8 @@ class TestUpdateFrontmatter:
 
 
 class TestBuildDbEdgeCases:
-    def test_duplicate_ids_last_wins(self, research_dir):
-        """When two files derive the same ID, the last one parsed wins."""
+    def test_duplicate_ids_first_wins(self, research_dir, capsys):
+        """When two files derive the same ID, the first one parsed wins and a warning is printed."""
         d1 = research_dir / "claims" / "claim-1-test" / "architect" / "round-1"
         d1.mkdir(parents=True)
         (d1 / "result.md").write_text("---\nid: dupe\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# First\n")
@@ -111,7 +111,11 @@ class TestBuildDbEdgeCases:
 
         conn = build_db()
         rows = conn.execute("SELECT * FROM nodes WHERE id = 'dupe'").fetchall()
-        assert len(rows) == 1  # upsert, not duplicate
+        assert len(rows) == 1
+        # First file wins — type should be 'claim' from the first file, not 'evidence'
+        assert rows[0]["type"] == "claim"
+        err = capsys.readouterr().err
+        assert "duplicate" in err.lower() or "ERROR" in err
 
     def test_frontmatter_only_no_body(self, research_dir):
         d = research_dir / "claims" / "claim-1-test" / "architect" / "round-1"
@@ -263,7 +267,7 @@ class TestParseAndUpsert:
         _parse_and_upsert(conn, d1 / "result.md", seen_ids=seen)
         _parse_and_upsert(conn, d2 / "output.md", seen_ids=seen)
         err = capsys.readouterr().err
-        assert "collision" in err.lower()
+        assert "duplicate" in err.lower()
 
     def test_unknown_keys_warn(self, research_dir, capsys):
         d = research_dir / "claims" / "claim-1-test" / "architect" / "round-1"

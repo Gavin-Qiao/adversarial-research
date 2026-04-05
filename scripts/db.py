@@ -279,9 +279,11 @@ def _parse_and_upsert(conn: sqlite3.Connection, fpath: Path, seen_ids: dict[str,
 
     if seen_ids is not None and node_id in seen_ids:
         print(
-            f"  WARN: ID collision — '{node_id}' claimed by both {seen_ids[node_id]} and {rel} (last one wins)",
+            f"  ERROR: Duplicate ID '{node_id}' — claimed by {seen_ids[node_id]} and {rel}. "
+            f"Skipping {rel} (first file wins).",
             file=sys.stderr,
         )
+        return node_id  # Skip — don't overwrite the first file
     if seen_ids is not None:
         seen_ids[node_id] = rel
 

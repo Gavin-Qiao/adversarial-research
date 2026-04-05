@@ -71,6 +71,18 @@ class TestCmdValidate:
         assert rc != 0
         assert "INVALID" in out
 
+    def test_detects_duplicate_ids(self, research_dir):
+        """Validate must catch duplicate IDs across source files."""
+        d1 = research_dir / "claims" / "claim-1-a" / "architect" / "round-1"
+        d1.mkdir(parents=True)
+        (d1 / "result.md").write_text("---\nid: same-id\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# A\n")
+        d2 = research_dir / "claims" / "claim-2-b" / "architect" / "round-1"
+        d2.mkdir(parents=True)
+        (d2 / "result.md").write_text("---\nid: same-id\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# B\n")
+        rc, out, _ = run_manage(research_dir, "validate")
+        assert rc != 0
+        assert "duplicate" in out.lower()
+
 
 class TestCmdFalsify:
     def test_cascades(self, populated_research):
@@ -981,6 +993,96 @@ class TestReplaceVerdictCascadeRevert:
         assert dep_meta["status"] == "weakened", (
             f"dep should stay weakened (beta still disproven), got {dep_meta['status']}"
         )
+
+
+class TestCmdReopen:
+    def _make_disproven_claim_with_dep(self, research_dir):
+        """Create a disproven claim with one weakened dependent."""
+        from config import init_paths
+
+        init_paths(research_dir)
+
+        root = research_dir / "claims" / "claim-1-root"
+        root.mkdir(parents=True)
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+            (root / role).mkdir()
+        (root / "claim.md").write_text(
+            "---\nid: h1-root\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Root\n"
+        )
+        (root / "architect" / "round-1").mkdir()
+        (root / "architect" / "round-1" / "result.md").write_text(
+            "---\nid: a1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# P\n"
+        )
+        (root / "adversary" / "round-1").mkdir()
+        (root / "adversary" / "round-1" / "result.md").write_text(
+            "---\nid: r1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n**Severity**: Minor\n"
+        )
+        (root / "experimenter" / "results").mkdir()
+        (root / "experimenter" / "results" / "output.md").write_text(
+            "---\nid: e1\ntype: evidence\nstatus: active\ndate: 2026-01-01\n---\n\n# Results\n"
+        )
+        (root / "arbiter" / "results").mkdir()
+        (root / "arbiter" / "results" / "verdict.md").write_text(
+            "---\nid: v1\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n"
+            "**Verdict**: DISPROVEN\n**Confidence**: high\n"
+        )
+        dep = research_dir / "claims" / "claim-2-dep"
+        dep.mkdir(parents=True)
+        (dep / "claim.md").write_text(
+            "---\nid: h2-dep\ntype: claim\nstatus: active\ndate: 2026-01-01\n"
+            "depends_on: [h1-root]\nconfidence: high\n---\n\n# Dep\n"
+        )
+        run_manage(research_dir, "build")
+        run_manage(research_dir, "post-verdict", "claims/claim-1-root")
+        return research_dir
+
+    def test_reopen_disproven_clears_falsified_by(self, research_dir):
+        """Reopen a disproven claim: falsified_by must be cleared."""
+        from frontmatter import parse_frontmatter
+
+        self._make_disproven_claim_with_dep(research_dir)
+        rc, _out, _ = run_manage(research_dir, "reopen", "h1-root")
+        assert rc == 0
+        meta = parse_frontmatter((research_dir / "claims" / "claim-1-root" / "claim.md").read_text())
+        assert meta["status"] == "active"
+        assert not meta.get("falsified_by")
+
+    def test_reopen_disproven_reverts_dependent(self, research_dir):
+        """Reopen a disproven claim: weakened dependent must be reverted."""
+        from frontmatter import parse_frontmatter
+
+        self._make_disproven_claim_with_dep(research_dir)
+        run_manage(research_dir, "reopen", "h1-root")
+        dep_meta = parse_frontmatter((research_dir / "claims" / "claim-2-dep" / "claim.md").read_text())
+        assert dep_meta["status"] == "pending", f"dep should be pending, got {dep_meta['status']}"
+
+    def test_reopen_disproven_no_orphan_edges(self, research_dir):
+        """After reopen + rebuild, no orphan edges should remain."""
+        self._make_disproven_claim_with_dep(research_dir)
+        run_manage(research_dir, "reopen", "h1-root")
+        rc, _out, err = run_manage(research_dir, "build")
+        assert rc == 0
+        assert "orphan" not in err.lower()
+
+    def test_reopen_proven_works(self, research_dir):
+        """Reopen a proven claim: should reset to active."""
+        from frontmatter import parse_frontmatter
+
+        from config import init_paths
+
+        init_paths(research_dir)
+        claim = research_dir / "claims" / "claim-1-test"
+        claim.mkdir(parents=True)
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+            (claim / role).mkdir()
+        (claim / "claim.md").write_text(
+            "---\nid: h1-test\ntype: claim\nstatus: proven\ndate: 2026-01-01\n---\n\n# Test\n"
+        )
+        run_manage(research_dir, "build")
+        rc, _out, _ = run_manage(research_dir, "reopen", "h1-test")
+        assert rc == 0
+        meta = parse_frontmatter((claim / "claim.md").read_text())
+        assert meta["status"] == "active"
 
 
 class TestBreadcrumb:

@@ -951,10 +951,34 @@ def cmd_reopen(args: argparse.Namespace) -> None:
         return
 
     old_status = node["status"]
-
-    # Update frontmatter
     fpath = _cfg.RESEARCH_DIR / node["file_path"]
-    if not _update_frontmatter_in_file(fpath, {"status": "active"}):
+
+    # If disproven, clear falsified_by and revert cascade (same logic as replace-verdict)
+    if old_status == "disproven":
+        affected = _find_cascade_targets(conn, node_id)
+        for dep_id, fp, dep_status in affected:
+            if dep_status != "weakened":
+                continue
+            other_disproven = conn.execute(
+                "SELECT COUNT(*) as c FROM edges e "
+                "JOIN nodes n ON n.id = e.target_id "
+                "WHERE e.source_id = ? AND e.relation IN ('depends_on', 'assumes') "
+                "AND n.status = 'disproven' AND n.id != ?",
+                (dep_id, node_id),
+            ).fetchone()["c"]
+            if other_disproven > 0:
+                print(f"   Kept: {dep_id} still weakened (other disproven dependencies)")
+                continue
+            wp = _cfg.RESEARCH_DIR / fp
+            if wp.exists():
+                _update_frontmatter_in_file(wp, {"status": "pending", "confidence": ""})
+                print(f"   Reverted: {dep_id} weakened → pending")
+
+    # Update frontmatter — clear falsified_by if present
+    updates: dict[str, str] = {"status": "active"}
+    if old_status == "disproven":
+        updates["falsified_by"] = ""
+    if not _update_frontmatter_in_file(fpath, updates):
         print(f"ERROR: Could not update file for '{node_id}' — aborting.")
         sys.exit(1)
 
