@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file.
 
 The format is inspired by Keep a Changelog, but organized around the release-note sections used for Principia releases: Features, Changed, Fixes, Docs, Packaging, Upgrade Notes, and Verification.
 
+## [0.4.0a3] - 2026-04-05
+
+### Changed
+
+- Moved the Claude and Codex plugin bundles to their canonical homes under `plugins/`, with packaged runtime entrypoints for each harness.
+
+### Fixes
+
+- Removed the legacy plugin roots and repointed the provider surfaces at the bundled Principia runtime entrypoints.
+
+### Docs
+
+- Rewrote the README and provider guides around the new plugin-bundle layout.
+
+### Upgrade Notes
+
+- Install from `plugins/claude/` and `plugins/codex/`; the legacy plugin roots are gone.
+
 ## [0.4.0a2] - 2026-04-05
 
 ### Features
