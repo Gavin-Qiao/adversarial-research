@@ -7,7 +7,7 @@
 [![Version](https://img.shields.io/badge/version-0.4.0a1-blue.svg)](https://github.com/Gavin-Qiao/principia/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-346_passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-420_passing-brightgreen.svg)]()
 [![Claude Code](https://img.shields.io/badge/Claude_Code-plugin-blueviolet.svg)](https://docs.anthropic.com/en/docs/claude-code)
 
 You start with an insight. Principia decomposes it into testable claims, stress-tests each through structured debate and empirical experiments, and composes the surviving pieces into a theory you can build on.
@@ -20,24 +20,14 @@ You start with an insight. Principia decomposes it into testable claims, stress-
 
 ## Installation
 
-Inside Claude Code:
+Clone this repository, then choose the harness you want to use.
 
-```
-/plugin marketplace add Gavin-Qiao/principia
-/plugin install principia
-```
+- [Claude harness](harnesses/claude/README.md)
+- [Codex harness](harnesses/codex/README.md)
 
-Or for local development:
+Principia keeps one shared Python engine in this repo and exposes it through harness-specific wrappers. The Claude harness continues to use the repo's Claude-facing agent, skill, and hook layout. The Codex harness uses the repo-local plugin scaffold under `harnesses/codex/`.
 
-```bash
-claude --plugin-dir /path/to/principia
-```
-
-Requires **Python 3.10+** (stdlib only -- no pip packages at runtime) and **Claude Code 2.0+**.
-
-### Codex Harness
-
-Codex can point at the repository-local harness scaffold in `harnesses/codex`. Task 4 adds the static plugin metadata and marketplace entry; Task 5 turns that scaffold into a functional workflow. Select the Principia plugin from this repo's marketplace metadata so harness selection stays tied to the checkout instead of a global install.
+Requires **Python 3.10+** (stdlib only -- no pip packages at runtime).
 
 ## Quick Start
 

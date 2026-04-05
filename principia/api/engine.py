@@ -6,6 +6,7 @@ from argparse import Namespace
 from contextlib import redirect_stdout, suppress
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from principia.api.types import BuildResult, DashboardResult
 from principia.core.commands import cmd_dashboard
@@ -48,7 +49,7 @@ class PrincipiaEngine:
         buf = io.StringIO()
         with redirect_stdout(buf), suppress(SystemExit):
             cmd_validate(Namespace(json=True))
-        return json.loads(buf.getvalue())
+        return cast(dict[str, object], json.loads(buf.getvalue()))
 
     def results(self) -> dict[str, object]:
         buf = io.StringIO()

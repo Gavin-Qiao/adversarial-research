@@ -10,12 +10,15 @@ from pathlib import Path
 from typing import Any
 
 from . import config as _cfg
-from .frontmatter import extract_title, get_body, get_scalar_frontmatter, parse_frontmatter, serialise_frontmatter
-from .ids import (
-    derive_id,
-    infer_type_from_path,
-)
 from .config import rel_path_from_root
+from .frontmatter import (
+    extract_title,
+    get_body,
+    get_scalar_frontmatter,
+    parse_frontmatter,
+    serialise_frontmatter,
+)
+from .ids import derive_id, infer_type_from_path
 
 # ---------------------------------------------------------------------------
 # File discovery
