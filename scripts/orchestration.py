@@ -358,6 +358,8 @@ def _check_post_verdict_complete(target: Path) -> bool:
     if not verdict.exists():
         return False
     claim = target / "claim.md"
+    if not claim.exists():
+        claim = target / "frontier.md"
     return claim.exists() and claim.stat().st_mtime >= verdict.stat().st_mtime
 
 
@@ -405,7 +407,10 @@ def extract_verdict(verdict_path: Path, config: dict[str, Any]) -> str:
     Returns: PROVEN/DISPROVEN/PARTIAL/INCONCLUSIVE/UNKNOWN"""
     if not verdict_path.exists():
         return "UNKNOWN"
-    text = verdict_path.read_text(encoding="utf-8")
+    try:
+        text = verdict_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError, ValueError):
+        return "UNKNOWN"
 
     for line in text.splitlines():
         stripped = line.strip()
@@ -428,7 +433,10 @@ def extract_confidence(verdict_path: Path) -> str:
     Returns: high/moderate/low/unknown"""
     if not verdict_path.exists():
         return "unknown"
-    text = verdict_path.read_text(encoding="utf-8")
+    try:
+        text = verdict_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError, ValueError):
+        return "unknown"
 
     for line in text.splitlines():
         stripped = line.strip().lower()
@@ -494,7 +502,9 @@ def compute_waves(research_dir: Path, db_path: Path | None = None) -> list[list[
 
     # Get all nodes with their dependencies
     nodes = {r["id"]: dict(r) for r in conn.execute("SELECT * FROM nodes").fetchall()}
-    edges = conn.execute("SELECT source_id, target_id FROM edges WHERE relation = 'depends_on'").fetchall()
+    edges = conn.execute(
+        "SELECT source_id, target_id FROM edges WHERE relation IN ('depends_on', 'assumes')"
+    ).fetchall()
     conn.close()
 
     # Build adjacency: node -> list of nodes it depends on
@@ -685,6 +695,20 @@ def detect_state(research_dir: Path, sub_path: str, config: dict[str, Any]) -> d
 def find_active_subunit(research_dir: Path, db_path: Path | None = None) -> str | None:
     """Find the first claim that needs work.
     Uses the SQLite DB if available, otherwise scans directories."""
+    from frontmatter import get_scalar_frontmatter, parse_frontmatter
+
+    def _primary_claim_status(target: Path) -> str | None:
+        claim_file = target / "claim.md"
+        if not claim_file.exists():
+            claim_file = target / "frontier.md"
+        if not claim_file.exists():
+            return None
+        try:
+            meta = parse_frontmatter(claim_file.read_text(encoding="utf-8"), filepath=str(claim_file))
+        except (OSError, UnicodeDecodeError, ValueError):
+            return None
+        return get_scalar_frontmatter(meta, "status")
+
     if db_path is None:
         db_path = research_dir / ".db" / "research.db"
     if db_path.exists():
@@ -694,7 +718,7 @@ def find_active_subunit(research_dir: Path, db_path: Path | None = None) -> str 
             row = conn.execute(
                 "SELECT file_path FROM nodes "
                 "WHERE status IN ('pending', 'active') "
-                "AND file_path LIKE 'claims/claim-%/claim.md' "
+                "AND (file_path LIKE 'claims/claim-%/claim.md' OR file_path LIKE 'cycles/%/frontier.md') "
                 "ORDER BY file_path LIMIT 1"
             ).fetchone()
             conn.close()
@@ -707,8 +731,30 @@ def find_active_subunit(research_dir: Path, db_path: Path | None = None) -> str 
     claims_dir = research_dir / "claims"
     if claims_dir.exists():
         for claim_dir in sorted(claims_dir.iterdir()):
-            if claim_dir.is_dir() and claim_dir.name.startswith("claim-"):
+            if (
+                claim_dir.is_dir()
+                and claim_dir.name.startswith("claim-")
+                and _primary_claim_status(claim_dir) in ("pending", "active")
+            ):
                 return str(claim_dir.relative_to(research_dir))
+
+    # Legacy cycles/ hierarchy
+    cycles_dir = research_dir / "cycles"
+    if cycles_dir.exists():
+        for cycle_dir in sorted(cycles_dir.iterdir()):
+            if not cycle_dir.is_dir():
+                continue
+            for unit_dir in sorted(cycle_dir.iterdir()):
+                if not unit_dir.is_dir() or not unit_dir.name.startswith("unit-"):
+                    continue
+                for sub_dir in sorted(unit_dir.iterdir()):
+                    if (
+                        not sub_dir.is_dir()
+                        or not sub_dir.name.startswith("sub-")
+                        or _primary_claim_status(sub_dir) not in ("pending", "active")
+                    ):
+                        continue
+                    return str(sub_dir.relative_to(research_dir))
 
     return None
 
@@ -736,6 +782,8 @@ def list_context_files(
 
     # Claim file (the research question)
     claim_file = target / "claim.md"
+    if not claim_file.exists():
+        claim_file = target / "frontier.md"
     if claim_file.exists():
         files.append(str(claim_file.relative_to(research_dir)))
 

@@ -109,7 +109,11 @@ def cmd_validate_paste(args: argparse.Namespace) -> None:
         print(f"ERROR: File not found: {file_path}")
         sys.exit(1)
 
-    content = file_path.read_text(encoding="utf-8")
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, ValueError):
+        print(f"ERROR: File is not valid UTF-8: {file_path}")
+        sys.exit(1)
     errors = validate_artifact(agent, content)
 
     if errors:
@@ -129,6 +133,7 @@ def cmd_validate(args: argparse.Namespace) -> None:
     # Check for duplicate IDs by scanning source files (the DB won't have dupes
     # because build skips them, but we need to detect the conflicting source files)
     from db import discover_md_files
+    from frontmatter import SCALAR_FRONTMATTER_KEYS, get_scalar_frontmatter
     from frontmatter import parse_frontmatter as _parse_fm
     from ids import derive_id as _derive_id
 
@@ -137,9 +142,17 @@ def cmd_validate(args: argparse.Namespace) -> None:
     id_to_file: dict[str, str] = {}
     for fpath in discover_md_files():
         rel = str(fpath.relative_to(_cfg.RESEARCH_DIR))
-        text = fpath.read_text(encoding="utf-8")
-        meta = _parse_fm(text)
-        node_id = meta.get("id") or _derive_id(rel)
+        try:
+            text = fpath.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, ValueError):
+            errors.append(f"Invalid UTF-8: {rel}")
+            continue
+        meta = _parse_fm(text, filepath=rel)
+        for key in SCALAR_FRONTMATTER_KEYS:
+            if key in meta and meta.get(key) is not None and get_scalar_frontmatter(meta, key, filepath=rel) is None:
+                errors.append(f"Invalid frontmatter: '{rel}' has non-scalar {key}")
+        node_id = get_scalar_frontmatter(meta, "id", filepath=rel)
+        node_id = node_id or _derive_id(rel)
         if node_id in id_to_file:
             errors.append(f"Duplicate ID: '{node_id}' in both {id_to_file[node_id]} and {rel}")
         else:

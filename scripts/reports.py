@@ -11,6 +11,10 @@ from frontmatter import get_body, readable_id
 
 import config as _cfg
 
+
+def _primary_claim_path_sql(column: str = "file_path") -> str:
+    return f"({column} LIKE 'claims/claim-%/claim.md' OR {column} LIKE 'cycles/%/frontier.md')"
+
 # ---------------------------------------------------------------------------
 # Command: status -> PROGRESS.md
 # ---------------------------------------------------------------------------
@@ -33,9 +37,15 @@ def cmd_status(args: argparse.Namespace) -> None:
         SELECT n.id, n.file_path, n.title,
                COUNT(DISTINCT e.source_id) as blocked_count
         FROM nodes n
-        JOIN edges e ON e.target_id = n.id AND e.relation = 'depends_on'
+        JOIN edges e ON e.target_id = n.id AND e.relation IN ('depends_on', 'assumes')
         JOIN nodes dep ON dep.id = e.source_id AND dep.status = 'pending'
+            AND (dep.file_path LIKE 'claims/claim-%/claim.md' OR dep.file_path LIKE 'cycles/%/frontier.md')
         WHERE n.status = 'active'
+          AND (
+              n.type = 'assumption'
+              OR n.file_path LIKE 'claims/claim-%/claim.md'
+              OR n.file_path LIKE 'cycles/%/frontier.md'
+          )
         GROUP BY n.id
         ORDER BY blocked_count DESC
     """).fetchall()
@@ -49,7 +59,9 @@ def cmd_status(args: argparse.Namespace) -> None:
             lines.append(f"  File: {b['file_path']}")
     else:
         # Fallback: any active node
-        active = conn.execute("SELECT * FROM nodes WHERE status = 'active' ORDER BY date").fetchall()
+        active = conn.execute(
+            f"SELECT * FROM nodes WHERE status = 'active' AND {_primary_claim_path_sql()} ORDER BY date"
+        ).fetchall()
         if active:
             for a in active:
                 title = a["title"] or readable_id(a["id"])
@@ -117,7 +129,9 @@ def cmd_status(args: argparse.Namespace) -> None:
     lines.append("## Claim log")
     lines.append("")
     claim_nodes = conn.execute(
-        "SELECT * FROM nodes WHERE file_path LIKE 'claims/%' AND type IN ('claim', 'verdict') ORDER BY file_path"
+        "SELECT * FROM nodes "
+        f"WHERE {_primary_claim_path_sql()} "
+        "ORDER BY file_path"
     ).fetchall()
     if claim_nodes:
         lines.append("| Claim | Status | File |")
@@ -347,13 +361,13 @@ def cmd_results(args: argparse.Namespace) -> None:
     from orchestration import extract_confidence, extract_verdict, load_config
 
     orch_config = load_config(_cfg.DEFAULT_ORCH_CONFIG)
-    claims_dir = _cfg.RESEARCH_DIR / "claims"
-
     # Scan verdict files directly — DB frontmatter status is unreliable
     # (verdict nodes typically have status: active, not the actual verdict)
     found_verdicts = False
-    if claims_dir.exists():
-        for verdict_file in sorted(claims_dir.rglob("verdict.md")):
+    for root_dir in (_cfg.RESEARCH_DIR / "claims", _cfg.RESEARCH_DIR / "cycles"):
+        if not root_dir.exists():
+            continue
+        for verdict_file in sorted(root_dir.rglob("verdict.md")):
             found_verdicts = True
             claim_dir = verdict_file.parent.parent.parent  # arbiter/results/verdict.md → claim dir
             claim_name = claim_dir.name

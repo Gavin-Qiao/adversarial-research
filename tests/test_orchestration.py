@@ -243,6 +243,11 @@ class TestExtractVerdict:
         f.write_text("## Analysis\n\nAfter review...\n\n**Verdict**: INCONCLUSIVE — insufficient evidence\n")
         assert extract_verdict(f, DEFAULT_CONFIG) == "INCONCLUSIVE"
 
+    def test_invalid_utf8_returns_unknown(self, tmp_path):
+        f = tmp_path / "verdict.md"
+        f.write_bytes(b"**Verdict**: PROVEN\xff\n")
+        assert extract_verdict(f, DEFAULT_CONFIG) == "UNKNOWN"
+
 
 class TestExtractConfidence:
     def test_high(self, tmp_path):
@@ -272,6 +277,11 @@ class TestExtractConfidence:
         f = tmp_path / "verdict.md"
         f.write_text("**Confidence**: **high**\n")
         assert extract_confidence(f) == "high"
+
+    def test_invalid_utf8_returns_unknown(self, tmp_path):
+        f = tmp_path / "verdict.md"
+        f.write_bytes(b"**Confidence**: high\xff\n")
+        assert extract_confidence(f) == "unknown"
 
 
 class TestAttenuateConfidence:
@@ -987,6 +997,54 @@ class TestFindActiveSubunitFlatClaims:
         result = find_active_subunit(rd, rd / ".db" / "research.db")
         assert result is not None, "find_active_subunit should find flat claims"
         assert "claims/claim-1-test" in result
+
+    def test_fallback_skips_completed_claims_without_db(self, tmp_path):
+        from orchestration import find_active_subunit
+
+        from config import init_paths
+
+        rd = tmp_path
+        (rd / "claims").mkdir(parents=True, exist_ok=True)
+        init_paths(rd)
+
+        claim_1 = rd / "claims" / "claim-1-done"
+        claim_1.mkdir(parents=True)
+        (claim_1 / "claim.md").write_text(
+            "---\nid: h1-claim\ntype: claim\nstatus: proven\ndate: 2026-01-01\n---\n\n# Done\n"
+        )
+
+        claim_2 = rd / "claims" / "claim-2-active"
+        claim_2.mkdir(parents=True)
+        (claim_2 / "claim.md").write_text(
+            "---\nid: h2-claim\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Active\n"
+        )
+
+        result = find_active_subunit(rd, rd / ".db" / "research.db")
+        assert result == "claims/claim-2-active"
+
+    def test_fallback_returns_none_when_all_claims_complete(self, tmp_path):
+        from orchestration import find_active_subunit
+
+        from config import init_paths
+
+        rd = tmp_path
+        (rd / "claims").mkdir(parents=True, exist_ok=True)
+        init_paths(rd)
+
+        claim_1 = rd / "claims" / "claim-1-done"
+        claim_1.mkdir(parents=True)
+        (claim_1 / "claim.md").write_text(
+            "---\nid: h1-claim\ntype: claim\nstatus: proven\ndate: 2026-01-01\n---\n\n# Done\n"
+        )
+
+        claim_2 = rd / "claims" / "claim-2-done"
+        claim_2.mkdir(parents=True)
+        (claim_2 / "claim.md").write_text(
+            "---\nid: h2-claim\ntype: claim\nstatus: disproven\ndate: 2026-01-01\n---\n\n# Done\n"
+        )
+
+        result = find_active_subunit(rd, rd / ".db" / "research.db")
+        assert result is None
 
 
 class TestReadAutonomyConfig:

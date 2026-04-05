@@ -9,6 +9,7 @@ import re
 import sqlite3
 import sys
 from datetime import date, datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from db import (
@@ -18,6 +19,7 @@ from db import (
 )
 from frontmatter import (
     get_body,
+    get_scalar_frontmatter,
     parse_frontmatter,
     serialise_frontmatter,
 )
@@ -37,6 +39,93 @@ def _check_path_containment(sub_path: str) -> None:
     if not (resolved.startswith(root) or resolved == root.rstrip(os.sep)):
         print("ERROR: Path escapes the research directory.")
         sys.exit(1)
+
+
+def _primary_claim_file(target: str | os.PathLike[str]) -> Path:
+    """Return the main claim document for a target directory.
+
+    Newer layouts use `claim.md`; legacy cycle layouts use `frontier.md`.
+    """
+    target_path = Path(target)
+    claim_file = target_path / "claim.md"
+    if claim_file.exists():
+        return claim_file
+    return target_path / "frontier.md"
+
+
+def _primary_claim_path_sql(column: str = "file_path") -> str:
+    return f"({column} LIKE 'claims/claim-%/claim.md' OR {column} LIKE 'cycles/%/frontier.md')"
+
+
+def _is_primary_claim_path(file_path: str) -> bool:
+    return (
+        file_path.startswith("claims/claim-") and file_path.endswith("/claim.md")
+    ) or (
+        file_path.startswith("cycles/") and file_path.endswith("/frontier.md")
+    )
+
+
+def _resolved_frontmatter_id(
+    fpath: Path,
+    meta: dict[str, Any],
+    *,
+    label: str,
+    strict: bool = False,
+) -> str:
+    rel = _cfg.rel_path_from_root(fpath)
+    node_id = get_scalar_frontmatter(meta, "id", filepath=rel, warn=not strict)
+    if "id" in meta and node_id is None and strict:
+        print(f"ERROR: {label} at {rel} has a non-scalar id.")
+        sys.exit(1)
+    return node_id or derive_id(rel)
+
+
+def _load_primary_claim(target: Path) -> tuple[Path, dict[str, Any], str]:
+    claim_file = _primary_claim_file(target)
+    if not claim_file.exists():
+        print(f"ERROR: No primary claim file found in {target}")
+        sys.exit(1)
+    rel = _cfg.rel_path_from_root(claim_file)
+    try:
+        text = claim_file.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        print(f"ERROR: Could not read primary claim file at {rel}: {exc}")
+        sys.exit(1)
+    meta = parse_frontmatter(text, filepath=rel)
+    node_id = _resolved_frontmatter_id(claim_file, meta, label="Primary claim file", strict=True)
+    return claim_file, meta, node_id
+
+
+def _weakened_updates(dep_fpath: Path, dep_node: sqlite3.Row | None, new_confidence: str | None) -> dict[str, Any]:
+    """Build frontmatter updates for a cascaded weakening.
+
+    Preserve the node's prior status/confidence the first time it is weakened
+    so rollback can restore the original state instead of collapsing to
+    `pending`.
+    """
+    updates: dict[str, Any] = {"status": "weakened", "confidence": new_confidence}
+    rel = _cfg.rel_path_from_root(dep_fpath)
+    meta = parse_frontmatter(dep_fpath.read_text(encoding="utf-8"), filepath=rel)
+    if meta.get("weakened_from_status") in (None, ""):
+        updates["weakened_from_status"] = dep_node["status"] if dep_node else "pending"
+    if meta.get("weakened_from_confidence") in (None, ""):
+        updates["weakened_from_confidence"] = dep_node["confidence"] if dep_node and dep_node["confidence"] else ""
+    return updates
+
+
+def _restore_weakened_state(dep_fpath: Path) -> tuple[bool, str, str | None]:
+    """Restore a previously weakened node to its stored pre-weakened state."""
+    meta = parse_frontmatter(dep_fpath.read_text(encoding="utf-8"))
+    restored_status = str(meta.get("weakened_from_status") or "pending")
+    restored_conf_raw = meta.get("weakened_from_confidence")
+    restored_conf = str(restored_conf_raw) if restored_conf_raw not in (None, "") else None
+    updates: dict[str, Any] = {
+        "status": restored_status,
+        "confidence": restored_conf or "",
+        "weakened_from_status": "",
+        "weakened_from_confidence": "",
+    }
+    return _update_frontmatter_in_file(dep_fpath, updates), restored_status, restored_conf
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +202,12 @@ def cmd_falsify(args: argparse.Namespace) -> None:
         print(f"WARN: Node '{node_id}' is already disproven — skipping.")
         return
 
+    if evidence_id:
+        evidence = conn.execute("SELECT 1 FROM nodes WHERE id = ?", (evidence_id,)).fetchone()
+        if not evidence:
+            print(f"ERROR: Evidence node '{evidence_id}' not found.")
+            sys.exit(1)
+
     # Find cascade targets
     affected = _find_cascade_targets(conn, node_id)
     non_disproven = [(d, f, s) for d, f, s in affected if s != "disproven"]
@@ -173,7 +268,7 @@ def cmd_falsify(args: argparse.Namespace) -> None:
             dep_fpath = _cfg.RESEARCH_DIR / dep_fp
             dep_node = conn.execute("SELECT * FROM nodes WHERE id = ?", (dep_id,)).fetchone()
             new_conf = attenuate_confidence(dep_node["confidence"] if dep_node else None)
-            cascade_updates: dict[str, Any] = {"status": "weakened", "confidence": new_conf}
+            cascade_updates = _weakened_updates(dep_fpath, dep_node, new_conf)
             if _update_frontmatter_in_file(dep_fpath, cascade_updates):
                 conn.execute(
                     "UPDATE nodes SET status = 'weakened', confidence = ? WHERE id = ?",
@@ -273,36 +368,38 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
         print(f"ERROR: No verdict file found in {target}")
         sys.exit(1)
 
-    verdict = extract_verdict(verdict_file, config)
-    confidence = extract_confidence(verdict_file)
+    claim_file, _claim_meta, node_id = _load_primary_claim(target)
 
+    verdict = extract_verdict(verdict_file, config)
     if verdict == "UNKNOWN":
         print("ERROR: Could not parse verdict from verdict file.")
         sys.exit(1)
+    confidence = extract_confidence(verdict_file)
+    verdict_rel = _cfg.rel_path_from_root(verdict_file)
+    try:
+        verdict_text = verdict_file.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        print(f"ERROR: Could not read verdict file at {verdict_rel}: {exc}")
+        sys.exit(1)
+    verdict_meta = parse_frontmatter(verdict_text, filepath=verdict_rel)
+    verdict_id = _resolved_frontmatter_id(verdict_file, verdict_meta, label="Verdict file")
 
     _cfg._emit_progress("recording", "post_verdict", f"{sub_path}: {verdict} ({confidence})")
 
     conn = build_db()
     changes: list[str] = []
 
-    claim_file = target / "claim.md"
-    node_id: str | None = None
-    if claim_file.exists():
-        meta = parse_frontmatter(claim_file.read_text(encoding="utf-8"))
-        node_id = meta.get("id")  # type: ignore[assignment]
-
     # Apply verdict (extract_verdict now returns principia names: PROVEN, DISPROVEN, PARTIAL)
-    if verdict == "PROVEN" and node_id:
+    if verdict == "PROVEN":
         node = conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
         if node and node["status"] not in ("proven", "disproven"):
             _update_frontmatter_in_file(claim_file, {"status": "proven"})
             conn.execute("UPDATE nodes SET status = 'proven' WHERE id = ?", (node_id,))
             changes.append(f"Proven: {node_id}")
 
-    elif verdict == "DISPROVEN" and node_id:
+    elif verdict == "DISPROVEN":
         node = conn.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
         if node and node["status"] != "disproven":
-            verdict_id = derive_id(str(verdict_file.relative_to(_cfg.RESEARCH_DIR)))
             _update_frontmatter_in_file(claim_file, {"status": "disproven", "falsified_by": verdict_id})
             conn.execute("UPDATE nodes SET status = 'disproven' WHERE id = ?", (node_id,))
             changes.append(f"Disproven: {node_id} by {verdict_id}")
@@ -315,14 +412,15 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
                     dep_fpath = _cfg.RESEARCH_DIR / dep_fp
                     dep_node = conn.execute("SELECT * FROM nodes WHERE id = ?", (dep_id,)).fetchone()
                     new_conf = attenuate_confidence(dep_node["confidence"] if dep_node else None)
-                    if _update_frontmatter_in_file(dep_fpath, {"status": "weakened", "confidence": new_conf}):
+                    cascade_updates = _weakened_updates(dep_fpath, dep_node, new_conf)
+                    if _update_frontmatter_in_file(dep_fpath, cascade_updates):
                         conn.execute(
                             "UPDATE nodes SET status = 'weakened', confidence = ? WHERE id = ?",
                             (new_conf, dep_id),
                         )
                         changes.append(f"Weakened: {dep_id}")
 
-    elif verdict in ("PARTIAL", "INCONCLUSIVE") and node_id:
+    elif verdict in ("PARTIAL", "INCONCLUSIVE"):
         new_status = "partial" if verdict == "PARTIAL" else "inconclusive"
         _update_frontmatter_in_file(claim_file, {"status": new_status})
         conn.execute("UPDATE nodes SET status = ? WHERE id = ?", (new_status, node_id))
@@ -332,15 +430,15 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
     today = date.today().isoformat()
     verdict_rel = str(verdict_file.relative_to(_cfg.RESEARCH_DIR)) if verdict_file.exists() else ""
     conn.execute(
-        "INSERT INTO ledger (timestamp, event, node_id, details, agent) VALUES (?, ?, ?, ?, ?)",
-        (
-            today,
-            verdict.lower(),
-            node_id or "unknown",
-            f"Confidence: {confidence}, File: {verdict_rel}",
-            "arbiter",
-        ),
-    )
+            "INSERT INTO ledger (timestamp, event, node_id, details, agent) VALUES (?, ?, ?, ?, ?)",
+            (
+                today,
+                verdict.lower(),
+                node_id,
+                f"Confidence: {confidence}, File: {verdict_rel}",
+                "arbiter",
+            ),
+        )
     try:
         conn.commit()
     except sqlite3.Error as exc:
@@ -874,8 +972,10 @@ def cmd_dashboard(args: argparse.Namespace) -> None:
 
     # Last verdict
     last_verdict_row = conn.execute(
-        "SELECT node_id, event, timestamp FROM ledger "
-        "WHERE event IN ('proven', 'disproven', 'partial', 'inconclusive') "
+        "SELECT l.node_id, l.event, l.timestamp FROM ledger l "
+        "JOIN nodes n ON n.id = l.node_id "
+        "WHERE l.event IN ('proven', 'disproven', 'partial', 'inconclusive') "
+        f"AND {_primary_claim_path_sql('n.file_path')} "
         "ORDER BY timestamp DESC LIMIT 1"
     ).fetchone()
     last_verdict = None
@@ -890,8 +990,7 @@ def cmd_dashboard(args: argparse.Namespace) -> None:
     claim_counts = {}
     for status in ("pending", "active", "proven", "disproven", "partial", "weakened", "inconclusive"):
         count = conn.execute(
-            "SELECT COUNT(*) as c FROM nodes WHERE type IN ('claim', 'verdict') "
-            "AND file_path LIKE 'claims/%' AND status = ?",
+            f"SELECT COUNT(*) as c FROM nodes WHERE {_primary_claim_path_sql()} AND status = ?",
             (status,),
         ).fetchone()["c"]
         if count > 0:
@@ -900,16 +999,17 @@ def cmd_dashboard(args: argparse.Namespace) -> None:
     # Blocked claims (pending with unresolved dependencies)
     blocked = conn.execute(
         "SELECT n.id, dep.id as dep_id FROM nodes n "
-        "JOIN edges e ON e.source_id = n.id AND e.relation = 'depends_on' "
+        "JOIN edges e ON e.source_id = n.id AND e.relation IN ('depends_on', 'assumes') "
         "JOIN nodes dep ON dep.id = e.target_id AND dep.status NOT IN ('proven') "
-        "WHERE n.status = 'pending' AND n.file_path LIKE 'claims/%'"
+        f"WHERE n.status = 'pending' AND {_primary_claim_path_sql('n.file_path')}"
     ).fetchall()
     blocked_claims = [{"id": b["id"], "blocked_by": b["dep_id"]} for b in blocked]
 
     # Pending human decisions (partial/inconclusive claims needing user input)
     pending_decisions = conn.execute(
         "SELECT id, status, file_path FROM nodes "
-        "WHERE status IN ('partial', 'inconclusive') AND file_path LIKE 'claims/%' "
+        "WHERE status IN ('partial', 'inconclusive') "
+        f"AND {_primary_claim_path_sql()} "
         "ORDER BY file_path"
     ).fetchall()
     decisions = [{"id": d["id"], "status": d["status"], "file": d["file_path"]} for d in pending_decisions]
@@ -945,6 +1045,9 @@ def cmd_reopen(args: argparse.Namespace) -> None:
     if not node:
         print(f"ERROR: Node '{node_id}' not found.")
         sys.exit(1)
+    if not _is_primary_claim_path(node["file_path"]):
+        print(f"ERROR: Node '{node_id}' is not a primary claim.")
+        sys.exit(1)
 
     if node["status"] in ("pending", "active"):
         print(f"WARN: Node '{node_id}' is already {node['status']} — nothing to reopen.")
@@ -971,8 +1074,13 @@ def cmd_reopen(args: argparse.Namespace) -> None:
                 continue
             wp = _cfg.RESEARCH_DIR / fp
             if wp.exists():
-                _update_frontmatter_in_file(wp, {"status": "pending", "confidence": ""})
-                print(f"   Reverted: {dep_id} weakened → pending")
+                restored, restored_status, restored_conf = _restore_weakened_state(wp)
+                if restored:
+                    conn.execute(
+                        "UPDATE nodes SET status = ?, confidence = ? WHERE id = ?",
+                        (restored_status, restored_conf, dep_id),
+                    )
+                    print(f"   Reverted: {dep_id} weakened → {restored_status}")
 
     # Update frontmatter — clear falsified_by if present
     updates: dict[str, str] = {"status": "active"}
@@ -1023,43 +1131,48 @@ def cmd_replace_verdict(args: argparse.Namespace) -> None:
         print(f"ERROR: No verdict file found at {verdict_file}")
         sys.exit(1)
 
+    claim_file, claim_meta, node_id = _load_primary_claim(target)
+
     # If claim was disproven, revert cascade — but only for nodes whose
     # SOLE reason for being weakened is this claim.  A node that depends
     # on two disproven claims must stay weakened until both are reverted.
-    claim_file = target / "claim.md"
-    if claim_file.exists():
-        claim_meta = parse_frontmatter(claim_file.read_text(encoding="utf-8"))
-        if claim_meta.get("status") == "disproven":
-            conn = build_db()
-            node_id = claim_meta.get("id")
-            if node_id:
-                affected = _find_cascade_targets(conn, node_id)
-                for dep_id, fp, status in affected:
-                    if status != "weakened":
-                        continue
-                    # Check for other live disproven dependencies
-                    other_disproven = conn.execute(
-                        "SELECT COUNT(*) as c FROM edges e "
-                        "JOIN nodes n ON n.id = e.target_id "
-                        "WHERE e.source_id = ? AND e.relation IN ('depends_on', 'assumes') "
-                        "AND n.status = 'disproven' AND n.id != ?",
-                        (dep_id, node_id),
-                    ).fetchone()["c"]
-                    if other_disproven > 0:
-                        print(f"Kept: {dep_id} still weakened (other disproven dependencies)")
-                        continue
-                    wp = _cfg.RESEARCH_DIR / fp
-                    if wp.exists():
-                        _update_frontmatter_in_file(wp, {"status": "pending", "confidence": ""})
-                        print(f"Reverted: {dep_id} weakened → pending (confidence reset)")
-        # Clear falsified_by from frontmatter and reset to active
-        updates: dict[str, str] = {"status": "active"}
-        if claim_meta.get("falsified_by"):
-            updates["falsified_by"] = ""
-        if not _update_frontmatter_in_file(claim_file, updates):
-            print(f"WARN: Could not update frontmatter in {claim_file}")
-    else:
-        claim_meta = {}
+    conn: sqlite3.Connection | None = None
+    if claim_meta.get("status") == "disproven":
+        conn = build_db()
+        affected = _find_cascade_targets(conn, node_id)
+        for dep_id, fp, status in affected:
+            if status != "weakened":
+                continue
+            # Check for other live disproven dependencies
+            other_disproven = conn.execute(
+                "SELECT COUNT(*) as c FROM edges e "
+                "JOIN nodes n ON n.id = e.target_id "
+                "WHERE e.source_id = ? AND e.relation IN ('depends_on', 'assumes') "
+                "AND n.status = 'disproven' AND n.id != ?",
+                (dep_id, node_id),
+            ).fetchone()["c"]
+            if other_disproven > 0:
+                print(f"Kept: {dep_id} still weakened (other disproven dependencies)")
+                continue
+            wp = _cfg.RESEARCH_DIR / fp
+            if wp.exists():
+                restored, restored_status, restored_conf = _restore_weakened_state(wp)
+                if restored:
+                    conn.execute(
+                        "UPDATE nodes SET status = ?, confidence = ? WHERE id = ?",
+                        (restored_status, restored_conf, dep_id),
+                    )
+                    print(f"Reverted: {dep_id} weakened → {restored_status}")
+    # Clear falsified_by from frontmatter and reset to active
+    updates: dict[str, str] = {"status": "active"}
+    if claim_meta.get("falsified_by"):
+        updates["falsified_by"] = ""
+    if not _update_frontmatter_in_file(claim_file, updates):
+        print(f"WARN: Could not update frontmatter in {claim_file}")
+
+    if conn is not None:
+        conn.commit()
+        conn.close()
 
     # Remove verdict file
     verdict_file.unlink()
@@ -1074,10 +1187,9 @@ def cmd_replace_verdict(args: argparse.Namespace) -> None:
     # Ledger entry
     conn = build_db()
     today = date.today().isoformat()
-    node_id = claim_meta.get("id", sub_path)
     conn.execute(
         "INSERT INTO ledger (timestamp, event, node_id, details, agent) VALUES (?, ?, ?, ?, ?)",
-        (today, "verdict_replaced", str(node_id), f"Verdict removed from {sub_path}", "user"),
+        (today, "verdict_replaced", node_id, f"Verdict removed from {sub_path}", "user"),
     )
     conn.commit()
 

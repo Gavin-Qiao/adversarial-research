@@ -54,6 +54,18 @@ class TestBuildDb:
         assert ("h1-architect-r1-result", "assumption-a1", "assumes") in relations
         assert ("h1-experimenter-output", "h1-architect-r1-result", "depends_on") in relations
 
+    def test_with_legacy_cycle_files(self, research_dir):
+        sub = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "sub-1a-probe"
+        sub.mkdir(parents=True)
+        (sub / "frontier.md").write_text(
+            "---\nid: s1a-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Probe\n"
+        )
+
+        conn = build_db()
+        node = conn.execute("SELECT * FROM nodes WHERE id = 's1a-frontier'").fetchone()
+        assert node is not None
+        assert node["file_path"] == "cycles/cycle-1/unit-1-test/sub-1a-probe/frontier.md"
+
     def test_missing_frontmatter(self, research_dir):
         """Files without frontmatter should use path-derived defaults."""
         path = research_dir / "claims" / "claim-1-test" / "experimenter" / "results"
@@ -116,6 +128,165 @@ class TestBuildDbEdgeCases:
         assert rows[0]["type"] == "claim"
         err = capsys.readouterr().err
         assert "duplicate" in err.lower() or "ERROR" in err
+
+    def test_duplicate_ids_remain_stable_across_incremental_builds(self, research_dir, capsys):
+        """A second incremental build must not let the skipped duplicate overwrite the winner."""
+        d1 = research_dir / "claims" / "claim-1-test" / "architect" / "round-1"
+        d1.mkdir(parents=True)
+        (d1 / "result.md").write_text("---\nid: dupe\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# First\n")
+
+        d2 = research_dir / "claims" / "claim-1-test" / "experimenter" / "results"
+        d2.mkdir(parents=True)
+        (d2 / "output.md").write_text(
+            "---\nid: dupe\ntype: evidence\nstatus: active\ndate: 2026-01-02\n---\n\n# Second\n"
+        )
+
+        conn = build_db()
+        row = conn.execute("SELECT type, file_path FROM nodes WHERE id = 'dupe'").fetchone()
+        assert row["type"] == "claim"
+        assert row["file_path"].endswith("architect/round-1/result.md")
+
+        conn = build_db()
+        row = conn.execute("SELECT type, file_path FROM nodes WHERE id = 'dupe'").fetchone()
+        assert row["type"] == "claim"
+        assert row["file_path"].endswith("architect/round-1/result.md")
+
+        err = capsys.readouterr().err
+        assert "forcing full rebuild" in err.lower()
+
+    def test_non_scalar_id_falls_back_to_derived_id(self, research_dir, capsys):
+        claim = research_dir / "claims" / "claim-1-bad-id"
+        claim.mkdir(parents=True)
+        (claim / "claim.md").write_text(
+            "---\nid: [oops]\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# Bad ID\n"
+        )
+
+        conn = build_db()
+        node = conn.execute(
+            "SELECT id, file_path FROM nodes WHERE file_path = 'claims/claim-1-bad-id/claim.md'"
+        ).fetchone()
+
+        assert node is not None
+        assert node["id"] == "h1-claim"
+        err = capsys.readouterr().err
+        assert "non-scalar" in err.lower() or "invalid id" in err.lower()
+
+    def test_duplicate_scan_tolerates_non_scalar_id(self, research_dir, capsys):
+        first = research_dir / "claims" / "claim-1-good"
+        first.mkdir(parents=True)
+        (first / "claim.md").write_text(
+            "---\nid: h1-claim\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# Good\n"
+        )
+
+        second = research_dir / "claims" / "claim-2-bad"
+        second.mkdir(parents=True)
+        (second / "claim.md").write_text(
+            "---\nid: [oops]\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# Bad\n"
+        )
+
+        conn = build_db()
+        rows = conn.execute("SELECT id FROM nodes ORDER BY file_path").fetchall()
+
+        assert [row["id"] for row in rows] == ["h1-claim", "h2-claim"]
+        err = capsys.readouterr().err
+        assert "traceback" not in err.lower()
+
+    def test_non_scalar_status_falls_back_to_default(self, research_dir, capsys):
+        claim = research_dir / "claims" / "claim-1-bad-status"
+        claim.mkdir(parents=True)
+        (claim / "claim.md").write_text(
+            "---\nid: h1-claim\ntype: claim\nstatus: [pending]\ndate: 2026-01-01\n---\n\n# Bad Status\n"
+        )
+
+        conn = build_db()
+        node = conn.execute(
+            "SELECT status, file_path FROM nodes WHERE file_path = 'claims/claim-1-bad-status/claim.md'"
+        ).fetchone()
+
+        assert node is not None
+        assert node["status"] == "pending"
+        err = capsys.readouterr().err
+        assert "non-scalar" in err.lower()
+
+    def test_incremental_build_removes_stale_row_when_file_becomes_invalid_utf8(self, research_dir, capsys):
+        claim = research_dir / "claims" / "claim-1-test"
+        claim.mkdir(parents=True)
+        claim_file = claim / "claim.md"
+        claim_file.write_text(
+            "---\nid: h1-claim\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# Claim\n"
+        )
+
+        conn = build_db(force=True)
+        node = conn.execute("SELECT id FROM nodes WHERE file_path = 'claims/claim-1-test/claim.md'").fetchone()
+        assert node is not None
+
+        claim_file.write_bytes(
+            b"---\nid: h1-claim\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# Claim\xff\n"
+        )
+
+        conn = build_db()
+        node = conn.execute("SELECT id FROM nodes WHERE file_path = 'claims/claim-1-test/claim.md'").fetchone()
+        assert node is None
+
+        err = capsys.readouterr().err
+        assert "not valid utf-8" in err.lower()
+
+    def test_incremental_build_preserves_incoming_edges_when_file_becomes_invalid_utf8(self, research_dir):
+        claim_a = research_dir / "claims" / "claim-1-a"
+        claim_a.mkdir(parents=True)
+        claim_a_file = claim_a / "claim.md"
+        claim_a_file.write_text(
+            "---\nid: a1\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# A\n"
+        )
+
+        claim_b = research_dir / "claims" / "claim-2-b"
+        claim_b.mkdir(parents=True)
+        (claim_b / "claim.md").write_text(
+            "---\nid: b1\ntype: claim\nstatus: pending\ndate: 2026-01-01\n"
+            "depends_on: [a1]\n---\n\n# B\n"
+        )
+
+        build_db(force=True)
+
+        claim_a_file.write_bytes(
+            b"---\nid: a1\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# A\xff\n"
+        )
+
+        conn = build_db()
+        edges = conn.execute("SELECT source_id, target_id, relation FROM edges").fetchall()
+
+        assert conn.execute("SELECT 1 FROM nodes WHERE id = 'a1'").fetchone() is None
+        assert [tuple(row) for row in edges] == [("b1", "a1", "depends_on")]
+
+    def test_incremental_build_preserves_orphan_edges_when_target_id_changes(self, research_dir):
+        claim_a = research_dir / "claims" / "claim-1-a"
+        claim_a.mkdir(parents=True)
+        claim_a_file = claim_a / "claim.md"
+        claim_a_file.write_text(
+            "---\nid: a1\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# A\n"
+        )
+
+        claim_b = research_dir / "claims" / "claim-2-b"
+        claim_b.mkdir(parents=True)
+        (claim_b / "claim.md").write_text(
+            "---\nid: b1\ntype: claim\nstatus: pending\ndate: 2026-01-01\n"
+            "depends_on: [a1]\n---\n\n# B\n"
+        )
+
+        build_db(force=True)
+
+        claim_a_file.write_text(
+            "---\nid: a2\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# A\n"
+        )
+
+        conn = build_db()
+        edge_rows = conn.execute(
+            "SELECT source_id, target_id, relation FROM edges ORDER BY source_id, target_id"
+        ).fetchall()
+
+        assert conn.execute("SELECT 1 FROM nodes WHERE id = 'a1'").fetchone() is None
+        assert conn.execute("SELECT 1 FROM nodes WHERE id = 'a2'").fetchone() is not None
+        assert [tuple(row) for row in edge_rows] == [("b1", "a1", "depends_on")]
 
     def test_frontmatter_only_no_body(self, research_dir):
         d = research_dir / "claims" / "claim-1-test" / "architect" / "round-1"

@@ -83,6 +83,74 @@ class TestCmdValidate:
         assert rc != 0
         assert "duplicate" in out.lower()
 
+    def test_reports_invalid_utf8_instead_of_tracing_back(self, research_dir):
+        claim = research_dir / "claims" / "claim-1-bad"
+        claim.mkdir(parents=True)
+        (claim / "claim.md").write_bytes(b"---\nid: bad\ntype: claim\nstatus: pending\n---\n\n# Bad\xff\n")
+
+        rc, out, err = run_manage(research_dir, "validate")
+        combined = out + err
+
+        assert rc != 0
+        assert "utf-8" in combined.lower()
+        assert "traceback" not in combined.lower()
+
+    def test_reports_non_scalar_id_instead_of_tracing_back(self, research_dir):
+        claim = research_dir / "claims" / "claim-1-bad-id"
+        claim.mkdir(parents=True)
+        (claim / "claim.md").write_text(
+            "---\nid: [oops]\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# Bad ID\n"
+        )
+
+        rc, out, err = run_manage(research_dir, "validate")
+        combined = out + err
+
+        assert rc != 0
+        assert "non-scalar" in combined.lower() or "invalid id" in combined.lower()
+        assert "traceback" not in combined.lower()
+
+    def test_reports_non_scalar_status_as_validation_error(self, research_dir):
+        claim = research_dir / "claims" / "claim-1-bad-status"
+        claim.mkdir(parents=True)
+        (claim / "claim.md").write_text(
+            "---\nid: h1-claim\ntype: claim\nstatus: [pending]\ndate: 2026-01-01\n---\n\n# Bad Status\n"
+        )
+
+        rc, out, err = run_manage(research_dir, "validate")
+        combined = out + err
+
+        assert rc != 0
+        assert "non-scalar" in combined.lower()
+        assert "status" in combined.lower()
+        assert "traceback" not in combined.lower()
+
+    def test_reports_deleted_dependency_target_after_incremental_rebuild(self, research_dir):
+        claim_a = research_dir / "claims" / "claim-1-a"
+        claim_a.mkdir(parents=True)
+        (claim_a / "claim.md").write_text(
+            "---\nid: a1\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# A\n"
+        )
+
+        claim_b = research_dir / "claims" / "claim-2-b"
+        claim_b.mkdir(parents=True)
+        (claim_b / "claim.md").write_text(
+            "---\nid: b1\ntype: claim\nstatus: pending\ndate: 2026-01-01\n"
+            "depends_on: [a1]\n---\n\n# B\n"
+        )
+
+        rc, _out, _err = run_manage(research_dir, "build")
+        assert rc == 0
+
+        (claim_a / "claim.md").unlink()
+
+        rc, out, err = run_manage(research_dir, "validate")
+        combined = out + err
+
+        assert rc != 0
+        assert "unknown target 'a1'" in combined.lower()
+        assert "validation passed" not in combined.lower()
+        assert "traceback" not in combined.lower()
+
 
 class TestCmdFalsify:
     def test_cascades(self, populated_research):
@@ -222,6 +290,15 @@ class TestCmdFalsify:
         assert rc == 0
         assert "Disproven: assumption-a1" in out
 
+    def test_rejects_unknown_evidence_id(self, populated_research):
+        """--by must reference an existing node ID."""
+        rc, out, _ = run_manage(populated_research, "falsify", "assumption-a1", "--by", "missing-evidence")
+        assert rc != 0
+        assert "not found" in out
+
+        _rc, query_out, _ = run_manage(populated_research, "query", "SELECT status FROM nodes WHERE id='assumption-a1'")
+        assert "pending" in query_out
+
 
 class TestCmdSettle:
     def test_marks_settled(self, sample_node):
@@ -245,6 +322,77 @@ class TestCmdStatus:
         assert frontier.exists()
         content = frontier.read_text()
         assert "Design Progress" in content
+
+    def test_includes_legacy_cycle_claims(self, research_dir):
+        sub = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "sub-1a-probe"
+        sub.mkdir(parents=True)
+        (sub / "frontier.md").write_text(
+            "---\nid: s1a-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Probe\n"
+        )
+
+        rc, _out, _ = run_manage(research_dir, "status")
+        assert rc == 0
+        content = (research_dir / "PROGRESS.md").read_text()
+        assert "s1a-frontier" in content
+        assert "cycles/cycle-1/unit-1-test/sub-1a-probe/frontier.md" in content
+
+    def test_excludes_verdict_artifacts_from_blockers_and_claim_log(self, research_dir):
+        claim = research_dir / "claims" / "claim-1-test"
+        verdict_dir = claim / "arbiter" / "results"
+        verdict_dir.mkdir(parents=True)
+        (claim / "claim.md").write_text(
+            "---\nid: h1-claim\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Claim\n"
+        )
+        (verdict_dir / "verdict.md").write_text(
+            "---\nid: h1-arbiter-verdict\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n# Verdict\n"
+        )
+
+        rc, _out, _ = run_manage(research_dir, "status")
+        assert rc == 0
+        content = (research_dir / "PROGRESS.md").read_text()
+        assert "h1-claim" in content
+        assert "claims/claim-1-test/claim.md" in content
+        assert "h1-arbiter-verdict" not in content
+        assert "claims/claim-1-test/arbiter/results/verdict.md" not in content
+
+    def test_reports_assumption_blockers(self, research_dir):
+        assumptions = research_dir / "context" / "assumptions"
+        assumptions.mkdir(parents=True, exist_ok=True)
+        (assumptions / "a.md").write_text(
+            "---\nid: a1\ntype: assumption\nstatus: active\ndate: 2026-01-01\n---\n\n# A\n"
+        )
+
+        claim = research_dir / "claims" / "claim-1-test"
+        claim.mkdir(parents=True)
+        (claim / "claim.md").write_text(
+            "---\nid: h1-claim\ntype: claim\nstatus: pending\ndate: 2026-01-01\nassumes: [a1]\n---\n\n# C\n"
+        )
+
+        rc, _out, _ = run_manage(research_dir, "status")
+        assert rc == 0
+        content = (research_dir / "PROGRESS.md").read_text()
+        assert "a1" in content
+        assert "blocks 1 pending node(s)" in content
+
+    def test_reports_legacy_frontier_blocker_counts(self, research_dir):
+        blocker = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "sub-1a-probe"
+        blocker.mkdir(parents=True)
+        (blocker / "frontier.md").write_text(
+            "---\nid: s1a-frontier\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n# Probe\n"
+        )
+
+        claim = research_dir / "claims" / "claim-1-test"
+        claim.mkdir(parents=True)
+        (claim / "claim.md").write_text(
+            "---\nid: h1-claim\ntype: claim\nstatus: pending\ndate: 2026-01-01\n"
+            "depends_on: [s1a-frontier]\n---\n\n# Claim\n"
+        )
+
+        rc, _out, _ = run_manage(research_dir, "status")
+        assert rc == 0
+        content = (research_dir / "PROGRESS.md").read_text()
+        assert "s1a-frontier" in content
+        assert "blocks 1 pending node(s)" in content
 
 
 class TestCmdAssumptions:
@@ -392,6 +540,29 @@ class TestCmdWavesJson:
 
         data = json.loads(out)
         assert isinstance(data, list)
+
+    def test_assumption_edges_order_waves(self, research_dir):
+        import json
+
+        assumptions = research_dir / "context" / "assumptions"
+        assumptions.mkdir(parents=True, exist_ok=True)
+        (assumptions / "a.md").write_text(
+            "---\nid: a1\ntype: assumption\nstatus: pending\ndate: 2026-01-01\n---\n\n# A\n"
+        )
+
+        claim = research_dir / "claims" / "claim-1-test"
+        claim.mkdir(parents=True)
+        (claim / "claim.md").write_text(
+            "---\nid: h1-claim\ntype: claim\nstatus: pending\ndate: 2026-01-01\nassumes: [a1]\n---\n\n# C\n"
+        )
+
+        run_manage(research_dir, "build")
+        rc, out, _ = run_manage(research_dir, "waves", "--json")
+
+        assert rc == 0
+        waves = json.loads(out)
+        assert [node["id"] for node in waves[0]] == ["a1"]
+        assert [node["id"] for node in waves[1]] == ["h1-claim"]
 
 
 class TestCmdInvestigateNext:
@@ -650,6 +821,26 @@ class TestCmdResults:
         assert "high" in content, "RESULTS.md should show confidence 'high'"
         assert "ACTIVE" not in content, "RESULTS.md should not show frontmatter status 'ACTIVE'"
 
+    def test_results_includes_legacy_cycle_verdicts(self, research_dir):
+        """Legacy cycles/ verdicts should still appear in RESULTS.md."""
+        sub = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "sub-1a-probe"
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+            (sub / role).mkdir(parents=True, exist_ok=True)
+        (sub / "frontier.md").write_text(
+            "---\nid: s1a-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Probe\n"
+        )
+        (sub / "arbiter" / "results").mkdir(parents=True, exist_ok=True)
+        (sub / "arbiter" / "results" / "verdict.md").write_text(
+            "---\nid: v1\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n"
+            "**Verdict**: PROVEN\n**Confidence**: high\n"
+        )
+
+        rc, _out, _ = run_manage(research_dir, "results")
+        assert rc == 0
+        content = (research_dir / "RESULTS.md").read_text()
+        assert "sub-1a-probe" in content
+        assert "PROVEN" in content
+
     def test_list_empty(self, research_dir):
         rc, out, _ = run_manage(research_dir, "list")
         assert rc == 0
@@ -733,6 +924,16 @@ class TestCmdNext:
         rc, out, _ = run_manage(research_dir, "next", "auto")
         assert rc == 0
         assert "No active claims" in out
+
+    def test_auto_detects_legacy_cycle(self, research_dir):
+        import json
+
+        sub_path = self._make_sub_unit(research_dir)
+        rc, out, _ = run_manage(research_dir, "next", "auto")
+        assert rc == 0
+        state = json.loads(out)
+        assert state["sub_unit"] == sub_path
+        assert state["action"] == "dispatch_architect"
 
 
 class TestCmdContext:
@@ -854,6 +1055,27 @@ class TestCmdPostVerdict:
         assert result["verdict"] == "DISPROVEN"
         assert any("Weakened" in c for c in result["changes"])
 
+    def test_disproven_uses_verdict_frontmatter_id(self, research_dir):
+        from frontmatter import parse_frontmatter
+
+        sub_path = self._make_verdicted_sub_unit(research_dir, verdict="DISPROVEN")
+        verdict_file = research_dir / sub_path / "arbiter" / "results" / "verdict.md"
+        verdict_file.write_text(
+            "---\nid: custom-verdict\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n"
+            "# Verdict\n\n**Verdict**: DISPROVEN\n**Confidence**: high\n"
+        )
+
+        run_manage(research_dir, "build")
+        rc, _out, _ = run_manage(research_dir, "post-verdict", sub_path)
+        assert rc == 0
+
+        meta = parse_frontmatter((research_dir / sub_path / "claim.md").read_text())
+        assert meta["falsified_by"] == "custom-verdict"
+
+        rc, _out, err = run_manage(research_dir, "build")
+        assert rc == 0
+        assert "orphan" not in err.lower()
+
     def test_partial_sets_status(self, research_dir):
         import json
 
@@ -870,6 +1092,89 @@ class TestCmdPostVerdict:
         (sub / "frontier.md").write_text("---\nid: test\n---\n")
         rc, _, _ = run_manage(research_dir, "post-verdict", "cycles/cycle-1/unit-1-test/sub-1a-probe")
         assert rc != 0
+
+    def test_rejects_verdict_only_directory_without_mutating(self, research_dir):
+        sub = research_dir / "claims" / "claim-1-bad"
+        verdict_dir = sub / "arbiter" / "results"
+        verdict_dir.mkdir(parents=True)
+        verdict_file = verdict_dir / "verdict.md"
+        verdict_file.write_text(
+            "---\nid: v1\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n"
+            "**Verdict**: PROVEN\n**Confidence**: high\n"
+        )
+
+        rc, out, err = run_manage(research_dir, "post-verdict", "claims/claim-1-bad")
+        combined = out + err
+
+        assert rc != 0
+        assert "claim" in combined.lower()
+        assert verdict_file.exists()
+        assert not (sub / ".post_verdict_done").exists()
+
+        rc, query_out, _ = run_manage(research_dir, "query", "SELECT event FROM ledger")
+        assert rc == 0
+        assert "(no results)" in query_out
+
+    def test_rejects_invalid_utf8_claim_file_without_traceback(self, research_dir):
+        sub = research_dir / "claims" / "claim-1-bad"
+        verdict_dir = sub / "arbiter" / "results"
+        verdict_dir.mkdir(parents=True)
+        claim_file = sub / "claim.md"
+        claim_file.write_bytes(
+            b"---\nid: h1-claim\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Claim\xff\n"
+        )
+        (verdict_dir / "verdict.md").write_text(
+            "---\nid: v1\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n"
+            "**Verdict**: PROVEN\n**Confidence**: high\n"
+        )
+
+        rc, out, err = run_manage(research_dir, "post-verdict", "claims/claim-1-bad")
+        combined = out + err
+
+        assert rc != 0
+        assert "utf-8" in combined.lower()
+        assert "traceback" not in combined.lower()
+        assert not (sub / ".post_verdict_done").exists()
+
+    def test_rejects_invalid_utf8_verdict_file_without_traceback(self, research_dir):
+        sub = research_dir / "claims" / "claim-1-bad-verdict"
+        verdict_dir = sub / "arbiter" / "results"
+        verdict_dir.mkdir(parents=True)
+        (sub / "claim.md").write_text(
+            "---\nid: h1-claim\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Claim\n"
+        )
+        (verdict_dir / "verdict.md").write_bytes(
+            b"---\nid: v1\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n"
+            b"**Verdict**: PROVEN\n**Confidence**: high\xff\n"
+        )
+
+        rc, out, err = run_manage(research_dir, "post-verdict", "claims/claim-1-bad-verdict")
+        combined = out + err
+
+        assert rc != 0
+        assert "verdict" in combined.lower()
+        assert "traceback" not in combined.lower()
+        assert not (sub / ".post_verdict_done").exists()
+
+    def test_legacy_cycle_updates_frontier(self, research_dir):
+        from frontmatter import parse_frontmatter
+
+        sub = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "sub-1a-probe"
+        (sub / "arbiter" / "results").mkdir(parents=True)
+        (sub / "frontier.md").write_text(
+            "---\nid: s1a-frontier\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Probe\n"
+        )
+        (sub / "arbiter" / "results" / "verdict.md").write_text(
+            "---\nid: v1\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n"
+            "**Verdict**: PROVEN\n**Confidence**: high\n"
+        )
+
+        run_manage(research_dir, "build")
+        rc, _out, _ = run_manage(research_dir, "post-verdict", "cycles/cycle-1/unit-1-test/sub-1a-probe")
+        assert rc == 0
+
+        meta = parse_frontmatter((sub / "frontier.md").read_text())
+        assert meta["status"] == "proven"
 
 
 class TestReplaceVerdictCascadeRevert:
@@ -936,15 +1241,17 @@ class TestReplaceVerdictCascadeRevert:
         assert b_meta["status"] == "weakened"
         assert c_meta["status"] == "weakened"
 
-        # Now replace-verdict — should revert both b and c
+        # Now replace-verdict — should restore both b and c to their prior state
         rc, _out, _ = run_manage(research_dir, "replace-verdict", "claims/claim-1-root")
         assert rc == 0
 
-        # Both must be reverted to pending with confidence cleared
+        # Both must be restored to active with their original confidence
         b_meta = parse_frontmatter((b / "claim.md").read_text())
         c_meta = parse_frontmatter((c / "claim.md").read_text())
-        assert b_meta["status"] == "pending", f"b should be pending, got {b_meta['status']}"
-        assert c_meta["status"] == "pending", f"c should be pending, got {c_meta['status']}"
+        assert b_meta["status"] == "active", f"b should be active, got {b_meta['status']}"
+        assert c_meta["status"] == "active", f"c should be active, got {c_meta['status']}"
+        assert b_meta["confidence"] == "high"
+        assert c_meta["confidence"] == "high"
 
         # Root itself should be active with falsified_by cleared
         root_meta = parse_frontmatter((root / "claim.md").read_text())
@@ -1014,6 +1321,164 @@ class TestReplaceVerdictCascadeRevert:
             f"dep should stay weakened (beta still disproven), got {dep_meta['status']}"
         )
 
+    def test_legacy_cycle_resets_frontier(self, research_dir):
+        """replace-verdict must reset legacy frontier.md claims too."""
+        from frontmatter import parse_frontmatter
+
+        sub = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "sub-1a-probe"
+        (sub / "arbiter" / "results").mkdir(parents=True)
+        (sub / "frontier.md").write_text(
+            "---\nid: s1a-frontier\ntype: claim\nstatus: disproven\n"
+            "date: 2026-01-01\nfalsified_by: v1\n---\n\n# Probe\n"
+        )
+        (sub / "arbiter" / "results" / "verdict.md").write_text(
+            "---\nid: v1\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n"
+            "**Verdict**: DISPROVEN\n**Confidence**: high\n"
+        )
+
+        rc, _out, err = run_manage(research_dir, "replace-verdict", "cycles/cycle-1/unit-1-test/sub-1a-probe")
+        assert rc == 0
+        assert "orphan" not in err.lower()
+
+        meta = parse_frontmatter((sub / "frontier.md").read_text())
+        assert meta["status"] == "active"
+        assert not meta.get("falsified_by")
+
+    def test_replace_verdict_restores_previous_state(self, research_dir):
+        """Rollback should restore the dependent's prior status/confidence."""
+        from frontmatter import parse_frontmatter
+
+        root = research_dir / "claims" / "claim-1-root"
+        root.mkdir(parents=True)
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+            (root / role).mkdir()
+        (root / "claim.md").write_text(
+            "---\nid: h1-root\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Root\n"
+        )
+        (root / "architect" / "round-1").mkdir()
+        (root / "architect" / "round-1" / "result.md").write_text(
+            "---\nid: a1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Proposal\n"
+        )
+        (root / "adversary" / "round-1").mkdir()
+        (root / "adversary" / "round-1" / "result.md").write_text(
+            "---\nid: r1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Attack\n\n**Severity**: Minor\n"
+        )
+        (root / "experimenter" / "results").mkdir()
+        (root / "experimenter" / "results" / "output.md").write_text(
+            "---\nid: e1\ntype: evidence\nstatus: active\ndate: 2026-01-01\n---\n\n# Results\n"
+        )
+        (root / "arbiter" / "results").mkdir()
+        (root / "arbiter" / "results" / "verdict.md").write_text(
+            "---\nid: verdict-1\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n"
+            "**Verdict**: DISPROVEN\n**Confidence**: high\n"
+        )
+
+        dep = research_dir / "claims" / "claim-2-dep"
+        dep.mkdir(parents=True)
+        (dep / "claim.md").write_text(
+            "---\nid: h2-dep\ntype: claim\nstatus: partial\ndate: 2026-01-01\n"
+            "depends_on: [h1-root]\nconfidence: moderate\n---\n\n# Dep\n"
+        )
+
+        run_manage(research_dir, "build")
+        run_manage(research_dir, "post-verdict", "claims/claim-1-root")
+
+        rc, _out, _ = run_manage(research_dir, "replace-verdict", "claims/claim-1-root")
+        assert rc == 0
+
+        dep_meta = parse_frontmatter((dep / "claim.md").read_text())
+        assert dep_meta["status"] == "partial"
+        assert dep_meta["confidence"] == "moderate"
+
+    def test_replace_verdict_preserves_preexisting_weakened_state(self, research_dir):
+        """Rollback should restore a dependent that was already weakened before cascade."""
+        from frontmatter import parse_frontmatter
+
+        root = research_dir / "claims" / "claim-1-root"
+        root.mkdir(parents=True)
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+            (root / role).mkdir()
+        (root / "claim.md").write_text(
+            "---\nid: h1-root\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Root\n"
+        )
+        (root / "architect" / "round-1").mkdir()
+        (root / "architect" / "round-1" / "result.md").write_text(
+            "---\nid: a1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Proposal\n"
+        )
+        (root / "adversary" / "round-1").mkdir()
+        (root / "adversary" / "round-1" / "result.md").write_text(
+            "---\nid: r1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Attack\n\n**Severity**: Minor\n"
+        )
+        (root / "experimenter" / "results").mkdir()
+        (root / "experimenter" / "results" / "output.md").write_text(
+            "---\nid: e1\ntype: evidence\nstatus: active\ndate: 2026-01-01\n---\n\n# Results\n"
+        )
+        (root / "arbiter" / "results").mkdir()
+        (root / "arbiter" / "results" / "verdict.md").write_text(
+            "---\nid: verdict-1\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n"
+            "**Verdict**: DISPROVEN\n**Confidence**: high\n"
+        )
+
+        dep = research_dir / "claims" / "claim-2-dep"
+        dep.mkdir(parents=True)
+        (dep / "claim.md").write_text(
+            "---\nid: h2-dep\ntype: claim\nstatus: weakened\ndate: 2026-01-01\n"
+            "depends_on: [h1-root]\nconfidence: low\n---\n\n# Dep\n"
+        )
+
+        run_manage(research_dir, "build")
+        run_manage(research_dir, "post-verdict", "claims/claim-1-root")
+
+        rc, _out, _ = run_manage(research_dir, "replace-verdict", "claims/claim-1-root")
+        assert rc == 0
+
+        dep_meta = parse_frontmatter((dep / "claim.md").read_text())
+        assert dep_meta["status"] == "weakened"
+        assert dep_meta["confidence"] == "low"
+
+    def test_rejects_verdict_only_directory_without_deleting_verdict(self, research_dir):
+        sub = research_dir / "claims" / "claim-1-bad"
+        verdict_dir = sub / "arbiter" / "results"
+        verdict_dir.mkdir(parents=True)
+        verdict_file = verdict_dir / "verdict.md"
+        verdict_file.write_text(
+            "---\nid: v1\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n"
+            "**Verdict**: DISPROVEN\n**Confidence**: high\n"
+        )
+
+        rc, out, err = run_manage(research_dir, "replace-verdict", "claims/claim-1-bad")
+        combined = out + err
+
+        assert rc != 0
+        assert "claim" in combined.lower()
+        assert verdict_file.exists()
+
+        rc, query_out, _ = run_manage(research_dir, "query", "SELECT event FROM ledger")
+        assert rc == 0
+        assert "(no results)" in query_out
+
+    def test_rejects_invalid_utf8_claim_file_without_deleting_verdict(self, research_dir):
+        sub = research_dir / "claims" / "claim-1-bad"
+        verdict_dir = sub / "arbiter" / "results"
+        verdict_dir.mkdir(parents=True)
+        claim_file = sub / "claim.md"
+        claim_file.write_bytes(
+            b"---\nid: h1-claim\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Claim\xff\n"
+        )
+        verdict_file = verdict_dir / "verdict.md"
+        verdict_file.write_text(
+            "---\nid: v1\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n"
+            "**Verdict**: DISPROVEN\n**Confidence**: high\n"
+        )
+
+        rc, out, err = run_manage(research_dir, "replace-verdict", "claims/claim-1-bad")
+        combined = out + err
+
+        assert rc != 0
+        assert "utf-8" in combined.lower()
+        assert "traceback" not in combined.lower()
+        assert verdict_file.exists()
+
 
 class TestCmdReopen:
     def _make_disproven_claim_with_dep(self, research_dir):
@@ -1068,13 +1533,14 @@ class TestCmdReopen:
         assert not meta.get("falsified_by")
 
     def test_reopen_disproven_reverts_dependent(self, research_dir):
-        """Reopen a disproven claim: weakened dependent must be reverted."""
+        """Reopen a disproven claim: weakened dependent must be restored."""
         from frontmatter import parse_frontmatter
 
         self._make_disproven_claim_with_dep(research_dir)
         run_manage(research_dir, "reopen", "h1-root")
         dep_meta = parse_frontmatter((research_dir / "claims" / "claim-2-dep" / "claim.md").read_text())
-        assert dep_meta["status"] == "pending", f"dep should be pending, got {dep_meta['status']}"
+        assert dep_meta["status"] == "active", f"dep should be active, got {dep_meta['status']}"
+        assert dep_meta["confidence"] == "high"
 
     def test_reopen_disproven_no_orphan_edges(self, research_dir):
         """After reopen + rebuild, no orphan edges should remain."""
@@ -1103,6 +1569,116 @@ class TestCmdReopen:
         assert rc == 0
         meta = parse_frontmatter((claim / "claim.md").read_text())
         assert meta["status"] == "active"
+
+    def test_reopen_restores_previous_state(self, research_dir):
+        """Reopen should restore the dependent's prior status/confidence."""
+        from frontmatter import parse_frontmatter
+
+        root = research_dir / "claims" / "claim-1-root"
+        root.mkdir(parents=True)
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+            (root / role).mkdir()
+        (root / "claim.md").write_text(
+            "---\nid: h1-root\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Root\n"
+        )
+        (root / "architect" / "round-1").mkdir()
+        (root / "architect" / "round-1" / "result.md").write_text(
+            "---\nid: a1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# P\n"
+        )
+        (root / "adversary" / "round-1").mkdir()
+        (root / "adversary" / "round-1" / "result.md").write_text(
+            "---\nid: r1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n**Severity**: Minor\n"
+        )
+        (root / "experimenter" / "results").mkdir()
+        (root / "experimenter" / "results" / "output.md").write_text(
+            "---\nid: e1\ntype: evidence\nstatus: active\ndate: 2026-01-01\n---\n\n# Results\n"
+        )
+        (root / "arbiter" / "results").mkdir()
+        (root / "arbiter" / "results" / "verdict.md").write_text(
+            "---\nid: verdict-1\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n"
+            "**Verdict**: DISPROVEN\n**Confidence**: high\n"
+        )
+
+        dep = research_dir / "claims" / "claim-2-dep"
+        dep.mkdir(parents=True)
+        dep_path = dep / "claim.md"
+        dep_path.write_text(
+            "---\nid: h2-dep\ntype: claim\nstatus: partial\ndate: 2026-01-01\n"
+            "depends_on: [h1-root]\nconfidence: moderate\n---\n\n# Dep\n"
+        )
+
+        run_manage(research_dir, "build")
+        run_manage(research_dir, "post-verdict", "claims/claim-1-root")
+
+        rc, _out, _ = run_manage(research_dir, "reopen", "h1-root")
+        assert rc == 0
+
+        dep_meta = parse_frontmatter(dep_path.read_text())
+        assert dep_meta["status"] == "partial"
+        assert dep_meta["confidence"] == "moderate"
+
+    def test_reopen_preserves_preexisting_weakened_state(self, research_dir):
+        """Reopen should restore a dependent that was already weakened before cascade."""
+        from frontmatter import parse_frontmatter
+
+        root = research_dir / "claims" / "claim-1-root"
+        root.mkdir(parents=True)
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+            (root / role).mkdir()
+        (root / "claim.md").write_text(
+            "---\nid: h1-root\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Root\n"
+        )
+        (root / "architect" / "round-1").mkdir()
+        (root / "architect" / "round-1" / "result.md").write_text(
+            "---\nid: a1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# P\n"
+        )
+        (root / "adversary" / "round-1").mkdir()
+        (root / "adversary" / "round-1" / "result.md").write_text(
+            "---\nid: r1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n**Severity**: Minor\n"
+        )
+        (root / "experimenter" / "results").mkdir()
+        (root / "experimenter" / "results" / "output.md").write_text(
+            "---\nid: e1\ntype: evidence\nstatus: active\ndate: 2026-01-01\n---\n\n# Results\n"
+        )
+        (root / "arbiter" / "results").mkdir()
+        (root / "arbiter" / "results" / "verdict.md").write_text(
+            "---\nid: verdict-1\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n"
+            "**Verdict**: DISPROVEN\n**Confidence**: high\n"
+        )
+
+        dep = research_dir / "claims" / "claim-2-dep"
+        dep.mkdir(parents=True)
+        dep_path = dep / "claim.md"
+        dep_path.write_text(
+            "---\nid: h2-dep\ntype: claim\nstatus: weakened\ndate: 2026-01-01\n"
+            "depends_on: [h1-root]\nconfidence: low\n---\n\n# Dep\n"
+        )
+
+        run_manage(research_dir, "build")
+        run_manage(research_dir, "post-verdict", "claims/claim-1-root")
+
+        rc, _out, _ = run_manage(research_dir, "reopen", "h1-root")
+        assert rc == 0
+
+        dep_meta = parse_frontmatter(dep_path.read_text())
+        assert dep_meta["status"] == "weakened"
+        assert dep_meta["confidence"] == "low"
+
+    def test_reopen_rejects_non_claim_nodes(self, research_dir):
+        assumption_dir = research_dir / "context" / "assumptions"
+        assumption_dir.mkdir(parents=True, exist_ok=True)
+        (assumption_dir / "a.md").write_text(
+            "---\nid: a1\ntype: assumption\nstatus: disproven\ndate: 2026-01-01\n---\n\n# A\n"
+        )
+
+        rc, out, err = run_manage(research_dir, "reopen", "a1")
+        combined = out + err
+
+        assert rc != 0
+        assert "claim" in combined.lower()
+
+        _rc, query_out, _ = run_manage(research_dir, "query", "SELECT status FROM nodes WHERE id='a1'")
+        assert "disproven" in query_out
 
 
 class TestBreadcrumb:
@@ -1208,6 +1784,17 @@ class TestValidatePaste:
         paste_file.write_text("# Experiment\n\n## Results\n\nAUROC = 0.87, p < 0.01. The hypothesis holds.\n")
         rc, _out, _ = run_manage(research_dir, "validate-paste", "--agent", "experimenter", "--file", str(paste_file))
         assert rc == 0
+
+    def test_invalid_utf8_paste_reports_clean_error(self, research_dir, tmp_path):
+        paste_file = tmp_path / "paste.md"
+        paste_file.write_bytes(b"# Verdict\n\n**Verdict**: PROVEN\n**Confidence**: high\n\xff\n")
+
+        rc, out, err = run_manage(research_dir, "validate-paste", "--agent", "arbiter", "--file", str(paste_file))
+        combined = out + err
+
+        assert rc != 0
+        assert "utf-8" in combined.lower()
+        assert "traceback" not in combined.lower()
 
 
 class TestCmdNextArbiterConfidence:
@@ -1345,6 +1932,77 @@ class TestAutonomyConfig:
         result = json.loads(out)
         assert result["mode"] == "checkpoints"
         assert "understand" in result["checkpoint_at"]
+
+
+class TestCmdDashboard:
+    def test_counts_legacy_cycle_claims(self, research_dir):
+        import json
+
+        sub = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "sub-1a-probe"
+        sub.mkdir(parents=True)
+        (sub / "frontier.md").write_text(
+            "---\nid: s1a-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Probe\n"
+        )
+
+        rc, out, _ = run_manage(research_dir, "dashboard")
+        assert rc == 0
+        result = json.loads(out)
+        assert result["claims"].get("pending") == 1
+
+    def test_excludes_verdict_artifacts_from_claim_counts(self, research_dir):
+        import json
+
+        claim = research_dir / "claims" / "claim-1-test"
+        verdict_dir = claim / "arbiter" / "results"
+        verdict_dir.mkdir(parents=True)
+        (claim / "claim.md").write_text(
+            "---\nid: h1-claim\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Claim\n"
+        )
+        (verdict_dir / "verdict.md").write_text(
+            "---\nid: h1-arbiter-verdict\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n# Verdict\n"
+        )
+
+        rc, out, _ = run_manage(research_dir, "dashboard")
+        assert rc == 0
+        result = json.loads(out)
+        assert result["claims"].get("active") == 1
+
+    def test_reports_assumption_blocked_claims(self, research_dir):
+        import json
+
+        assumptions = research_dir / "context" / "assumptions"
+        assumptions.mkdir(parents=True, exist_ok=True)
+        (assumptions / "a.md").write_text(
+            "---\nid: a1\ntype: assumption\nstatus: active\ndate: 2026-01-01\n---\n\n# A\n"
+        )
+
+        claim = research_dir / "claims" / "claim-1-test"
+        claim.mkdir(parents=True)
+        (claim / "claim.md").write_text(
+            "---\nid: h1-claim\ntype: claim\nstatus: pending\ndate: 2026-01-01\nassumes: [a1]\n---\n\n# C\n"
+        )
+
+        rc, out, _ = run_manage(research_dir, "dashboard")
+        assert rc == 0
+        result = json.loads(out)
+        assert result["blocked"] == [{"id": "h1-claim", "blocked_by": "a1"}]
+
+    def test_last_verdict_ignores_non_claim_falsify_events(self, research_dir):
+        import json
+
+        assumptions = research_dir / "context" / "assumptions"
+        assumptions.mkdir(parents=True, exist_ok=True)
+        (assumptions / "a.md").write_text(
+            "---\nid: a1\ntype: assumption\nstatus: pending\ndate: 2026-01-01\n---\n\n# A\n"
+        )
+
+        rc, _out, _ = run_manage(research_dir, "falsify", "a1")
+        assert rc == 0
+
+        rc, out, _ = run_manage(research_dir, "dashboard")
+        assert rc == 0
+        result = json.loads(out)
+        assert result["last_verdict"] is None
 
 
 class TestExtendDebate:

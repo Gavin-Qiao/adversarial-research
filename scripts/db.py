@@ -9,7 +9,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from frontmatter import extract_title, get_body, parse_frontmatter, serialise_frontmatter
+from frontmatter import extract_title, get_body, get_scalar_frontmatter, parse_frontmatter, serialise_frontmatter
 from ids import (
     derive_id,
     infer_type_from_path,
@@ -24,14 +24,41 @@ from config import rel_path_from_root
 
 
 def discover_md_files() -> list[Path]:
-    """Find all .md files under claims/ and context/."""
+    """Find all .md files under claims/, legacy cycles/, and context/."""
     files = []
-    for root_dir in (_cfg.RESEARCH_DIR / "claims", _cfg.CONTEXT_DIR):
+    for root_dir in (_cfg.RESEARCH_DIR / "claims", _cfg.RESEARCH_DIR / "cycles", _cfg.CONTEXT_DIR):
         if not root_dir.exists():
             continue
         for p in sorted(root_dir.rglob("*.md")):
             files.append(p)
     return files
+
+
+def _find_duplicate_ids(files: list[Path]) -> list[tuple[str, str, str]]:
+    """Return duplicate ID collisions as (id, first_rel, duplicate_rel).
+
+    This scans current files directly so incremental builds can detect duplicate
+    IDs even when one duplicate was skipped during a previous full rebuild and
+    therefore never entered the file tracker.
+    """
+    seen: dict[str, str] = {}
+    duplicates: list[tuple[str, str, str]] = []
+
+    for fpath in files:
+        rel = rel_path_from_root(fpath)
+        try:
+            text = fpath.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, ValueError):
+            # Let the normal parse path warn about unreadable files.
+            continue
+        meta = parse_frontmatter(text, filepath=rel)
+        node_id = get_scalar_frontmatter(meta, "id", filepath=rel, warn=True) or derive_id(rel)
+        if node_id in seen:
+            duplicates.append((node_id, seen[node_id], rel))
+        else:
+            seen[node_id] = rel
+
+    return duplicates
 
 
 # ---------------------------------------------------------------------------
@@ -224,10 +251,26 @@ KNOWN_FRONTMATTER_KEYS = {
     "counterfactual",
     "maturity",
     "confidence",
+    "weakened_from_status",
+    "weakened_from_confidence",
     "wave",
     "cycle_status",
     "falsification",
 }
+
+
+def _scalar_meta(
+    meta: dict[str, Any],
+    key: str,
+    *,
+    rel: str,
+    default: str | None = None,
+) -> str | None:
+    """Return a scalar frontmatter value, warning and falling back when invalid."""
+    value = get_scalar_frontmatter(meta, key, filepath=rel, warn=True)
+    if value is None:
+        return default
+    return value
 
 
 def _parse_and_upsert(conn: sqlite3.Connection, fpath: Path, seen_ids: dict[str, str] | None = None) -> str | None:
@@ -266,16 +309,16 @@ def _parse_and_upsert(conn: sqlite3.Connection, fpath: Path, seen_ids: dict[str,
 
     # Derive defaults
     today = date.today().isoformat()
-    node_id = meta.get("id") or derive_id(rel)
-    node_type = meta.get("type") or infer_type_from_path(rel)
-    status = meta.get("status", "pending")
-    node_date = meta.get("date", today)
-    counterfactual = meta.get("counterfactual")
-    attack_type = meta.get("attack_type")
-    maturity = meta.get("maturity")
-    confidence = meta.get("confidence")
-    wave = meta.get("wave")
-    cycle_status = meta.get("cycle_status")
+    node_id = _scalar_meta(meta, "id", rel=rel) or derive_id(rel)
+    node_type = _scalar_meta(meta, "type", rel=rel) or infer_type_from_path(rel)
+    status = _scalar_meta(meta, "status", rel=rel) or "pending"
+    node_date = _scalar_meta(meta, "date", rel=rel) or today
+    counterfactual = _scalar_meta(meta, "counterfactual", rel=rel)
+    attack_type = _scalar_meta(meta, "attack_type", rel=rel)
+    maturity = _scalar_meta(meta, "maturity", rel=rel)
+    confidence = _scalar_meta(meta, "confidence", rel=rel)
+    wave = _scalar_meta(meta, "wave", rel=rel)
+    cycle_status = _scalar_meta(meta, "cycle_status", rel=rel)
 
     if seen_ids is not None and node_id in seen_ids:
         print(
@@ -326,7 +369,7 @@ def _parse_and_upsert(conn: sqlite3.Connection, fpath: Path, seen_ids: dict[str,
         )
 
     # Edges from falsified_by
-    fby = meta.get("falsified_by")
+    fby = _scalar_meta(meta, "falsified_by", rel=rel)
     if fby:
         conn.execute(
             "INSERT INTO edges (source_id, target_id, relation) VALUES (?, ?, ?)", (node_id, fby, "falsified_by")
@@ -345,6 +388,33 @@ def _ensure_list(val: Any) -> list[str]:
     if isinstance(val, str):
         return [val]
     return list(val)
+
+
+def _node_ids_for_file(conn: sqlite3.Connection, file_path: str) -> list[str]:
+    """Return every node ID currently associated with a tracked source file."""
+    return [row["id"] for row in conn.execute("SELECT id FROM nodes WHERE file_path = ?", (file_path,)).fetchall()]
+
+
+def _delete_edges_for_node_ids(conn: sqlite3.Connection, column: str, node_ids: list[str]) -> None:
+    """Delete edges whose source or target matches any node ID in *node_ids*."""
+    if not node_ids:
+        return
+    placeholders = ", ".join("?" for _ in node_ids)
+    conn.execute(f"DELETE FROM edges WHERE {column} IN ({placeholders})", node_ids)
+
+
+def _clear_file_state(conn: sqlite3.Connection, file_path: str) -> list[str]:
+    """Remove tracked DB state for a source file and return the prior node IDs.
+
+    Incoming edges are intentionally preserved so incremental builds can keep
+    dangling references visible when a target file is deleted, unreadable, or
+    changes IDs. Validation then reports those orphaned edges explicitly.
+    """
+    old_ids = _node_ids_for_file(conn, file_path)
+    _delete_edges_for_node_ids(conn, "source_id", old_ids)
+    conn.execute("DELETE FROM nodes WHERE file_path = ?", (file_path,))
+    conn.execute("DELETE FROM file_tracker WHERE file_path = ?", (file_path,))
+    return old_ids
 
 
 def _post_build_check(conn: sqlite3.Connection) -> None:
@@ -380,6 +450,16 @@ def build_db(force: bool = False) -> sqlite3.Connection:
         return _full_build(conn)
 
     files = discover_md_files()
+    duplicates = _find_duplicate_ids(files)
+    if duplicates:
+        print(
+            f"WARNING: {len(duplicates)} duplicate ID collision(s) detected. "
+            "Forcing full rebuild to preserve first-file-wins semantics.",
+            file=sys.stderr,
+        )
+        conn.close()
+        return build_db(force=True)
+
     tracked: dict[str, float] = {
         r["file_path"]: r["mtime"] for r in conn.execute("SELECT file_path, mtime FROM file_tracker").fetchall()
     }
@@ -398,35 +478,29 @@ def build_db(force: bool = False) -> sqlite3.Connection:
         else:
             unchanged += 1
 
+    conn.execute("PRAGMA foreign_keys=OFF")
+
     # Remove nodes for deleted files
     current_paths = {rel_path_from_root(f) for f in files}
     deleted = 0
     for tracked_path in list(tracked.keys()):
         if tracked_path not in current_paths:
-            # Delete edges FROM and TO deleted nodes to prevent orphans
-            conn.execute(
-                "DELETE FROM edges WHERE source_id IN (SELECT id FROM nodes WHERE file_path = ?)",
-                (tracked_path,),
-            )
-            conn.execute(
-                "DELETE FROM edges WHERE target_id IN (SELECT id FROM nodes WHERE file_path = ?)",
-                (tracked_path,),
-            )
-            conn.execute("DELETE FROM nodes WHERE file_path = ?", (tracked_path,))
-            conn.execute("DELETE FROM file_tracker WHERE file_path = ?", (tracked_path,))
+            _clear_file_state(conn, tracked_path)
             deleted += 1
 
     # Pre-populate seen_ids from unchanged nodes so incremental builds
-    # still enforce first-wins duplicate-ID semantics
+    # still enforce first-wins duplicate-ID semantics.
     seen_ids: dict[str, str] = {}
     for row in conn.execute("SELECT id, file_path FROM nodes").fetchall():
         fp = row["file_path"]
         if fp in current_paths and fp not in {rel_path_from_root(f) for f in changed + new_files}:
             seen_ids[row["id"]] = fp
 
-    # Parse changed + new files (defer FK checks — edges may reference nodes from unchanged files)
-    conn.execute("PRAGMA foreign_keys=OFF")
+    # Parse changed + new files while FK checks are deferred so references to
+    # temporarily missing or permanently removed nodes remain queryable.
     for fpath in changed + new_files:
+        rel = rel_path_from_root(fpath)
+        _clear_file_state(conn, rel)
         _parse_and_upsert(conn, fpath, seen_ids)
     conn.execute("PRAGMA foreign_keys=ON")
 

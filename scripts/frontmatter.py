@@ -17,6 +17,22 @@ import sys
 
 _FM_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 
+SCALAR_FRONTMATTER_KEYS = (
+    "id",
+    "type",
+    "status",
+    "date",
+    "attack_type",
+    "falsified_by",
+    "counterfactual",
+    "maturity",
+    "confidence",
+    "weakened_from_status",
+    "weakened_from_confidence",
+    "wave",
+    "cycle_status",
+)
+
 
 def _parse_yaml_value(raw: str) -> str | list[str] | None:
     """Parse a single YAML value: string, list of strings, null, or date."""
@@ -66,6 +82,22 @@ def parse_frontmatter(text: str, *, filepath: str | None = None) -> dict:
         key, _, val = stripped.partition(":")
         meta[key.strip()] = _parse_yaml_value(val)
     return meta
+
+
+def get_scalar_frontmatter(meta: dict, key: str, *, filepath: str | None = None, warn: bool = False) -> str | None:
+    """Return a scalar string frontmatter value, or None when missing/invalid."""
+    value = meta.get(key)
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if warn:
+        loc = f" in {filepath}" if filepath else ""
+        print(
+            f"  WARN: Non-scalar frontmatter '{key}'{loc} ignored. Use a single-line scalar value.",
+            file=sys.stderr,
+        )
+    return None
 
 
 def get_body(text: str) -> str:
@@ -135,6 +167,8 @@ def serialise_frontmatter(meta: dict) -> str:
         "date",
         "maturity",
         "confidence",
+        "weakened_from_status",
+        "weakened_from_confidence",
         "depends_on",
         "assumes",
         "attack_type",
