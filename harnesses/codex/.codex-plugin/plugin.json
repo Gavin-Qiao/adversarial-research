@@ -1,0 +1,40 @@
+{
+  "name": "principia",
+  "version": "0.4.0a1",
+  "description": "Design algorithms from first principles through adversarial testing.",
+  "author": {
+    "name": "Principia",
+    "email": "opensource@principia.dev",
+    "url": "https://github.com/Gavin-Qiao/principia"
+  },
+  "homepage": "https://github.com/Gavin-Qiao/principia",
+  "repository": "https://github.com/Gavin-Qiao/principia",
+  "license": "MIT",
+  "keywords": [
+    "principia",
+    "research",
+    "codex",
+    "workflow"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Principia",
+    "shortDescription": "Adversarial design workflow for Codex.",
+    "longDescription": "Use Principia inside Codex to decompose, test, falsify, and synthesize algorithm ideas through a structured workflow.",
+    "developerName": "Principia",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/Gavin-Qiao/principia",
+    "privacyPolicyURL": "https://github.com/Gavin-Qiao/principia/blob/main/README.md",
+    "termsOfServiceURL": "https://github.com/Gavin-Qiao/principia/blob/main/LICENSE",
+    "defaultPrompt": [
+      "Initialize a Principia workspace in this repo.",
+      "Advance the next Principia claim lifecycle step.",
+      "Generate a Principia status summary for this workspace."
+    ],
+    "brandColor": "#2563EB"
+  }
+}

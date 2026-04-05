@@ -35,6 +35,10 @@ claude --plugin-dir /path/to/principia
 
 Requires **Python 3.10+** (stdlib only -- no pip packages at runtime) and **Claude Code 2.0+**.
 
+### Codex Harness
+
+Codex can use the repository-local harness in `harnesses/codex`. Select the Principia plugin from this repo's marketplace metadata so harness selection stays tied to the checkout instead of a global install.
+
 ## Quick Start
 
 ```
