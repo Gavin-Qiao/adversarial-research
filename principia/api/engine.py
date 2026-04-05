@@ -9,12 +9,12 @@ class PrincipiaEngine:
     root: Path
 
     def __post_init__(self) -> None:
-        from config import init_paths
+        from scripts.config import init_paths
 
         init_paths(self.root)
 
     def build(self) -> dict[str, int]:
-        from db import build_db
+        from scripts.db import build_db
 
         conn = build_db()
         try:

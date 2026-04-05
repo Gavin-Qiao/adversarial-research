@@ -6,17 +6,27 @@ import sqlite3
 import sys
 from collections import deque
 from datetime import date
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 
-from frontmatter import extract_title, get_body, get_scalar_frontmatter, parse_frontmatter, serialise_frontmatter
-from ids import (
-    derive_id,
-    infer_type_from_path,
-)
+if __package__:
+    _frontmatter = import_module(".frontmatter", __package__)
+    _ids = import_module(".ids", __package__)
+    _cfg = import_module(".config", __package__)
+else:  # pragma: no cover - legacy script-module fallback
+    _frontmatter = import_module("frontmatter")
+    _ids = import_module("ids")
+    _cfg = import_module("config")
 
-import config as _cfg
-from config import rel_path_from_root
+extract_title = _frontmatter.extract_title
+get_body = _frontmatter.get_body
+get_scalar_frontmatter = _frontmatter.get_scalar_frontmatter
+parse_frontmatter = _frontmatter.parse_frontmatter
+serialise_frontmatter = _frontmatter.serialise_frontmatter
+derive_id = _ids.derive_id
+infer_type_from_path = _ids.infer_type_from_path
+rel_path_from_root = _cfg.rel_path_from_root
 
 # ---------------------------------------------------------------------------
 # File discovery
