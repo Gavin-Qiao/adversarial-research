@@ -32,8 +32,9 @@ import config as _cfg
 
 def _check_path_containment(sub_path: str) -> None:
     """Verify a relative path stays within RESEARCH_DIR. Exits on traversal."""
-    resolved = (_cfg.RESEARCH_DIR / sub_path).resolve()
-    if not str(resolved).startswith(str(_cfg.RESEARCH_DIR.resolve())):
+    root = str(_cfg.RESEARCH_DIR.resolve()) + os.sep
+    resolved = str((_cfg.RESEARCH_DIR / sub_path).resolve())
+    if not (resolved.startswith(root) or resolved == root.rstrip(os.sep)):
         print("ERROR: Path escapes the research directory.")
         sys.exit(1)
 
@@ -55,9 +56,7 @@ def cmd_new(args: argparse.Namespace) -> None:
         print(f"  (appended .md → {rel})")
     full = (_cfg.RESEARCH_DIR / rel).resolve()
     # Prevent path traversal outside research/
-    if not str(full).startswith(str(_cfg.RESEARCH_DIR.resolve())):
-        print(f"ERROR: Path escapes research directory: {rel}")
-        sys.exit(1)
+    _check_path_containment(rel)
     if full.exists():
         print(f"ERROR: File already exists: {full}")
         sys.exit(1)
@@ -996,29 +995,24 @@ def cmd_replace_verdict(args: argparse.Namespace) -> None:
         print(f"ERROR: No verdict file found at {verdict_file}")
         sys.exit(1)
 
-    # If claim was disproven, clear falsified_by and revert weakened dependents
+    # If claim was disproven, revert the entire cascade (transitive)
     claim_file = target / "claim.md"
     if claim_file.exists():
         claim_meta = parse_frontmatter(claim_file.read_text(encoding="utf-8"))
         if claim_meta.get("status") == "disproven":
-            # Revert cascade: rebuild will clear orphan edges, but we need to
-            # reset weakened dependents that were cascaded from this claim
             conn = build_db()
             node_id = claim_meta.get("id")
             if node_id:
-                weakened = conn.execute(
-                    "SELECT n.id, n.file_path FROM nodes n "
-                    "JOIN edges e ON e.source_id = n.id AND e.target_id = ? "
-                    "WHERE n.status = 'weakened'",
-                    (node_id,),
-                ).fetchall()
-                for w in weakened:
-                    wp = _cfg.RESEARCH_DIR / w["file_path"]
-                    if wp.exists():
-                        _update_frontmatter_in_file(wp, {"status": "pending"})
-                        print(f"Reverted: {w['id']} weakened → pending")
-        # Clear falsified_by from frontmatter
-        updates = {"status": "active"}
+                # _find_cascade_targets returns all transitive dependents
+                affected = _find_cascade_targets(conn, node_id)
+                for dep_id, fp, status in affected:
+                    if status == "weakened":
+                        wp = _cfg.RESEARCH_DIR / fp
+                        if wp.exists():
+                            _update_frontmatter_in_file(wp, {"status": "pending", "confidence": ""})
+                            print(f"Reverted: {dep_id} weakened → pending (confidence reset)")
+        # Clear falsified_by from frontmatter and reset to active
+        updates: dict[str, str] = {"status": "active"}
         if claim_meta.get("falsified_by"):
             updates["falsified_by"] = ""
         if not _update_frontmatter_in_file(claim_file, updates):
