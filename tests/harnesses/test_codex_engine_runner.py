@@ -1,6 +1,9 @@
 import json
 import subprocess
 import sys
+from pathlib import Path
+
+from principia.api.engine import PrincipiaEngine
 
 
 def test_engine_runner_build_command(tmp_path):
@@ -24,3 +27,22 @@ def test_engine_runner_build_command(tmp_path):
     assert result.returncode == 0
     payload = json.loads(result.stdout)
     assert payload["node_count"] == 0
+
+
+def test_engine_exposes_all_runner_commands(tmp_path):
+    (tmp_path / "claims").mkdir(parents=True)
+    (tmp_path / "context" / "assumptions").mkdir(parents=True)
+    (tmp_path / ".db").mkdir()
+
+    engine = PrincipiaEngine(root=tmp_path)
+
+    for command in ("build", "dashboard", "validate", "results"):
+        method = getattr(engine, command, None)
+        assert callable(method), f"PrincipiaEngine is missing {command}()"
+
+
+def test_engine_runner_uses_uniform_engine_dispatch():
+    runner_path = Path("harnesses/codex/scripts/engine_runner.py")
+    runner_text = runner_path.read_text(encoding="utf-8")
+
+    assert 'payload = getattr(engine, args.command)()' in runner_text

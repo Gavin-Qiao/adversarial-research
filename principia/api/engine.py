@@ -11,6 +11,8 @@ from principia.api.types import BuildResult, DashboardResult
 from principia.core.commands import cmd_dashboard
 from principia.core.config import init_paths
 from principia.core.db import build_db
+from principia.core.reports import cmd_results
+from principia.core.validation import cmd_validate
 
 
 @dataclass
@@ -41,3 +43,24 @@ class PrincipiaEngine:
         with redirect_stdout(buf):
             cmd_dashboard(Namespace())
         return DashboardResult(payload=json.loads(buf.getvalue()))
+
+    def validate(self) -> dict[str, object]:
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            try:
+                cmd_validate(Namespace(json=True))
+            except SystemExit:
+                pass
+        return json.loads(buf.getvalue())
+
+    def results(self) -> dict[str, object]:
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            cmd_results(Namespace())
+
+        results_path = self.root / "RESULTS.md"
+        return {
+            "results_path": str(results_path),
+            "exists": results_path.exists(),
+            "message": buf.getvalue().strip(),
+        }
