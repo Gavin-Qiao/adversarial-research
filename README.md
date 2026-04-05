@@ -20,12 +20,12 @@ You start with an insight. Principia decomposes it into testable claims, stress-
 
 ## Installation
 
-Clone this repository, then choose the harness you want to use.
+Choose a harness after you clone this repository.
 
 - [Claude harness](harnesses/claude/README.md)
 - [Codex harness](harnesses/codex/README.md)
 
-Principia keeps one shared Python engine in this repo and exposes it through harness-specific wrappers. The Claude harness continues to use the repo's Claude-facing agent, skill, and hook layout. The Codex harness uses the repo-local plugin scaffold under `harnesses/codex/`.
+Principia keeps one shared Python engine in this repo and exposes it through harness-specific wrappers. The Claude harness continues to use the repo's Claude-facing agent, skill, and hook layout. The Codex harness uses the repo-local plugin under `harnesses/codex/`.
 
 Requires **Python 3.10+** (stdlib only -- no pip packages at runtime).
 

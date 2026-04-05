@@ -1,10 +1,13 @@
 # Principia Codex Harness
 
-This directory contains the Task 4 Codex harness scaffold for Principia.
+Install Principia in Codex from `harnesses/codex/`.
 
-Use this scaffold when selecting a plugin from this repository inside Codex. The repo-local marketplace entry in `.agents/plugins/marketplace.json` points at `harnesses/codex`, so harness selection stays tied to the checkout. Task 4 only wires the static layout; Task 5 adds the functional workflow.
+This harness is Codex-native. It uses Codex skills and a Codex plugin manifest while calling the shared Principia engine in this repository.
+
+The repo-local marketplace entry in `.agents/plugins/marketplace.json` points at `harnesses/codex`, so harness selection stays tied to the checkout instead of a global install.
 
 ## Layout
 
 - `.codex-plugin/plugin.json`: Codex plugin manifest
-- `skills/`: reserved for harness-specific Codex skills
+- `scripts/engine_runner.py`: thin adapter over the shared engine API
+- `skills/`: harness-specific Codex workflow skills
