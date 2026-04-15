@@ -4,6 +4,39 @@ All notable changes to this project are documented in this file.
 
 The format is inspired by Keep a Changelog, but organized around the release-note sections used for Principia releases: Features, Changed, Fixes, Docs, Packaging, Upgrade Notes, and Verification.
 
+## [0.4.0b4] - 2026-04-15
+
+### Features
+
+- Added state-aware dispatch lifecycle reporting to the Codex-facing dashboard, including claim-local `dispatch_lifecycle` and workspace-wide `dispatch_overview` summaries.
+
+### Changed
+
+- Extended the Codex runner and engine API to expose `prompt` alongside `next`, `packet`, `dispatch-log`, and `patch-status`, so the repo-local Codex surface no longer has an obvious handoff gap.
+- Promoted dispatch health from a single-claim detail into a workspace-wide control-plane signal, with aggregated `ready_to_send`, `waiting_result`, and stale handoff counts.
+
+### Fixes
+
+- Corrected workflow waiting semantics for non-round roles so `experimenter/prompt.md` and `arbiter/prompt.md` now drive the state machine into an actual waiting state.
+- Normalized remaining Windows path leakage in claim discovery, context assembly, dashboard filters, and dispatch bookkeeping so Codex-facing payloads stay POSIX-stable.
+
+### Docs
+
+- Updated the Codex bundle README and workflow skills to describe the new lifecycle states, workspace-wide dispatch overview, and the runner-backed `prompt` command.
+
+### Packaging
+
+- Bumped Principia, Codex plugin, and Claude plugin metadata to `0.4.0b4`.
+
+### Upgrade Notes
+
+- Treat `dispatch_overview` as the canonical workspace-wide dispatch health surface. `dispatch_lifecycle` remains the focused view for the active or most recently touched claim.
+
+### Verification
+
+- `uv run pytest tests/harnesses/test_readme_installation.py tests/test_orchestration.py tests/test_db_v2.py::TestMigrations tests/test_db_v2.py::TestCoderRegistry::test_dispatches_survive_rebuild tests/test_commands.py::TestCmdDispatchLog tests/test_commands.py::TestCmdDashboard tests/test_commands.py::TestCmdNext tests/test_commands.py::TestCmdPrompt tests/test_commands.py::TestCmdPacket tests/test_commands.py::TestCmdPostVerdict tests/engine/test_engine_lifecycle.py tests/harnesses/test_codex_engine_runner.py tests/harnesses/test_codex_layout.py -q`
+- `161 passed`
+
 ## [0.4.0b3] - 2026-04-05
 
 ### Features

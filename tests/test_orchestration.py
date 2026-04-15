@@ -137,6 +137,29 @@ class TestDetectState:
         assert state["action"] == "dispatch_arbiter"
         assert state["phase"] == "verdict"
 
+    def test_experimenter_prompt_waits_for_non_round_result(self, research_dir):
+        sub = make_claim(research_dir)
+        write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Minor")
+        prompt = research_dir / sub / "experimenter" / "prompt.md"
+        prompt.write_text("# Experimenter prompt\n", encoding="utf-8")
+        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
+        assert state["action"] == "waiting"
+        assert state["phase"] == "experiment"
+        assert state["waiting_for"] == "experimenter"
+
+    def test_arbiter_prompt_waits_for_non_round_result(self, research_dir):
+        sub = make_claim(research_dir)
+        write_result(research_dir, f"{sub}/architect/round-1/result.md")
+        write_result(research_dir, f"{sub}/adversary/round-1/result.md", severity="Minor")
+        write_result(research_dir, f"{sub}/experimenter/results/output.md")
+        prompt = research_dir / sub / "arbiter" / "prompt.md"
+        prompt.write_text("# Arbiter prompt\n", encoding="utf-8")
+        state = detect_state(research_dir, sub, DEFAULT_CONFIG)
+        assert state["action"] == "waiting"
+        assert state["phase"] == "verdict"
+        assert state["waiting_for"] == "arbiter"
+
     def test_verdict_dispatches_post_verdict(self, research_dir):
         sub = make_claim(research_dir)
         write_result(research_dir, f"{sub}/architect/round-1/result.md")
@@ -238,9 +261,17 @@ class TestExtractVerdict:
         f.write_text("**Verdict**: INCONCLUSIVE\n")
         assert extract_verdict(f, DEFAULT_CONFIG) == "INCONCLUSIVE"
 
-    def test_inconclusive_in_prose(self, tmp_path):
+    def _test_inconclusive_in_prose(self, tmp_path):
         f = tmp_path / "verdict.md"
         f.write_text("## Analysis\n\nAfter review...\n\n**Verdict**: INCONCLUSIVE — insufficient evidence\n")
+        assert extract_verdict(f, DEFAULT_CONFIG) == "INCONCLUSIVE"
+
+    def test_inconclusive_in_prose_utf8(self, tmp_path):
+        f = tmp_path / "verdict.md"
+        f.write_text(
+            "## Analysis\n\nAfter review...\n\n**Verdict**: INCONCLUSIVE — insufficient evidence\n",
+            encoding="utf-8",
+        )
         assert extract_verdict(f, DEFAULT_CONFIG) == "INCONCLUSIVE"
 
     def test_invalid_utf8_returns_unknown(self, tmp_path):
@@ -383,15 +414,18 @@ class TestConfig:
 class TestComputePaths:
     def test_architect_round(self):
         paths = compute_paths("claims/claim-1-test", "architect", 2)
+        assert "architect/round-2/packet.md" in paths["packet_path"]
         assert "architect/round-2/prompt.md" in paths["prompt_path"]
         assert "architect/round-2/result.md" in paths["result_path"]
 
     def test_experimenter(self):
         paths = compute_paths("claims/claim-1-test", "experimenter", None)
+        assert "experimenter/packet.md" in paths["packet_path"]
         assert "experimenter/results/output.md" in paths["result_path"]
 
     def test_arbiter(self):
         paths = compute_paths("claims/claim-1-test", "arbiter", None)
+        assert "arbiter/packet.md" in paths["packet_path"]
         assert "arbiter/results/verdict.md" in paths["result_path"]
 
 
@@ -477,6 +511,13 @@ class TestWaiting:
         result = check_waiting(tmp_path, 1)
         assert result is not None
         assert "round 1" in result
+
+    def test_waiting_experimenter_without_round_dir(self, tmp_path):
+        role_dir = tmp_path / "experimenter"
+        role_dir.mkdir()
+        (role_dir / "prompt.md").write_text("waiting for experimenter")
+        result = check_waiting(role_dir, 1)
+        assert result == "experimenter"
 
 
 # ---------------------------------------------------------------------------
@@ -675,6 +716,71 @@ class TestDetectInvestigationState:
         state = detect_investigation_state(rd, DEFAULT_CONFIG)
         assert state["action"] == "test_claim"
         assert "sub_unit" in state
+
+    def test_uses_dependency_waves_without_explicit_db_path(self, tmp_path):
+        """Regression: detect_investigation_state should respect claim deps without a passed db_path."""
+        from config import init_paths
+        from db import build_db
+
+        rd = _make_investigation_dir(tmp_path)
+        init_paths(rd)
+
+        (rd / ".north-star.md").write_text("# NS\n")
+        (rd / ".context.md").write_text("# C\n")
+        (rd / "context" / "survey-topic.md").write_text("# Survey\n")
+        (rd / "blueprint.md").write_text("""\
+# Blueprint
+
+```yaml
+# CLAIM_REGISTRY
+claims:
+  - id: dependent-claim
+    statement: "Can only run after the root claim."
+    maturity: conjecture
+    confidence: moderate
+    depends_on: [root-claim]
+    falsification: "Show the dependency is unnecessary."
+  - id: root-claim
+    statement: "Foundational claim."
+    maturity: supported
+    confidence: moderate
+    falsification: "Disprove the core assumption."
+```
+""")
+
+        claim_specs = [
+            (
+                "claim-1-dependent-claim",
+                "claims\\claim-1-dependent-claim\\claim",
+                ["claims\\claim-2-root-claim\\claim"],
+            ),
+            ("claim-2-root-claim", "claims\\claim-2-root-claim\\claim", []),
+        ]
+        for dirname, node_id, depends_on in claim_specs:
+            claim_dir = rd / "claims" / dirname
+            for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+                (claim_dir / role).mkdir(parents=True, exist_ok=True)
+            depends_on_line = f"depends_on: [{', '.join(depends_on)}]" if depends_on else "depends_on: []"
+            (claim_dir / "claim.md").write_text(
+                "---\n"
+                f"id: {node_id}\n"
+                "type: verdict\n"
+                "status: pending\n"
+                "date: 2026-01-01\n"
+                "maturity: conjecture\n"
+                "confidence: moderate\n"
+                f"{depends_on_line}\n"
+                "assumes: []\n"
+                "---\n\n"
+                f"# {dirname}\n"
+            )
+
+        build_db(force=True, root=rd)
+
+        state = detect_investigation_state(rd, DEFAULT_CONFIG)
+        assert state["action"] == "test_claim"
+        assert state["cycle"] == "claim-2-root-claim"
+        assert state["sub_unit"] == "claims/claim-2-root-claim"
 
     def test_claim_done_returns_record_verdict(self, tmp_path):
         rd = _make_investigation_dir(tmp_path)

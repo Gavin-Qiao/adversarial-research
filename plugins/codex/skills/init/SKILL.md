@@ -5,7 +5,7 @@ description: Initialize Principia for this repository by inspecting the project,
 
 # Init
 
-`/principia:init` is a one-time repository setup ritual. It should be active and discussion-heavy, not a passive folder bootstrap.
+`principia:init` is the Codex skill entry point for the one-time repository setup ritual. It should be active and discussion-heavy, not a passive folder bootstrap.
 
 ## Principles
 
@@ -104,5 +104,7 @@ Finally verify the workspace is wired:
 uv run python -m principia.cli.codex_runner --root principia build
 uv run python -m principia.cli.codex_runner --root principia dashboard
 ```
+
+If the dashboard reports a `warnings` entry with code `north_star_drift`, surface that before closing init. Existing claims may need review or restamping before the user continues deeper into the workflow.
 
 In Codex, report the JSON summary and tell the user whether initialization is still in discussion, ready for claims, or ready for the ongoing workflow.

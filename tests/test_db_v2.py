@@ -45,7 +45,7 @@ def _insert_artifact(
 class TestMigrations:
     def test_fresh_db_gets_current_version(self, research_dir):
         conn = _get_or_create_db()
-        assert _get_schema_version(conn) == 3
+        assert _get_schema_version(conn) == 4
 
     def test_v2_has_new_tables(self, research_dir):
         conn = _get_or_create_db()
@@ -68,7 +68,7 @@ class TestMigrations:
         """Running migration twice should not error."""
         conn = _get_or_create_db()
         _migrate_db(conn)  # Run again
-        assert _get_schema_version(conn) == 3
+        assert _get_schema_version(conn) == 4
 
     def test_v1_to_v2_migration(self, tmp_path):
         """Create a v1-style DB and verify migration adds new columns."""
@@ -98,10 +98,16 @@ class TestMigrations:
         _migrate_db(conn)
 
         # Verify new columns exist
-        assert _get_schema_version(conn) == 3
+        assert _get_schema_version(conn) == 4
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(nodes)").fetchall()}
         assert "maturity" in cols
         assert "confidence" in cols
+        dispatch_cols = {r["name"] for r in conn.execute("PRAGMA table_info(dispatches)").fetchall()}
+        assert "sub_unit" in dispatch_cols
+        assert "dispatch_mode" in dispatch_cols
+        assert "packet_path" in dispatch_cols
+        assert "prompt_path" in dispatch_cols
+        assert "result_path" in dispatch_cols
 
         # Verify existing data survived
         row = conn.execute("SELECT * FROM nodes WHERE id='test'").fetchone()
@@ -228,8 +234,10 @@ class TestCoderRegistry:
         """Dispatch log should survive a full DB rebuild."""
         conn = _get_or_create_db()
         conn.execute(
-            "INSERT INTO dispatches (timestamp, cycle_id, agent, action, round, details) "
-            "VALUES ('2026-01-01T00:00:00', 'claim-1', 'architect', 'dispatch', 1, 'test')"
+            "INSERT INTO dispatches (timestamp, cycle_id, agent, action, round, details, sub_unit, dispatch_mode, "
+            "packet_path, prompt_path, result_path) VALUES ("
+            "'2026-01-01T00:00:00', 'claim-1', 'architect', 'dispatch', 1, 'test', "
+            "'claims/claim-1-test', 'external', 'packet.md', 'prompt.md', 'result.md')"
         )
         conn.commit()
         conn.close()
@@ -239,6 +247,8 @@ class TestCoderRegistry:
         assert len(rows) == 1
         assert rows[0]["agent"] == "architect"
         assert rows[0]["cycle_id"] == "claim-1"
+        assert rows[0]["sub_unit"] == "claims/claim-1-test"
+        assert rows[0]["packet_path"] == "packet.md"
 
 
 # ---------------------------------------------------------------------------

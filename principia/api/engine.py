@@ -4,7 +4,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from principia.api.types import BuildResult, DashboardResult
-from principia.core.commands import get_dashboard_payload
+from principia.core.commands import (
+    get_dashboard_payload,
+    get_dispatch_log_payload,
+    get_next_payload,
+    get_patch_status_payload,
+    write_packet_artifact,
+    write_prompt_artifact,
+)
 from principia.core.db import build_db
 from principia.core.reports import generate_results_report
 from principia.core.validation import ValidationResult, collect_validation_result
@@ -35,6 +42,21 @@ class PrincipiaEngine:
 
     def dashboard_result(self) -> DashboardResult:
         return DashboardResult(payload=get_dashboard_payload(self.root))
+
+    def next(self, path: str = "auto") -> dict[str, object]:
+        return get_next_payload(path=path, root=self.root)
+
+    def packet(self, path: str) -> dict[str, object]:
+        return write_packet_artifact(path=path, root=self.root)
+
+    def prompt(self, path: str) -> dict[str, object]:
+        return write_prompt_artifact(path=path, root=self.root)
+
+    def dispatch_log(self, cycle: str | None = None) -> list[dict[str, object]]:
+        return get_dispatch_log_payload(cycle=cycle, root=self.root)
+
+    def patch_status(self) -> dict[str, object]:
+        return get_patch_status_payload(root=self.root)
 
     def validate(self) -> ValidationResult:
         return collect_validation_result(self.root)

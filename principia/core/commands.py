@@ -15,6 +15,7 @@ from typing import Any
 from . import config as _cfg
 from .db import (
     _find_cascade_targets,
+    _get_or_create_db,
     _update_frontmatter_in_file,
     build_db,
 )
@@ -353,7 +354,7 @@ def cmd_settle(args: argparse.Namespace) -> None:
 
 def cmd_post_verdict(args: argparse.Namespace) -> None:
     """Automate post-verdict bookkeeping (update statuses, cascade, regenerate reports)."""
-    from .orchestration import extract_confidence, extract_verdict, load_config
+    from .orchestration import extract_confidence, extract_verdict, load_config, read_dispatch_config
 
     config = load_config(_cfg.DEFAULT_ORCH_CONFIG)
     sub_path = args.path
@@ -384,6 +385,7 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
     _cfg._emit_progress("recording", "post_verdict", f"{sub_path}: {verdict} ({confidence})")
 
     conn = build_db()
+    _sync_dispatch_receipts(sub_path, root=_cfg.RESEARCH_DIR)
     changes: list[str] = []
 
     # Apply verdict (extract_verdict now returns principia names: PROVEN, DISPROVEN, PARTIAL)
@@ -425,7 +427,7 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
 
     # Ledger entry
     today = date.today().isoformat()
-    verdict_rel = str(verdict_file.relative_to(_cfg.RESEARCH_DIR)) if verdict_file.exists() else ""
+    verdict_rel = verdict_file.relative_to(_cfg.RESEARCH_DIR).as_posix() if verdict_file.exists() else ""
     conn.execute(
         "INSERT INTO ledger (timestamp, event, node_id, details, agent) VALUES (?, ?, ?, ?, ?)",
         (
@@ -445,6 +447,28 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
     # Write marker file signaling post-verdict bookkeeping is done
     marker = target / ".post_verdict_done"
     _cfg._atomic_write(marker, today)
+    cycle_id = Path(sub_path).name
+    dispatch_modes = read_dispatch_config(_cfg.RESEARCH_DIR)
+    if not _dispatch_event_exists(
+        cycle_id=cycle_id,
+        agent="arbiter",
+        action="recorded",
+        result_path=verdict_rel,
+        sub_unit=sub_path,
+        root=_cfg.RESEARCH_DIR,
+    ):
+        record_dispatch_event(
+            cycle_id=cycle_id,
+            agent="arbiter",
+            action="recorded",
+            details=f"Verdict {verdict} recorded at confidence {confidence}.",
+            root=_cfg.RESEARCH_DIR,
+            sub_unit=sub_path,
+            dispatch_mode=dispatch_modes.get("arbiter", "internal"),
+            packet_path=f"{sub_path}/arbiter/packet.md",
+            prompt_path=f"{sub_path}/arbiter/prompt.md",
+            result_path=verdict_rel,
+        )
 
     result = {
         "verdict": verdict,
@@ -498,6 +522,8 @@ def cmd_cascade(args: argparse.Namespace) -> None:
 
 def cmd_scaffold(args: argparse.Namespace) -> None:
     """Create directory structure for a claim."""
+    from .orchestration import compute_north_star_version
+
     level = args.level
     name = args.name
 
@@ -546,6 +572,9 @@ def cmd_scaffold(args: argparse.Namespace) -> None:
         "falsified_by": None,
         "counterfactual": None,
     }
+    north_star_version = compute_north_star_version(_cfg.RESEARCH_DIR)
+    if north_star_version:
+        meta["north_star_version"] = north_star_version
     # Add optional claim registry metadata
     if getattr(args, "falsification", None):
         meta["falsification"] = args.falsification
@@ -731,25 +760,332 @@ def cmd_artifacts(args: argparse.Namespace) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _resolve_workspace_root(root: Path | None = None) -> Path:
+    return _cfg.RESEARCH_DIR.resolve() if root is None else root.resolve()
+
+
+def _load_agent_instructions(agent: str) -> str:
+    agent_file = _cfg.PLUGIN_ROOT / "agents" / f"{agent}.md"
+    if not agent_file.exists():
+        return ""
+    return get_body(agent_file.read_text(encoding="utf-8"))
+
+
+def _dispatch_cycle_id(state: dict[str, Any]) -> str:
+    cycle_id = state.get("cycle")
+    if cycle_id:
+        return str(cycle_id)
+    sub_unit = str(state.get("sub_unit") or "")
+    if sub_unit:
+        return Path(sub_unit).name
+    return "unknown"
+
+
+def record_dispatch_event(
+    *,
+    cycle_id: str,
+    agent: str,
+    action: str,
+    round_num: int | None = None,
+    details: str | None = None,
+    root: Path | None = None,
+    sub_unit: str | None = None,
+    dispatch_mode: str | None = None,
+    packet_path: str | None = None,
+    prompt_path: str | None = None,
+    result_path: str | None = None,
+) -> None:
+    """Persist a dispatch audit event without forcing a workspace rebuild."""
+    conn = _get_or_create_db(root=_resolve_workspace_root(root))
+    try:
+        conn.execute(
+            "INSERT INTO dispatches (timestamp, cycle_id, agent, action, round, details, sub_unit, dispatch_mode, "
+            "packet_path, prompt_path, result_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                datetime.now(UTC).isoformat(),
+                cycle_id,
+                agent,
+                action,
+                round_num,
+                details or "",
+                sub_unit,
+                dispatch_mode,
+                packet_path,
+                prompt_path,
+                result_path,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_dispatch_log_payload(*, cycle: str | None = None, root: Path | None = None) -> list[dict[str, Any]]:
+    """Return dispatch audit rows as JSON-friendly dictionaries."""
+    conn = _get_or_create_db(root=_resolve_workspace_root(root))
+    try:
+        if cycle:
+            rows = conn.execute(
+                "SELECT * FROM dispatches WHERE cycle_id = ? ORDER BY timestamp",
+                (cycle,),
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM dispatches ORDER BY timestamp").fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def _dispatch_event_exists(
+    *,
+    cycle_id: str,
+    agent: str,
+    action: str,
+    round_num: int | None = None,
+    result_path: str | None = None,
+    sub_unit: str | None = None,
+    root: Path | None = None,
+) -> bool:
+    """Return whether a matching dispatch lifecycle event already exists."""
+    conn = _get_or_create_db(root=_resolve_workspace_root(root))
+    try:
+        sql = "SELECT 1 FROM dispatches WHERE cycle_id = ? AND agent = ? AND action = ?"
+        params: list[Any] = [cycle_id, agent, action]
+        if round_num is None:
+            sql += " AND round IS NULL"
+        else:
+            sql += " AND round = ?"
+            params.append(round_num)
+        if result_path is None:
+            sql += " AND result_path IS NULL"
+        else:
+            sql += " AND result_path = ?"
+            params.append(result_path)
+        if sub_unit is None:
+            sql += " AND sub_unit IS NULL"
+        else:
+            sql += " AND sub_unit = ?"
+            params.append(sub_unit)
+        return conn.execute(sql, params).fetchone() is not None
+    finally:
+        conn.close()
+
+
+def _sync_dispatch_receipts(sub_path: str, root: Path | None = None) -> None:
+    """Record one-time receipt events for completed result artifacts."""
+    from .orchestration import compute_paths, find_completed_rounds, read_dispatch_config
+
+    research_root = _resolve_workspace_root(root)
+    target = research_root / sub_path
+    if not target.exists():
+        return
+
+    cycle_id = _dispatch_cycle_id({"sub_unit": sub_path})
+    dispatch_config = read_dispatch_config(research_root)
+
+    def _record_if_present(agent: str, round_num: int | None) -> None:
+        paths = compute_paths(sub_path, agent, round_num)
+        result_path = paths["result_path"]
+        if not (research_root / result_path).exists():
+            return
+        if _dispatch_event_exists(
+            cycle_id=cycle_id,
+            agent=agent,
+            action="received",
+            round_num=round_num,
+            result_path=result_path,
+            sub_unit=sub_path,
+            root=research_root,
+        ):
+            return
+        record_dispatch_event(
+            cycle_id=cycle_id,
+            agent=agent,
+            action="received",
+            round_num=round_num,
+            details="Result artifact received and available for orchestration.",
+            root=research_root,
+            sub_unit=sub_path,
+            dispatch_mode=dispatch_config.get(agent, "internal"),
+            packet_path=paths.get("packet_path"),
+            prompt_path=paths.get("prompt_path"),
+            result_path=result_path,
+        )
+
+    for role in ("architect", "adversary"):
+        role_dir = target / role
+        for round_num in find_completed_rounds(role_dir):
+            _record_if_present(role, round_num)
+
+    for role in ("experimenter", "arbiter"):
+        _record_if_present(role, None)
+
+
+def get_next_payload(path: str = "auto", root: Path | None = None) -> dict[str, Any]:
+    """Determine the next action for a claim and return a JSON-friendly payload."""
+    from .orchestration import (
+        compute_paths,
+        detect_state,
+        extract_confidence,
+        find_active_subunit,
+        get_claim_north_star_status,
+        list_context_files,
+        load_config,
+        read_dispatch_config,
+    )
+
+    research_root = _resolve_workspace_root(root)
+    config = load_config(_cfg.DEFAULT_ORCH_CONFIG)
+    sub_path = path
+    if sub_path == "auto":
+        found = find_active_subunit(research_root)
+        if not found:
+            return {
+                "status": "no_active_claims",
+                "message": "No active claims found. Use /principia:scaffold to create one.",
+            }
+        sub_path = found
+
+    _sync_dispatch_receipts(sub_path, root=research_root)
+    state = detect_state(research_root, sub_path, config)
+    state["sub_unit"] = sub_path
+
+    dispatch_config = read_dispatch_config(research_root)
+    agent = state.get("agent")
+    if agent:
+        state["dispatch_mode"] = dispatch_config.get(agent, "internal")
+        state.update(compute_paths(sub_path, agent, state.get("round")))
+
+    agent = state["action"].removeprefix("dispatch_") if state["action"].startswith("dispatch_") else ""
+    max_rounds = config.get("debate_loop", {}).get("max_rounds", 3)
+    state["context_files"] = list_context_files(
+        research_root,
+        sub_path,
+        state["action"],
+        state.get("round"),
+        agent=agent,
+        max_rounds=max_rounds,
+    )
+    state["north_star"] = get_claim_north_star_status(research_root, sub_path)
+
+    if state["action"].startswith("complete_"):
+        verdict_path = research_root / sub_path / "arbiter" / "results" / "verdict.md"
+        state["confidence"] = extract_confidence(verdict_path)
+
+    return state
+
+
+def _build_dispatch_artifacts(path: str, root: Path | None = None) -> dict[str, Any]:
+    """Build the canonical packet and external prompt for the current dispatch."""
+    from .orchestration import assemble_context, generate_dispatch_packet, generate_external_prompt
+
+    research_root = _resolve_workspace_root(root)
+    state = get_next_payload(path, root=research_root)
+    agent = state.get("agent")
+    if not agent:
+        raise ValueError(state.get("message") or "No agent to dispatch in current state.")
+
+    context = assemble_context(research_root, state["context_files"])
+    instructions = _load_agent_instructions(agent)
+    packet = generate_dispatch_packet(state, state["context_files"], context, instructions)
+    prompt = generate_external_prompt(state, packet)
+    return {
+        "state": state,
+        "context": context,
+        "instructions": instructions,
+        "packet": packet,
+        "prompt": prompt,
+    }
+
+
+def write_packet_artifact(path: str, root: Path | None = None) -> dict[str, Any]:
+    """Write the canonical packet artifact for the current dispatch."""
+    research_root = _resolve_workspace_root(root)
+    artifacts = _build_dispatch_artifacts(path, root=research_root)
+    packet_path = research_root / artifacts["state"]["packet_path"]
+    packet_path.parent.mkdir(parents=True, exist_ok=True)
+    _cfg._atomic_write(packet_path, artifacts["packet"])
+    record_dispatch_event(
+        cycle_id=_dispatch_cycle_id(artifacts["state"]),
+        agent=artifacts["state"]["agent"],
+        action="packet",
+        round_num=artifacts["state"].get("round"),
+        details="Canonical dispatch packet materialized.",
+        root=research_root,
+        sub_unit=artifacts["state"].get("sub_unit"),
+        dispatch_mode=artifacts["state"].get("dispatch_mode"),
+        packet_path=artifacts["state"].get("packet_path"),
+        prompt_path=artifacts["state"].get("prompt_path"),
+        result_path=artifacts["state"].get("result_path"),
+    )
+    return {
+        "path": str(packet_path),
+        "relative_path": artifacts["state"]["packet_path"],
+        "sub_unit": artifacts["state"]["sub_unit"],
+        "agent": artifacts["state"]["agent"],
+    }
+
+
+def write_prompt_artifact(path: str, root: Path | None = None) -> dict[str, Any]:
+    """Write packet and prompt artifacts for the current dispatch."""
+    research_root = _resolve_workspace_root(root)
+    artifacts = _build_dispatch_artifacts(path, root=research_root)
+
+    packet_path = research_root / artifacts["state"]["packet_path"]
+    packet_path.parent.mkdir(parents=True, exist_ok=True)
+    _cfg._atomic_write(packet_path, artifacts["packet"])
+
+    prompt_path = research_root / artifacts["state"]["prompt_path"]
+    prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    _cfg._atomic_write(prompt_path, artifacts["prompt"])
+    record_dispatch_event(
+        cycle_id=_dispatch_cycle_id(artifacts["state"]),
+        agent=artifacts["state"]["agent"],
+        action="dispatch",
+        round_num=artifacts["state"].get("round"),
+        details="Dispatch artifacts materialized for agent handoff.",
+        root=research_root,
+        sub_unit=artifacts["state"].get("sub_unit"),
+        dispatch_mode=artifacts["state"].get("dispatch_mode"),
+        packet_path=artifacts["state"].get("packet_path"),
+        prompt_path=artifacts["state"].get("prompt_path"),
+        result_path=artifacts["state"].get("result_path"),
+    )
+
+    return {
+        "path": str(prompt_path),
+        "relative_path": artifacts["state"]["prompt_path"],
+        "packet_path": artifacts["state"]["packet_path"],
+        "sub_unit": artifacts["state"]["sub_unit"],
+        "agent": artifacts["state"]["agent"],
+    }
+
+
+def get_patch_status_payload(root: Path | None = None) -> dict[str, Any]:
+    """Return north-star/claim alignment status for the workspace."""
+    from .orchestration import collect_north_star_alignment
+
+    return collect_north_star_alignment(_resolve_workspace_root(root))
+
+
 def cmd_log_dispatch(args: argparse.Namespace) -> None:
     """Log a dispatch event to the dispatches table."""
-    conn = build_db()
-    conn.execute(
-        "INSERT INTO dispatches (timestamp, cycle_id, agent, action, round, details) VALUES (?, ?, ?, ?, ?, ?)",
-        (
-            datetime.now(UTC).isoformat(),
-            args.cycle,
-            args.agent,
-            args.action,
-            args.round,
-            args.details or "",
-        ),
+    record_dispatch_event(
+        cycle_id=args.cycle,
+        agent=args.agent,
+        action=args.action,
+        round_num=args.round,
+        details=args.details,
+        sub_unit=getattr(args, "sub_unit", None),
+        dispatch_mode=getattr(args, "dispatch_mode", None),
+        packet_path=getattr(args, "packet_path", None),
+        prompt_path=getattr(args, "prompt_path", None),
+        result_path=getattr(args, "result_path", None),
     )
-    conn.commit()
     print(f"Logged: {args.action} {args.agent} (cycle {args.cycle})")
 
 
-def cmd_dispatch_log(args: argparse.Namespace) -> None:
+def _legacy_cmd_dispatch_log(args: argparse.Namespace) -> None:
     """Show dispatch audit trail."""
     conn = build_db()
     if args.cycle:
@@ -778,7 +1114,7 @@ def cmd_dispatch_log(args: argparse.Namespace) -> None:
     print(f"\n({len(rows)} dispatch(es))")
 
 
-def cmd_next(args: argparse.Namespace) -> None:
+def _legacy_cmd_next(args: argparse.Namespace) -> None:
     """Determine next action for a claim (or legacy sub-unit)."""
     from .orchestration import (
         compute_paths,
@@ -844,7 +1180,7 @@ def cmd_context(args: argparse.Namespace) -> None:
     print(doc)
 
 
-def cmd_prompt(args: argparse.Namespace) -> None:
+def _legacy_cmd_prompt(args: argparse.Namespace) -> None:
     """Generate self-contained prompt for external agent dispatch."""
     from .orchestration import (
         assemble_context,
@@ -885,6 +1221,62 @@ def cmd_prompt(args: argparse.Namespace) -> None:
     prompt_path.parent.mkdir(parents=True, exist_ok=True)
     _cfg._atomic_write(prompt_path, prompt)
     print(f"Written: {prompt_path}")
+
+
+def cmd_dispatch_log(args: argparse.Namespace) -> None:
+    """Show dispatch audit trail."""
+    rows = get_dispatch_log_payload(cycle=args.cycle)
+
+    if not rows:
+        print("No dispatches logged.")
+        return
+
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return
+
+    print(f"{'Timestamp':<28} {'Cycle':<25} {'Agent':<12} {'Action':<16} {'Round':<6} Details")
+    print("-" * 110)
+    for row in rows:
+        round_value = str(row["round"]) if row["round"] is not None else "-"
+        details = row["details"] or ""
+        if row.get("sub_unit"):
+            details = f"{details} [{row['sub_unit']}]".strip()
+        print(
+            f"{row['timestamp']:<28} {row['cycle_id']:<25} {row['agent']:<12} "
+            f"{row['action']:<16} {round_value:<6} {details}"
+        )
+    print(f"\n({len(rows)} dispatch(es))")
+
+
+def cmd_next(args: argparse.Namespace) -> None:
+    """Determine next action for a claim (or legacy sub-unit)."""
+    sub_path = args.path
+    if sub_path != "auto":
+        _check_path_containment(sub_path)
+    print(json.dumps(get_next_payload(sub_path), indent=2))
+
+
+def cmd_packet(args: argparse.Namespace) -> None:
+    """Generate the canonical packet for the next agent dispatch."""
+    _check_path_containment(args.path)
+    try:
+        result = write_packet_artifact(args.path)
+    except ValueError as exc:
+        print(f"ERROR: {exc}")
+        sys.exit(1)
+    print(f"Written: {result['path']}")
+
+
+def cmd_prompt(args: argparse.Namespace) -> None:
+    """Generate self-contained prompt for external agent dispatch."""
+    _check_path_containment(args.path)
+    try:
+        result = write_prompt_artifact(args.path)
+    except ValueError as exc:
+        print(f"ERROR: {exc}")
+        sys.exit(1)
+    print(f"Written: {result['path']}")
 
 
 def cmd_waves(args: argparse.Namespace) -> None:
@@ -982,9 +1374,175 @@ def _build_init_status(workspace_exists: bool, research_root: Path, inv_state: d
     }
 
 
+def _dispatch_row_payload(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "agent": row["agent"],
+        "action": row["action"],
+        "round": row["round"],
+        "timestamp": row["timestamp"],
+        "details": row["details"],
+        "dispatch_mode": row["dispatch_mode"],
+        "packet_path": row["packet_path"],
+        "prompt_path": row["prompt_path"],
+        "result_path": row["result_path"],
+    }
+
+
+def _waiting_matches_handoff(waiting_for: str | None, agent: str, round_num: int | None) -> bool:
+    if not waiting_for:
+        return False
+    if round_num is None:
+        return waiting_for == agent
+    return waiting_for == f"{agent} round {round_num}"
+
+
+def _classify_dispatch_handoff(row: sqlite3.Row, claim_state: dict[str, Any]) -> str:
+    action = row["action"]
+    if action in {"received", "recorded"}:
+        return action
+
+    agent = str(row["agent"])
+    round_num = row["round"]
+    claim_action = str(claim_state.get("action") or "")
+
+    if action == "packet":
+        if claim_action == f"dispatch_{agent}" and (round_num is None or claim_state.get("round") == round_num):
+            return "ready_to_send"
+        return "stale"
+
+    if action == "dispatch":
+        if claim_action == "waiting" and _waiting_matches_handoff(claim_state.get("waiting_for"), agent, round_num):
+            return "waiting_result"
+        return "stale"
+
+    return action
+
+
+def _summarize_dispatch_lifecycle(
+    conn: sqlite3.Connection,
+    research_root: Path,
+    config: dict[str, Any],
+    sub_unit: str | None,
+) -> dict[str, object]:
+    """Summarize the active claim's dispatch lifecycle from structured audit rows."""
+    from .orchestration import detect_state
+
+    if not sub_unit:
+        row = conn.execute(
+            "SELECT sub_unit FROM dispatches WHERE sub_unit IS NOT NULL ORDER BY timestamp DESC LIMIT 1"
+        ).fetchone()
+        if not row or not row["sub_unit"]:
+            return {"claim": None, "latest": None, "handoffs": [], "outstanding": [], "stale": []}
+        sub_unit = str(row["sub_unit"])
+
+    _sync_dispatch_receipts(sub_unit, root=research_root)
+    rows = conn.execute(
+        "SELECT * FROM dispatches WHERE sub_unit = ? ORDER BY timestamp",
+        (sub_unit,),
+    ).fetchall()
+    if not rows:
+        return {"claim": sub_unit, "latest": None, "handoffs": [], "outstanding": [], "stale": []}
+
+    claim_state = detect_state(research_root, sub_unit, config)
+    latest = _dispatch_row_payload(rows[-1])
+    latest["status"] = _classify_dispatch_handoff(rows[-1], claim_state)
+    handoffs: dict[tuple[str, int | None, str | None], sqlite3.Row] = {}
+    for row in rows:
+        key = (row["agent"], row["round"], row["result_path"])
+        handoffs[key] = row
+
+    handoff_rows: list[dict[str, Any]] = []
+    for row in handoffs.values():
+        payload = _dispatch_row_payload(row)
+        payload["status"] = _classify_dispatch_handoff(row, claim_state)
+        handoff_rows.append(payload)
+    handoff_rows.sort(key=lambda row: row["timestamp"])
+    outstanding = [row for row in handoff_rows if row["status"] in {"ready_to_send", "waiting_result", "stale"}]
+    stale = [row for row in handoff_rows if row["status"] == "stale"]
+
+    return {
+        "claim": sub_unit,
+        "latest": latest,
+        "handoffs": handoff_rows,
+        "outstanding": outstanding,
+        "stale": stale,
+    }
+
+
+def _summarize_workspace_dispatches(
+    conn: sqlite3.Connection,
+    research_root: Path,
+    config: dict[str, Any],
+) -> dict[str, object]:
+    """Summarize dispatch lifecycle health across every claim with audit rows."""
+    rows = conn.execute(
+        "SELECT sub_unit, MAX(timestamp) AS last_timestamp "
+        "FROM dispatches WHERE sub_unit IS NOT NULL GROUP BY sub_unit ORDER BY last_timestamp DESC"
+    ).fetchall()
+    if not rows:
+        return {
+            "claim_count": 0,
+            "stale_claim_count": 0,
+            "outstanding_claim_count": 0,
+            "stale_handoff_count": 0,
+            "claims": [],
+            "stale_claims": [],
+        }
+
+    claims: list[dict[str, Any]] = []
+    for row in rows:
+        sub_unit = str(row["sub_unit"])
+        lifecycle = _summarize_dispatch_lifecycle(conn, research_root, config, sub_unit)
+        ready_to_send = [handoff for handoff in lifecycle["handoffs"] if handoff["status"] == "ready_to_send"]
+        waiting_result = [handoff for handoff in lifecycle["handoffs"] if handoff["status"] == "waiting_result"]
+        claims.append(
+            {
+                "claim": lifecycle["claim"],
+                "latest": lifecycle["latest"],
+                "outstanding_count": len(lifecycle["outstanding"]),
+                "stale_count": len(lifecycle["stale"]),
+                "ready_to_send_count": len(ready_to_send),
+                "waiting_result_count": len(waiting_result),
+                "outstanding": lifecycle["outstanding"],
+                "stale": lifecycle["stale"],
+                "ready_to_send": ready_to_send,
+                "waiting_result": waiting_result,
+            }
+        )
+
+    stale_claims = [claim for claim in claims if claim["stale_count"] > 0]
+    outstanding_claims = [claim for claim in claims if claim["outstanding_count"] > 0]
+    ready_to_send_claims = [claim for claim in claims if claim["ready_to_send_count"] > 0]
+    waiting_result_claims = [claim for claim in claims if claim["waiting_result_count"] > 0]
+    stale_handoff_count = sum(int(claim["stale_count"]) for claim in stale_claims)
+    ready_to_send_handoff_count = sum(int(claim["ready_to_send_count"]) for claim in ready_to_send_claims)
+    waiting_result_handoff_count = sum(int(claim["waiting_result_count"]) for claim in waiting_result_claims)
+
+    return {
+        "claim_count": len(claims),
+        "stale_claim_count": len(stale_claims),
+        "outstanding_claim_count": len(outstanding_claims),
+        "stale_handoff_count": stale_handoff_count,
+        "ready_to_send_claim_count": len(ready_to_send_claims),
+        "ready_to_send_handoff_count": ready_to_send_handoff_count,
+        "waiting_result_claim_count": len(waiting_result_claims),
+        "waiting_result_handoff_count": waiting_result_handoff_count,
+        "claims": claims,
+        "stale_claims": stale_claims,
+        "ready_to_send_claims": ready_to_send_claims,
+        "waiting_result_claims": waiting_result_claims,
+    }
+
+
 def get_dashboard_payload(root: Path | None = None) -> dict[str, object]:
     """Build the dashboard payload for a workspace without printing."""
-    from .orchestration import detect_investigation_state, load_config, read_autonomy_config, read_repo_config
+    from .orchestration import (
+        collect_north_star_alignment,
+        detect_investigation_state,
+        load_config,
+        read_autonomy_config,
+        read_repo_config,
+    )
 
     research_root = _cfg.RESEARCH_DIR.resolve() if root is None else root.resolve()
     workspace_exists = research_root.exists()
@@ -1000,6 +1558,13 @@ def get_dashboard_payload(root: Path | None = None) -> dict[str, object]:
     # Active claim
     active_claim = inv_state.get("sub_unit")
     active_cycle = inv_state.get("cycle")
+    dispatch_lifecycle = _summarize_dispatch_lifecycle(
+        conn,
+        research_root,
+        config,
+        active_claim if isinstance(active_claim, str) else None,
+    )
+    dispatch_overview = _summarize_workspace_dispatches(conn, research_root, config)
 
     # Last verdict
     last_verdict_row = conn.execute(
@@ -1054,6 +1619,38 @@ def get_dashboard_payload(root: Path | None = None) -> dict[str, object]:
         autonomy["mode"] = repo_config["workflow_autonomy"]
 
     init = _build_init_status(workspace_exists, research_root, inv_state)
+    patch_status = collect_north_star_alignment(research_root)
+    warnings: list[dict[str, object]] = []
+
+    if patch_status.get("needs_review_count", 0):
+        warnings.append(
+            {
+                "code": "north_star_drift",
+                "severity": "warning",
+                "message": (
+                    f"{patch_status['needs_review_count']} claim(s) are stale or missing a "
+                    "north-star version stamp."
+                ),
+                "count": patch_status["needs_review_count"],
+                "claims": patch_status["needs_review"][:5],
+            }
+        )
+    if dispatch_overview.get("stale_claim_count", 0):
+        stale_claims = list(dispatch_overview["stale_claims"])
+        warnings.append(
+            {
+                "code": "dispatch_handoff_stale",
+                "severity": "warning",
+                "message": (
+                    f"{dispatch_overview['stale_handoff_count']} handoff(s) across "
+                    f"{dispatch_overview['stale_claim_count']} claim(s) no longer match the current "
+                    "filesystem/orchestration state."
+                ),
+                "count": dispatch_overview["stale_handoff_count"],
+                "claim_count": dispatch_overview["stale_claim_count"],
+                "claims": stale_claims[:5],
+            }
+        )
 
     result: dict[str, object] = {
         "phase": phase,
@@ -1061,12 +1658,16 @@ def get_dashboard_payload(root: Path | None = None) -> dict[str, object]:
         "breadcrumb": breadcrumb,
         "active_claim": active_claim,
         "active_cycle": active_cycle,
+        "dispatch_lifecycle": dispatch_lifecycle,
+        "dispatch_overview": dispatch_overview,
         "last_verdict": last_verdict,
         "claims": claim_counts,
         "blocked": blocked_claims,
         "pending_decisions": decisions,
         "autonomy": autonomy,
         "init": init,
+        "patch_status": patch_status,
+        "warnings": warnings,
         "preferences": {
             "workflow_autonomy": repo_config.get("workflow_autonomy") or autonomy["mode"],
             "sidecars": repo_config["sidecars"],

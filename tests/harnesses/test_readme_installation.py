@@ -31,7 +31,7 @@ def test_changelog_tracks_recent_releases() -> None:
     text = Path("CHANGELOG.md").read_text()
     current_version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
 
-    assert f"## [{current_version}] - 2026-04-05" in text
+    assert f"## [{current_version}] - 2026-04-15" in text
     assert "## [0.3.3] - 2026-04-04" in text
     assert "### Features" in text
     assert "### Fixes" in text
@@ -40,7 +40,7 @@ def test_changelog_tracks_recent_releases() -> None:
 def test_release_metadata_versions_stay_aligned() -> None:
     expected_version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
 
-    assert f"## [{expected_version}] - 2026-04-05" in Path("CHANGELOG.md").read_text()
+    assert f"## [{expected_version}] - 2026-04-15" in Path("CHANGELOG.md").read_text()
     assert f'"version": "{expected_version}"' in Path("plugins/codex/.codex-plugin/plugin.json").read_text()
     assert f'"version": "{expected_version}"' in Path("plugins/claude/.claude-plugin/plugin.json").read_text()
     assert f'"version": "{expected_version}"' in Path("plugins/claude/.claude-plugin/marketplace.json").read_text()

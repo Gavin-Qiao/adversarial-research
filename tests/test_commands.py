@@ -429,6 +429,40 @@ class TestCmdLogDispatch:
         assert rc == 0
         assert "Logged" in out
 
+    def test_logs_structured_dispatch_metadata(self, research_dir):
+        import json
+
+        run_manage(research_dir, "build")
+        rc, out, _ = run_manage(
+            research_dir,
+            "log-dispatch",
+            "--cycle",
+            "claim-1-test",
+            "--agent",
+            "architect",
+            "--action",
+            "dispatch",
+            "--sub-unit",
+            "claims/claim-1-test",
+            "--dispatch-mode",
+            "external",
+            "--packet-path",
+            "claims/claim-1-test/architect/round-1/packet.md",
+            "--prompt-path",
+            "claims/claim-1-test/architect/round-1/prompt.md",
+            "--result-path",
+            "claims/claim-1-test/architect/round-1/result.md",
+        )
+        assert rc == 0
+        assert "Logged" in out
+
+        rc, out, _ = run_manage(research_dir, "dispatch-log", "--json")
+        assert rc == 0
+        data = json.loads(out)
+        assert data[0]["sub_unit"] == "claims/claim-1-test"
+        assert data[0]["dispatch_mode"] == "external"
+        assert data[0]["packet_path"].endswith("packet.md")
+
     def test_logs_side_dispatch(self, research_dir):
         run_manage(research_dir, "build")
         rc, out, _ = run_manage(
@@ -772,6 +806,15 @@ class TestScaffoldClaim:
         # claim-1-enrichment/claim -> h1-claim
         assert meta["id"] == "h1-claim"
 
+    def test_scaffold_claim_stamps_north_star_version(self, research_dir):
+        (research_dir / ".north-star.md").write_text("# Locked principle\n", encoding="utf-8")
+        run_manage(research_dir, "scaffold", "claim", "enrichment")
+        claim_md = research_dir / "claims" / "claim-1-enrichment" / "claim.md"
+        from frontmatter import parse_frontmatter
+
+        meta = parse_frontmatter(claim_md.read_text())
+        assert meta["north_star_version"]
+
 
 class TestCmdResults:
     """Tests for the results command."""
@@ -917,6 +960,41 @@ class TestCmdNext:
         assert "context_files" in state
         assert isinstance(state["context_files"], list)
 
+    def test_includes_packet_path_and_north_star_status(self, research_dir):
+        import json
+
+        (research_dir / ".north-star.md").write_text("# Locked principle\n", encoding="utf-8")
+        sub_path = self._make_sub_unit(research_dir)
+        rc, out, _ = run_manage(research_dir, "next", sub_path)
+        assert rc == 0
+        state = json.loads(out)
+        assert state["packet_path"].endswith("architect/round-1/packet.md")
+        assert state["north_star"]["status"] in {"missing_version", "stale", "current"}
+
+    def test_syncs_received_events_for_completed_results(self, research_dir):
+        import json
+
+        sub_path = self._make_sub_unit(research_dir)
+        result_file = research_dir / sub_path / "architect" / "round-1" / "result.md"
+        result_file.parent.mkdir(parents=True, exist_ok=True)
+        result_file.write_text(
+            "---\nid: arch-r1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Proposal\n"
+        )
+
+        rc, _out, _ = run_manage(research_dir, "next", sub_path)
+        assert rc == 0
+
+        rc, out, _ = run_manage(research_dir, "dispatch-log", "--json")
+        assert rc == 0
+        data = json.loads(out)
+        received = next(
+            row
+            for row in data
+            if row["action"] == "received" and row["agent"] == "architect" and row["round"] == 1
+        )
+        assert received["sub_unit"] == sub_path
+        assert received["result_path"].endswith("architect/round-1/result.md")
+
     def test_auto_no_claims(self, research_dir):
         rc, out, _ = run_manage(research_dir, "next", "auto")
         assert rc == 0
@@ -967,6 +1045,71 @@ class TestCmdPrompt:
         # The prompt file should exist
         prompt_file = sub / "architect" / "round-1" / "prompt.md"
         assert prompt_file.exists()
+        packet_file = sub / "architect" / "round-1" / "packet.md"
+        assert packet_file.exists()
+
+    def test_prompt_auto_logs_dispatch(self, research_dir):
+        import json
+
+        sub = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "sub-1a-probe"
+        sub.mkdir(parents=True)
+        (sub / "frontier.md").write_text(
+            "---\nid: s1a-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Probe\n"
+        )
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+            (sub / role).mkdir()
+
+        rc, _out, _ = run_manage(research_dir, "prompt", "cycles/cycle-1/unit-1-test/sub-1a-probe")
+        assert rc == 0
+
+        rc, out, _ = run_manage(research_dir, "dispatch-log", "--json")
+        assert rc == 0
+        data = json.loads(out)
+        assert any(row["action"] == "dispatch" for row in data)
+        logged = next(row for row in data if row["action"] == "dispatch")
+        assert logged["sub_unit"] == "cycles/cycle-1/unit-1-test/sub-1a-probe"
+        assert logged["prompt_path"].endswith("prompt.md")
+
+
+class TestCmdPacket:
+    def test_generates_packet_file(self, research_dir):
+        sub = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "sub-1a-probe"
+        sub.mkdir(parents=True)
+        (sub / "frontier.md").write_text(
+            "---\nid: s1a-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Probe\n"
+        )
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+            (sub / role).mkdir()
+
+        rc, out, _ = run_manage(research_dir, "packet", "cycles/cycle-1/unit-1-test/sub-1a-probe")
+        assert rc == 0
+        assert "Written:" in out
+        packet_file = sub / "architect" / "round-1" / "packet.md"
+        assert packet_file.exists()
+        content = packet_file.read_text(encoding="utf-8")
+        assert "Dispatch Packet" in content
+
+    def test_packet_auto_logs_preparation(self, research_dir):
+        import json
+
+        sub = research_dir / "cycles" / "cycle-1" / "unit-1-test" / "sub-1a-probe"
+        sub.mkdir(parents=True)
+        (sub / "frontier.md").write_text(
+            "---\nid: s1a-frontier\ntype: verdict\nstatus: pending\ndate: 2026-01-01\n---\n\n# Probe\n"
+        )
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+            (sub / role).mkdir()
+
+        rc, _out, _ = run_manage(research_dir, "packet", "cycles/cycle-1/unit-1-test/sub-1a-probe")
+        assert rc == 0
+
+        rc, out, _ = run_manage(research_dir, "dispatch-log", "--json")
+        assert rc == 0
+        data = json.loads(out)
+        assert any(row["action"] == "packet" for row in data)
+        logged = next(row for row in data if row["action"] == "packet")
+        assert logged["packet_path"].endswith("packet.md")
+        assert logged["result_path"].endswith("result.md")
 
 
 class TestCmdPostVerdict:
@@ -1034,6 +1177,22 @@ class TestCmdPostVerdict:
         assert rc == 0
         marker = research_dir / sub_path / ".post_verdict_done"
         assert marker.exists()
+
+    def test_logs_recorded_dispatch_event(self, research_dir):
+        import json
+
+        sub_path = self._make_verdicted_sub_unit(research_dir, verdict="PROVEN")
+        run_manage(research_dir, "build")
+        rc, _out, _ = run_manage(research_dir, "post-verdict", sub_path)
+        assert rc == 0
+
+        rc, out, _ = run_manage(research_dir, "dispatch-log", "--json")
+        assert rc == 0
+        data = json.loads(out)
+        recorded = next(row for row in data if row["action"] == "recorded" and row["agent"] == "arbiter")
+        assert recorded["sub_unit"] == sub_path
+        assert recorded["result_path"].endswith("arbiter/results/verdict.md")
+        assert "PROVEN" in recorded["details"]
 
     def test_disproven_cascades(self, research_dir):
         import json
@@ -1978,6 +2137,210 @@ class TestCmdDashboard:
         result = json.loads(out)
         assert result["init"]["north_star_locked"] is True
         assert result["init"]["status"] in {"ready_for_claims", "north_star_locked"}
+        assert result["patch_status"]["current_version"]
+        assert result["warnings"] == []
+
+    def test_reports_stale_patch_status_when_claim_version_lags(self, research_dir):
+        import json
+
+        (research_dir / ".north-star.md").write_text("# Locked principle\n", encoding="utf-8")
+        claim = research_dir / "claims" / "claim-1-test"
+        claim.mkdir(parents=True)
+        (claim / "claim.md").write_text(
+            "---\n"
+            "id: h1-claim\n"
+            "type: claim\n"
+            "status: pending\n"
+            "date: 2026-01-01\n"
+            "north_star_version: old-version\n"
+            "---\n\n"
+            "# Claim\n",
+            encoding="utf-8",
+        )
+
+        rc, out, _ = run_manage(research_dir, "dashboard")
+        assert rc == 0
+        result = json.loads(out)
+        assert result["patch_status"]["stale_claim_count"] == 1
+        assert result["patch_status"]["needs_review"][0]["id"] == "h1-claim"
+        assert result["warnings"][0]["code"] == "north_star_drift"
+        assert result["warnings"][0]["count"] == 1
+
+    def test_reports_active_claim_dispatch_lifecycle(self, research_dir):
+        import json
+
+        (research_dir / ".north-star.md").write_text("# Locked principle\n", encoding="utf-8")
+        (research_dir / ".context.md").write_text("# Context\n", encoding="utf-8")
+        claim = research_dir / "claims" / "claim-1-test"
+        claim.mkdir(parents=True)
+        (claim / "claim.md").write_text(
+            "---\nid: h1-claim\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# Claim\n",
+            encoding="utf-8",
+        )
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+            (claim / role).mkdir()
+
+        rc, _out, _ = run_manage(research_dir, "prompt", "claims/claim-1-test")
+        assert rc == 0
+
+        rc, out, _ = run_manage(research_dir, "dashboard")
+        assert rc == 0
+        result = json.loads(out)
+        lifecycle = result["dispatch_lifecycle"]
+        assert lifecycle["claim"] == "claims/claim-1-test"
+        assert lifecycle["latest"]["action"] == "dispatch"
+        assert lifecycle["latest"]["status"] == "waiting_result"
+        assert lifecycle["outstanding"][0]["agent"] == "architect"
+        assert lifecycle["outstanding"][0]["status"] == "waiting_result"
+        assert lifecycle["outstanding"][0]["prompt_path"].endswith("architect/round-1/prompt.md")
+        assert lifecycle["stale"] == []
+
+    def test_reports_packet_as_ready_to_send(self, research_dir):
+        import json
+
+        (research_dir / ".north-star.md").write_text("# Locked principle\n", encoding="utf-8")
+        (research_dir / ".context.md").write_text("# Context\n", encoding="utf-8")
+        claim = research_dir / "claims" / "claim-1-test"
+        claim.mkdir(parents=True)
+        (claim / "claim.md").write_text(
+            "---\nid: h1-claim\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# Claim\n",
+            encoding="utf-8",
+        )
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+            (claim / role).mkdir()
+
+        rc, _out, _ = run_manage(research_dir, "packet", "claims/claim-1-test")
+        assert rc == 0
+
+        rc, out, _ = run_manage(research_dir, "dashboard")
+        assert rc == 0
+        result = json.loads(out)
+        lifecycle = result["dispatch_lifecycle"]
+        assert lifecycle["latest"]["status"] == "ready_to_send"
+        assert lifecycle["outstanding"][0]["status"] == "ready_to_send"
+        assert lifecycle["stale"] == []
+        overview = result["dispatch_overview"]
+        assert overview["ready_to_send_claim_count"] == 1
+        assert overview["ready_to_send_handoff_count"] == 1
+        assert overview["ready_to_send_claims"][0]["claim"] == "claims/claim-1-test"
+
+    def test_warns_when_dispatch_audit_is_stale(self, research_dir):
+        import json
+
+        (research_dir / ".north-star.md").write_text("# Locked principle\n", encoding="utf-8")
+        (research_dir / ".context.md").write_text("# Context\n", encoding="utf-8")
+        claim = research_dir / "claims" / "claim-1-test"
+        claim.mkdir(parents=True)
+        (claim / "claim.md").write_text(
+            "---\nid: h1-claim\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# Claim\n",
+            encoding="utf-8",
+        )
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+            (claim / role).mkdir()
+
+        run_manage(research_dir, "build")
+        rc, _out, _ = run_manage(
+            research_dir,
+            "log-dispatch",
+            "--cycle",
+            "claim-1-test",
+            "--agent",
+            "architect",
+            "--action",
+            "dispatch",
+            "--sub-unit",
+            "claims/claim-1-test",
+            "--dispatch-mode",
+            "external",
+            "--packet-path",
+            "claims/claim-1-test/architect/round-1/packet.md",
+            "--prompt-path",
+            "claims/claim-1-test/architect/round-1/prompt.md",
+            "--result-path",
+            "claims/claim-1-test/architect/round-1/result.md",
+        )
+        assert rc == 0
+
+        rc, out, _ = run_manage(research_dir, "dashboard")
+        assert rc == 0
+        result = json.loads(out)
+        lifecycle = result["dispatch_lifecycle"]
+        assert lifecycle["stale"][0]["agent"] == "architect"
+        assert lifecycle["stale"][0]["status"] == "stale"
+        overview = result["dispatch_overview"]
+        assert overview["stale_claim_count"] == 1
+        assert overview["stale_handoff_count"] == 1
+        assert overview["stale_claims"][0]["claim"] == "claims/claim-1-test"
+        warning = next(w for w in result["warnings"] if w["code"] == "dispatch_handoff_stale")
+        assert warning["count"] == 1
+        assert warning["claim_count"] == 1
+        assert warning["claims"][0]["claim"] == "claims/claim-1-test"
+
+    def test_workspace_warning_includes_non_active_stale_claims(self, research_dir):
+        import json
+
+        (research_dir / ".north-star.md").write_text("# Locked principle\n", encoding="utf-8")
+        (research_dir / ".context.md").write_text("# Context\n", encoding="utf-8")
+        (research_dir / "context" / "survey-topic.md").write_text("# Survey\n", encoding="utf-8")
+        (research_dir / "blueprint.md").write_text(
+            "# Blueprint\n\n```yaml\n# CLAIM_REGISTRY\nclaims:\n"
+            "  - id: active\n    statement: \"Active claim\"\n    maturity: conjecture\n    confidence: low\n"
+            "    depends_on: []\n    falsification: \"Refute it\"\n"
+            "  - id: stale\n    statement: \"Stale claim\"\n    maturity: conjecture\n    confidence: low\n"
+            "    depends_on: []\n    falsification: \"Refute it\"\n```\n",
+            encoding="utf-8",
+        )
+
+        active_claim = research_dir / "claims" / "claim-1-active"
+        stale_claim = research_dir / "claims" / "claim-2-stale"
+        for claim_dir, claim_id in ((active_claim, "h1-active"), (stale_claim, "h2-stale")):
+            claim_dir.mkdir(parents=True)
+            (claim_dir / "claim.md").write_text(
+                f"---\nid: {claim_id}\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# Claim\n",
+                encoding="utf-8",
+            )
+            for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+                (claim_dir / role).mkdir()
+
+        rc, _out, _ = run_manage(research_dir, "prompt", "claims/claim-1-active")
+        assert rc == 0
+
+        run_manage(research_dir, "build")
+        rc, _out, _ = run_manage(
+            research_dir,
+            "log-dispatch",
+            "--cycle",
+            "claim-2-stale",
+            "--agent",
+            "architect",
+            "--action",
+            "dispatch",
+            "--sub-unit",
+            "claims/claim-2-stale",
+            "--dispatch-mode",
+            "external",
+            "--packet-path",
+            "claims/claim-2-stale/architect/round-1/packet.md",
+            "--prompt-path",
+            "claims/claim-2-stale/architect/round-1/prompt.md",
+            "--result-path",
+            "claims/claim-2-stale/architect/round-1/result.md",
+        )
+        assert rc == 0
+
+        rc, out, _ = run_manage(research_dir, "dashboard")
+        assert rc == 0
+        result = json.loads(out)
+        assert result["dispatch_lifecycle"]["claim"] == "claims/claim-1-active"
+        assert result["dispatch_lifecycle"]["stale"] == []
+        overview = result["dispatch_overview"]
+        assert overview["stale_claim_count"] == 1
+        assert overview["waiting_result_claim_count"] == 1
+        assert overview["stale_claims"][0]["claim"] == "claims/claim-2-stale"
+        assert overview["waiting_result_claims"][0]["claim"] == "claims/claim-1-active"
+        warning = next(w for w in result["warnings"] if w["code"] == "dispatch_handoff_stale")
+        assert warning["claim_count"] == 1
+        assert warning["claims"][0]["claim"] == "claims/claim-2-stale"
 
     def test_counts_legacy_cycle_claims(self, research_dir):
         import json

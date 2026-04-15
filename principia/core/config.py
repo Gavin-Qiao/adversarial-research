@@ -87,7 +87,7 @@ def _atomic_write(path: Path, content: str, encoding: str = "utf-8") -> None:
 
 def rel_path_from_root(p: Path) -> str:
     """Return path relative to the research root."""
-    return str(p.relative_to(RESEARCH_DIR))
+    return p.relative_to(RESEARCH_DIR).as_posix()
 
 
 # ---------------------------------------------------------------------------

@@ -8,6 +8,7 @@ and testable — the fuzzy LLM layer lives in the /step skill, not here.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import re
 import sqlite3
 from pathlib import Path
@@ -421,6 +422,16 @@ def check_waiting(role_dir: Path, round_num: int) -> str | None:
         result = round_dir / "result.md"
         if prompt.exists() and not result.exists():
             return f"{role_dir.name} round {round_num}"
+    prompt = role_dir / "prompt.md"
+    if prompt.exists():
+        if role_dir.name == "experimenter":
+            result = role_dir / "results" / "output.md"
+        elif role_dir.name == "arbiter":
+            result = role_dir / "results" / "verdict.md"
+        else:
+            result = role_dir / "result.md"
+        if not result.exists():
+            return role_dir.name
     return None
 
 
@@ -692,6 +703,9 @@ def detect_state(research_dir: Path, sub_path: str, config: dict[str, Any]) -> d
 
     # Skip debate entirely if max_rounds == 0
     if max_rounds == 0 and not has_experimenter:
+        waiting = check_waiting(experimenter_dir, 1)
+        if waiting:
+            return _make_state("waiting", waiting_for=waiting, phase="experiment")
         return _make_state("dispatch_experimenter", phase="experiment")
 
     # No architect yet → start debate
@@ -717,6 +731,9 @@ def detect_state(research_dir: Path, sub_path: str, config: dict[str, Any]) -> d
 
         # Final round reached → proceed to experimenter
         if adv_count >= max_rounds:
+            waiting = check_waiting(experimenter_dir, 1)
+            if waiting:
+                return _make_state("waiting", waiting_for=waiting, phase="experiment")
             return _make_state("dispatch_experimenter", phase="experiment")
 
         # Check severity from adversary's latest result
@@ -730,6 +747,9 @@ def detect_state(research_dir: Path, sub_path: str, config: dict[str, Any]) -> d
         unknown_default = exit_cond.get("unknown", "continue")
 
         if severity in exit_on:
+            waiting = check_waiting(experimenter_dir, 1)
+            if waiting:
+                return _make_state("waiting", waiting_for=waiting, phase="experiment")
             return _make_state("dispatch_experimenter", phase="experiment")
         if severity in continue_on:
             return _make_state("dispatch_architect", round_num=adv_count + 1, phase="debate")
@@ -741,6 +761,9 @@ def detect_state(research_dir: Path, sub_path: str, config: dict[str, Any]) -> d
                 phase="debate",
                 severity="unknown",
             )
+        waiting = check_waiting(experimenter_dir, 1)
+        if waiting:
+            return _make_state("waiting", waiting_for=waiting, phase="experiment", severity="unknown")
         return _make_state("dispatch_experimenter", phase="experiment", severity="unknown")
 
     # Experimenter done, no verdict → dispatch arbiter
@@ -805,7 +828,7 @@ def find_active_subunit(research_dir: Path, db_path: Path | None = None) -> str 
             ).fetchone()
             conn.close()
             if row:
-                return str(Path(row["file_path"]).parent)
+                return Path(row["file_path"]).parent.as_posix()
         except sqlite3.Error:
             pass
 
@@ -818,7 +841,7 @@ def find_active_subunit(research_dir: Path, db_path: Path | None = None) -> str 
                 and claim_dir.name.startswith("claim-")
                 and _primary_claim_status(claim_dir) in ("pending", "active")
             ):
-                return str(claim_dir.relative_to(research_dir))
+                return claim_dir.relative_to(research_dir).as_posix()
 
     # Legacy cycles/ hierarchy
     cycles_dir = research_dir / "cycles"
@@ -836,7 +859,7 @@ def find_active_subunit(research_dir: Path, db_path: Path | None = None) -> str 
                         or _primary_claim_status(sub_dir) not in ("pending", "active")
                     ):
                         continue
-                    return str(sub_dir.relative_to(research_dir))
+                    return sub_dir.relative_to(research_dir).as_posix()
 
     return None
 
@@ -867,31 +890,31 @@ def list_context_files(
     if not claim_file.exists():
         claim_file = target / "frontier.md"
     if claim_file.exists():
-        files.append(str(claim_file.relative_to(research_dir)))
+        files.append(claim_file.relative_to(research_dir).as_posix())
 
     # Scout results if they exist
     scout_dir = target / "scout"
     if scout_dir.exists():
         for f in sorted(scout_dir.rglob("*.md")):
-            files.append(str(f.relative_to(research_dir)))
+            files.append(f.relative_to(research_dir).as_posix())
 
     # All completed architect/adversary rounds in order
     for r in range(1, max_rounds + 1):
         for role in ("architect", "adversary"):
             result = target / role / f"round-{r}" / "result.md"
             if result.exists():
-                files.append(str(result.relative_to(research_dir)))
+                files.append(result.relative_to(research_dir).as_posix())
 
     # Experimenter output
     exp_output = target / "experimenter" / "results" / "output.md"
     if exp_output.exists():
-        files.append(str(exp_output.relative_to(research_dir)))
+        files.append(exp_output.relative_to(research_dir).as_posix())
 
     # Arbiter verdict (only for post-verdict context)
     if action in ("dispatch_reviewer", "post_verdict"):
         verdict = target / "arbiter" / "results" / "verdict.md"
         if verdict.exists():
-            files.append(str(verdict.relative_to(research_dir)))
+            files.append(verdict.relative_to(research_dir).as_posix())
 
     # Agent-aware filtering for knowledge divergence
     if agent == "adversary":
@@ -917,12 +940,139 @@ def assemble_context(research_dir: Path, context_files: list[str]) -> str:
     return "\n---\n\n".join(sections)
 
 
+def compute_north_star_version(research_dir: Path) -> str | None:
+    """Hash the current north star so claims can be compared against it."""
+    north_star_path = research_dir / ".north-star.md"
+    if not north_star_path.exists():
+        return None
+    try:
+        text = north_star_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError, ValueError):
+        return None
+    normalized = text.replace("\r\n", "\n").strip()
+    if not normalized:
+        return None
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:12]
+
+
+def _iter_primary_claim_files(research_dir: Path) -> list[Path]:
+    """Return primary claim/frontier files in a stable order."""
+    files: list[Path] = []
+
+    claims_dir = research_dir / "claims"
+    if claims_dir.exists():
+        files.extend(sorted(claims_dir.glob("claim-*/claim.md")))
+
+    cycles_dir = research_dir / "cycles"
+    if cycles_dir.exists():
+        files.extend(sorted(cycles_dir.rglob("frontier.md")))
+
+    return files
+
+
+def collect_north_star_alignment(research_dir: Path) -> dict[str, Any]:
+    """Summarize which claims match the current north star version."""
+    from .frontmatter import get_scalar_frontmatter, parse_frontmatter
+    from .ids import derive_id
+
+    current_version = compute_north_star_version(research_dir)
+    claims: list[dict[str, Any]] = []
+
+    for claim_file in _iter_primary_claim_files(research_dir):
+        try:
+            rel = str(claim_file.relative_to(research_dir)).replace("\\", "/")
+            meta = parse_frontmatter(claim_file.read_text(encoding="utf-8"), filepath=rel)
+        except (OSError, UnicodeDecodeError, ValueError):
+            continue
+
+        claim_id = get_scalar_frontmatter(meta, "id", filepath=rel, warn=True) or derive_id(rel)
+        claim_version = get_scalar_frontmatter(meta, "north_star_version", filepath=rel, warn=True)
+
+        if current_version is None:
+            status = "missing_north_star"
+        elif not claim_version:
+            status = "missing_version"
+        elif claim_version == current_version:
+            status = "current"
+        else:
+            status = "stale"
+
+        claims.append(
+            {
+                "id": claim_id,
+                "file": rel,
+                "claim_version": claim_version,
+                "current_version": current_version,
+                "status": status,
+            }
+        )
+
+    stale_claims = [claim for claim in claims if claim["status"] == "stale"]
+    missing_version_claims = [claim for claim in claims if claim["status"] == "missing_version"]
+    needs_review = stale_claims + missing_version_claims
+
+    return {
+        "current_version": current_version,
+        "claim_count": len(claims),
+        "stale_claim_count": len(stale_claims),
+        "missing_version_count": len(missing_version_claims),
+        "needs_review_count": len(needs_review),
+        "stale_claims": stale_claims,
+        "missing_version_claims": missing_version_claims,
+        "needs_review": needs_review,
+        "claims": claims,
+    }
+
+
+def get_claim_north_star_status(research_dir: Path, sub_path: str) -> dict[str, Any]:
+    """Return version/alignment details for one claim directory."""
+    from .frontmatter import get_scalar_frontmatter, parse_frontmatter
+    from .ids import derive_id
+
+    target = research_dir / sub_path
+    claim_file = target / "claim.md"
+    if not claim_file.exists():
+        claim_file = target / "frontier.md"
+    rel = str(claim_file.relative_to(research_dir)).replace("\\", "/")
+
+    if not claim_file.exists():
+        return {
+            "current_version": compute_north_star_version(research_dir),
+            "claim_version": None,
+            "status": "missing_claim",
+            "id": derive_id(rel),
+            "file": rel,
+        }
+
+    meta = parse_frontmatter(claim_file.read_text(encoding="utf-8"), filepath=rel)
+    claim_id = get_scalar_frontmatter(meta, "id", filepath=rel, warn=True) or derive_id(rel)
+    claim_version = get_scalar_frontmatter(meta, "north_star_version", filepath=rel, warn=True)
+    current_version = compute_north_star_version(research_dir)
+
+    if current_version is None:
+        status = "missing_north_star"
+    elif not claim_version:
+        status = "missing_version"
+    elif claim_version == current_version:
+        status = "current"
+    else:
+        status = "stale"
+
+    return {
+        "id": claim_id,
+        "file": rel,
+        "current_version": current_version,
+        "claim_version": claim_version,
+        "status": status,
+    }
+
+
 # ---------------------------------------------------------------------------
 # External prompt generation
 # ---------------------------------------------------------------------------
 
 
-def generate_external_prompt(state: dict[str, Any], context: str, agent_instructions: str) -> str:
+def _legacy_generate_external_prompt(state: dict[str, Any], context: str, agent_instructions: str) -> str:
     """Build a self-contained prompt for external agent dispatch."""
     agent = state.get("agent", "unknown")
     round_num = state.get("round", "")
@@ -948,6 +1098,71 @@ Based on the context above, produce your output following the format specified i
 """
 
 
+def generate_dispatch_packet(
+    state: dict[str, Any],
+    context_files: list[str],
+    context: str,
+    agent_instructions: str,
+) -> str:
+    """Build the canonical dispatch packet shared by internal and external runs."""
+    agent = state.get("agent", "unknown")
+    round_num = state.get("round", "")
+    round_str = f" - Round {round_num}" if round_num else ""
+    dispatch_mode = state.get("dispatch_mode", "internal")
+    context_index = "\n".join(f"- `{path}`" for path in context_files) or "- None"
+
+    return f"""# Dispatch Packet: {agent}{round_str}
+
+## Metadata
+
+- Action: `{state.get("action", "unknown")}`
+- Phase: `{state.get("phase", "unknown")}`
+- Claim Path: `{state.get("sub_unit", "")}`
+- Dispatch Mode: `{dispatch_mode}`
+- Packet Path: `{state.get("packet_path", "")}`
+- Prompt Path: `{state.get("prompt_path", "")}`
+- Result Path: `{state.get("result_path", "")}`
+
+## Agent Instructions
+
+{agent_instructions}
+
+---
+
+## Context File Index
+
+{context_index}
+
+---
+
+## Research Context
+
+{context}
+
+---
+
+## Delivery
+
+Produce the artifact for `{state.get("result_path", "")}` and follow the format required by the agent instructions.
+"""
+
+
+def generate_external_prompt(state: dict[str, Any], packet: str) -> str:
+    """Build an external prompt from the canonical dispatch packet."""
+    agent = state.get("agent", "unknown")
+    round_num = state.get("round", "")
+    round_str = f" - Round {round_num}" if round_num else ""
+
+    return f"""# External Prompt: {agent}{round_str}
+
+Use the packet below as the complete source of truth. Return only the requested artifact content.
+
+---
+
+{packet}
+"""
+
+
 # ---------------------------------------------------------------------------
 # Dispatch config
 # ---------------------------------------------------------------------------
@@ -964,21 +1179,31 @@ def read_dispatch_config(research_dir: Path) -> dict[str, str]:
 
 
 def compute_paths(sub_path: str, agent: str, round_num: int | None) -> dict[str, str]:
-    """Compute prompt_path and result_path for the next agent."""
+    """Compute packet_path, prompt_path, and result_path for the next agent."""
     if agent in ("architect", "adversary") and round_num:
         base = f"{sub_path}/{agent}/round-{round_num}"
-        return {"prompt_path": f"{base}/prompt.md", "result_path": f"{base}/result.md"}
+        return {
+            "packet_path": f"{base}/packet.md",
+            "prompt_path": f"{base}/prompt.md",
+            "result_path": f"{base}/result.md",
+        }
     if agent == "experimenter":
         return {
+            "packet_path": f"{sub_path}/{agent}/packet.md",
             "prompt_path": f"{sub_path}/{agent}/prompt.md",
             "result_path": f"{sub_path}/{agent}/results/output.md",
         }
     if agent == "arbiter":
         return {
+            "packet_path": f"{sub_path}/{agent}/packet.md",
             "prompt_path": f"{sub_path}/{agent}/prompt.md",
             "result_path": f"{sub_path}/{agent}/results/verdict.md",
         }
-    return {"prompt_path": f"{sub_path}/{agent}/prompt.md", "result_path": f"{sub_path}/{agent}/result.md"}
+    return {
+        "packet_path": f"{sub_path}/{agent}/packet.md",
+        "prompt_path": f"{sub_path}/{agent}/prompt.md",
+        "result_path": f"{sub_path}/{agent}/result.md",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1136,7 +1361,7 @@ def detect_investigation_state(
             return {"action": "scaffold_quick", "phase": "divide"}
         claim_dirs = sorted(d for d in claims_dir.iterdir() if d.is_dir())
         if claim_dirs:
-            sub_path = str(claim_dirs[0].relative_to(research_dir))
+            sub_path = claim_dirs[0].relative_to(research_dir).as_posix()
             state = detect_state(research_dir, sub_path, config)
             if state.get("action", "").startswith("complete_"):
                 if not synthesis_path.exists():
@@ -1159,10 +1384,10 @@ def detect_investigation_state(
     if not framework_path.exists():
         context_files: list[str] = []
         if north_star_path.exists():
-            context_files.append(str(north_star_path.relative_to(research_dir)))
+            context_files.append(north_star_path.relative_to(research_dir).as_posix())
         if context_path.exists():
-            context_files.append(str(context_path.relative_to(research_dir)))
-        context_files.extend(str(d.relative_to(research_dir)) for d in surveys)
+            context_files.append(context_path.relative_to(research_dir).as_posix())
+        context_files.extend(d.relative_to(research_dir).as_posix() for d in surveys)
         return {
             "action": "divide",
             "phase": "divide",
@@ -1210,7 +1435,7 @@ def detect_investigation_state(
         for claim_dir in sorted(claims_dir.iterdir()):
             if not claim_dir.is_dir() or not claim_dir.name.startswith("claim-"):
                 continue
-            sub_path = str(claim_dir.relative_to(research_dir))
+            sub_path = claim_dir.relative_to(research_dir).as_posix()
             state = detect_state(research_dir, sub_path, config)
             cycle_states.append(
                 {
@@ -1231,7 +1456,7 @@ def detect_investigation_state(
                 for sub_dir in sorted(unit_dir.iterdir()):
                     if not sub_dir.is_dir() or not sub_dir.name.startswith("sub-"):
                         continue
-                    sub_path = str(sub_dir.relative_to(research_dir))
+                    sub_path = sub_dir.relative_to(research_dir).as_posix()
                     state = detect_state(research_dir, sub_path, config)
                     cycle_states.append(
                         {
@@ -1248,26 +1473,45 @@ def detect_investigation_state(
             "claims": claims,
         }
 
+    def _primary_claim_node_id(target: Path) -> str | None:
+        from .frontmatter import get_scalar_frontmatter, parse_frontmatter
+        from .ids import derive_id
+
+        claim_file = target / "claim.md"
+        if not claim_file.exists():
+            claim_file = target / "frontier.md"
+        if not claim_file.exists():
+            return None
+        try:
+            rel = str(claim_file.relative_to(research_dir)).replace("\\", "/")
+            meta = parse_frontmatter(claim_file.read_text(encoding="utf-8"), filepath=rel)
+        except (OSError, UnicodeDecodeError, ValueError):
+            return None
+        return get_scalar_frontmatter(meta, "id", filepath=rel) or derive_id(rel)
+
     # Wave-based execution
-    waves = compute_waves(research_dir, db_path) if db_path else []
+    # Always compute waves here; compute_waves() already falls back to the
+    # repo-local default database path when callers omit db_path.
+    waves = compute_waves(research_dir, db_path)
     by_cycle: dict[str, list[dict[str, Any]]] = {}
     for cs in cycle_states:
         by_cycle.setdefault(cs["cycle"], []).append(cs)
 
     claim_to_cycle: dict[str, str] = {}
-    if cycles_dir.exists():
-        for cycle_dir_item in cycles_dir.iterdir():
-            if cycle_dir_item.is_dir():
-                for claim in claims:
-                    if _id_matches_dir(claim["id"], cycle_dir_item.name):
-                        claim_to_cycle[claim["id"]] = cycle_dir_item.name
+    for cs in cycle_states:
+        node_id = _primary_claim_node_id(research_dir / cs["sub_unit"])
+        if node_id:
+            claim_to_cycle[node_id] = cs["cycle"]
 
-    if claims_dir.exists():
-        for claim_dir_item in claims_dir.iterdir():
-            if claim_dir_item.is_dir():
-                for claim in claims:
-                    if _id_matches_dir(claim["id"], claim_dir_item.name):
-                        claim_to_cycle[claim["id"]] = claim_dir_item.name
+    # Keep a fallback mapping from blueprint claim ids to cycle names for
+    # workspaces whose claim node ids are already semantic rather than path-like.
+    for claim in claims:
+        for cs in cycle_states:
+            cycle_name = str(cs["cycle"])
+            sub_name = Path(str(cs["sub_unit"])).name
+            if _id_matches_dir(claim["id"], cycle_name) or _id_matches_dir(claim["id"], sub_name):
+                claim_to_cycle.setdefault(claim["id"], cycle_name)
+                break
 
     if waves and len(waves) > 1:
         for wave in waves:

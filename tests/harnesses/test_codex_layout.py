@@ -23,8 +23,19 @@ def test_codex_skills_readme_matches_current_bundle_content() -> None:
     assert "canonical Principia Codex skills" in readme
     assert "packaged runner" in readme
     assert "principia.cli.codex_runner" in readme
+    assert "`patch-status`" in readme
     assert "legacy harness runner path" not in readme
     assert "packaged-runtime migration task" not in readme
+
+
+def test_codex_bundle_readme_describes_skills_not_slash_commands() -> None:
+    readme = Path("plugins/codex/README.md").read_text()
+
+    assert "skills, not slash commands" in readme
+    assert "`principia:init`" in readme
+    assert "patch-status" in readme
+    assert "packet --path" in readme
+    assert "/principia:init" not in readme
 
 
 def test_codex_skills_use_packaged_runner_commands() -> None:
@@ -49,6 +60,20 @@ def test_codex_skills_use_packaged_runner_commands() -> None:
         text = (bundle_root / relative_path).read_text()
         assert runner_command in text
         assert "harnesses/codex/scripts/engine_runner.py" not in text
+
+    init_text = (bundle_root / "init/SKILL.md").read_text()
+    status_text = (bundle_root / "status/SKILL.md").read_text()
+    next_step_text = (bundle_root / "next-step/SKILL.md").read_text()
+
+    assert "/principia:init" not in init_text
+    assert "/principia:init" not in next_step_text
+    assert "`principia:init`" in init_text
+    assert "`principia:init`" in next_step_text
+    assert "`warnings` first" in status_text
+    assert "north_star_drift" in status_text
+    assert "north_star_drift" in init_text
+    assert "patch-status" in next_step_text
+    assert "packet --path" in next_step_text
 
 
 def test_codex_skills_have_expected_canonical_structure() -> None:

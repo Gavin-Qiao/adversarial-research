@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.12"
 
 [[package]]
@@ -221,7 +221,7 @@ wheels = [
 
 [[package]]
 name = "principia"
-version = "0.4.0b3"
+version = "0.4.0b4"
 source = { editable = "." }
 
 [package.dev-dependencies]

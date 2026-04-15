@@ -9,7 +9,7 @@ def test_engine_dashboard_returns_structured_data(research_dir) -> None:
     engine = PrincipiaEngine(root=research_dir)
     dashboard = engine.dashboard()
 
-    assert set(dashboard.keys()) >= {"phase", "claims", "blocked", "last_verdict"}
+    assert set(dashboard.keys()) >= {"phase", "claims", "blocked", "last_verdict", "dispatch_overview"}
 
 
 def test_engine_validate_and_results_stay_bound_to_root(tmp_path: Path) -> None:

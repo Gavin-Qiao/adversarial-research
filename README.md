@@ -38,6 +38,8 @@ Codex uses the repo-local marketplace entry at `.agents/plugins/marketplace.json
 
 Open the Principia checkout in Codex, then install the `principia` plugin from the repo-local marketplace. The installed bundle uses the packaged runtime entrypoint under `principia/cli/codex_runner.py`.
 
+Codex plugins expose Principia through skills rather than slash commands. In Codex, start with the `principia:init` skill, then continue with `principia:status` and `principia:next-step`, or simply ask Codex in natural language to initialize or advance the Principia workflow.
+
 ### Packaged Runtime Verification
 
 Release verification should prove that the built package, not just the editable checkout, can load the bundled agent and config assets:
@@ -56,13 +58,23 @@ From that clean environment, verify the packaged CLI still works:
 
 ## Quick Start
 
+Claude:
+
 ```
 /principia:init
 /principia:status
 /principia:step
 ```
 
-`/principia:init` is the front door. It inspects the repo, scaffolds `principia/`, asks about autonomy and sidecar preferences, and conducts the discussion that locks the north star before the deeper workflow begins.
+Codex:
+
+```
+principia:init
+principia:status
+principia:next-step
+```
+
+In Claude, `/principia:init` is the front door. In Codex, the equivalent entry point is the `principia:init` skill. Both surfaces inspect the repo, scaffold `principia/`, ask about autonomy and sidecar preferences, and conduct the discussion that locks the north star before the deeper workflow begins.
 
 After init, Principia runs four phases:
 
@@ -231,6 +243,8 @@ Principia uses 8 specialized agents. Each has a specific role and constrained ac
 
 ## Commands
 
+Slash commands are part of the Claude surface. In Codex, use the corresponding Principia skills such as `principia:init`, `principia:status`, `principia:next-step`, `principia:validate`, and `principia:results`.
+
 | Command | What it does |
 |---------|-------------|
 | `/principia:init [title]` | Inspect the repo, scaffold `principia/`, and guide north-star setup |
@@ -290,7 +304,7 @@ The conductor can override `max_rounds` for a specific claim via `extend-debate`
 
 ### Dispatch mode
 
-Created by `/principia:init` in `principia/.config.md`:
+Created by the init flow in `principia/.config.md` (`/principia:init` in Claude, `principia:init` in Codex):
 
 - **internal** (default): agents run as Claude Code subagents
 - **external**: generates a self-contained prompt you can paste into any LLM

@@ -10,15 +10,51 @@ The repository publishes a repo-local Codex marketplace entry at `.agents/plugin
 
 Open the full Principia checkout in Codex, then install the `principia` plugin from the repo-local marketplace. This keeps the Codex bundle aligned with the official `plugins/<name>` structure while still using the shared runtime from the checkout.
 
-The intended first command is `/principia:init`. In Codex, init is a guided repo ritual: it inspects the current project, scaffolds `principia/` if needed, collects autonomy and sidecar preferences, and stays in discussion until the north star is explicitly locked.
+Codex plugins expose Principia as skills, not slash commands. Start by asking Codex to use the `principia:init` skill, or simply ask it to initialize a Principia workspace for the current repository.
+
+Common Codex skill entry points:
+
+- `principia:init`
+- `principia:status`
+- `principia:next-step`
+- `principia:validate`
+- `principia:results`
+
+In Codex, init is a guided repo ritual: it inspects the current project, scaffolds `principia/` if needed, collects autonomy and sidecar preferences, and stays in discussion until the north star is explicitly locked.
 
 This bundle is Codex-native. It uses the packaged runner to talk to the shared Principia engine:
 
 ```bash
 uv run python -m principia.cli.codex_runner --root principia dashboard
+uv run python -m principia.cli.codex_runner --root principia next --path claims/claim-1-example
+uv run python -m principia.cli.codex_runner --root principia packet --path claims/claim-1-example
+uv run python -m principia.cli.codex_runner --root principia prompt --path claims/claim-1-example
+uv run python -m principia.cli.codex_runner --root principia dispatch-log --cycle claim-1-example
+uv run python -m principia.cli.codex_runner --root principia patch-status
 uv run python -m principia.cli.codex_runner --root principia validate
 uv run python -m principia.cli.codex_runner --root principia results
 ```
+
+Dispatch lifecycle is now explicit in the audit log:
+
+- `packet`: canonical `packet.md` was materialized
+- `dispatch`: external handoff artifacts were written
+- `received`: a result artifact landed back in the claim workspace
+- `recorded`: arbiter verdict bookkeeping was committed
+
+The dashboard payload exposes:
+
+- `dispatch_lifecycle` for the active or most recently touched claim
+- `dispatch_overview` for workspace-wide stale/outstanding aggregation across all claims with dispatch history
+
+Derived handoff statuses in `dispatch_lifecycle` are intentionally state-machine aware:
+
+- `ready_to_send`: packet exists, but the handoff has not been dispatched yet
+- `waiting_result`: dispatch artifacts exist and Principia is waiting on the external result
+- `stale`: the audit log and the current claim/filesystem state disagree
+
+`dispatch_handoff_stale` warnings are generated from `dispatch_overview`, so Codex can still surface stale claims even when the active claim itself is clean.
+`dispatch_overview` also breaks out `ready_to_send_claims` and `waiting_result_claims`, so Codex can answer which claims are unsent versus genuinely waiting on an external return.
 
 The bundle depends on shared repo content, including `principia/`, `agents/`, and `config/`. Copying `plugins/codex` by itself is unsupported.
 

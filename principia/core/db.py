@@ -40,7 +40,7 @@ def _workspace_db_path(root: Path) -> Path:
 
 
 def _workspace_rel_path(root: Path, path: Path) -> str:
-    return str(path.relative_to(root))
+    return path.relative_to(root).as_posix()
 
 
 def discover_md_files(root: Path | None = None) -> list[Path]:
@@ -92,7 +92,7 @@ def _find_duplicate_ids(files: list[Path], *, root: Path | None = None) -> list[
 # ---------------------------------------------------------------------------
 
 
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
 
 SCHEMA_V1 = """\
 CREATE TABLE IF NOT EXISTS nodes (
@@ -200,6 +200,19 @@ def _migrate_db(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE ledger ADD COLUMN agent TEXT")
         _set_schema_version(conn, 3)
 
+    if version < 4:
+        for col in (
+            "sub_unit TEXT",
+            "dispatch_mode TEXT",
+            "packet_path TEXT",
+            "prompt_path TEXT",
+            "result_path TEXT",
+        ):
+            col_name = col.split()[0]
+            if not _has_column(conn, "dispatches", col_name):
+                conn.execute(f"ALTER TABLE dispatches ADD COLUMN {col}")
+        _set_schema_version(conn, 4)
+
 
 def _get_or_create_db(root: Path | None = None) -> sqlite3.Connection:
     """Open (or create) the database and run migrations."""
@@ -230,8 +243,25 @@ def init_db(root: Path | None = None) -> sqlite3.Connection:
             ]
             if _get_schema_version(old) >= 2:
                 preserved_artifacts = [tuple(r) for r in old.execute("SELECT * FROM coder_artifacts").fetchall()]
+                has_sub_unit = _has_column(old, "dispatches", "sub_unit")
+                has_dispatch_mode = _has_column(old, "dispatches", "dispatch_mode")
+                has_packet_path = _has_column(old, "dispatches", "packet_path")
+                has_prompt_path = _has_column(old, "dispatches", "prompt_path")
+                has_result_path = _has_column(old, "dispatches", "result_path")
                 preserved_dispatches = [
-                    (r["timestamp"], r["cycle_id"], r["agent"], r["action"], r["round"], r["details"])
+                    (
+                        r["timestamp"],
+                        r["cycle_id"],
+                        r["agent"],
+                        r["action"],
+                        r["round"],
+                        r["details"],
+                        r["sub_unit"] if has_sub_unit else None,
+                        r["dispatch_mode"] if has_dispatch_mode else None,
+                        r["packet_path"] if has_packet_path else None,
+                        r["prompt_path"] if has_prompt_path else None,
+                        r["result_path"] if has_result_path else None,
+                    )
                     for r in old.execute("SELECT * FROM dispatches").fetchall()
                 ]
             old.close()
@@ -255,7 +285,8 @@ def init_db(root: Path | None = None) -> sqlite3.Connection:
         )
     if preserved_dispatches:
         conn.executemany(
-            "INSERT INTO dispatches (timestamp, cycle_id, agent, action, round, details) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO dispatches (timestamp, cycle_id, agent, action, round, details, sub_unit, dispatch_mode, "
+            "packet_path, prompt_path, result_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             preserved_dispatches,
         )
     conn.commit()
@@ -284,6 +315,7 @@ KNOWN_FRONTMATTER_KEYS = {
     "wave",
     "cycle_status",
     "falsification",
+    "north_star_version",
 }
 
 

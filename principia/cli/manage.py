@@ -14,7 +14,7 @@ User-facing commands:
     falsify <id> [--by id]  Mark a claim as disproven and cascade
 
 Internal commands (used by skills and agents):
-    build, new, next, context, prompt, waves, investigate-next,
+    build, new, next, context, packet, prompt, waves, investigate-next,
     parse-framework, register, artifacts, codebook, post-verdict,
     log-dispatch, dispatch-log, assumptions
 """
@@ -42,6 +42,7 @@ from principia.core.commands import (
     cmd_new,
     cmd_next,
     cmd_parse_framework,
+    cmd_packet,
     cmd_post_verdict,
     cmd_prompt,
     cmd_query,
@@ -182,6 +183,10 @@ def main() -> None:
     p_ctx.add_argument("path")
     p_ctx.set_defaults(func=cmd_context)
 
+    p_packet = sub.add_parser("packet")
+    p_packet.add_argument("path")
+    p_packet.set_defaults(func=cmd_packet)
+
     p_prompt = sub.add_parser("prompt")
     p_prompt.add_argument("path")
     p_prompt.set_defaults(func=cmd_prompt)
@@ -193,9 +198,18 @@ def main() -> None:
     p_logd = sub.add_parser("log-dispatch")
     p_logd.add_argument("--cycle", required=True)
     p_logd.add_argument("--agent", required=True)
-    p_logd.add_argument("--action", required=True, choices=["dispatch", "side_dispatch", "override"])
+    p_logd.add_argument(
+        "--action",
+        required=True,
+        choices=["dispatch", "side_dispatch", "override", "packet", "received", "recorded"],
+    )
     p_logd.add_argument("--round", type=int, default=None)
     p_logd.add_argument("--details", default=None)
+    p_logd.add_argument("--sub-unit", default=None)
+    p_logd.add_argument("--dispatch-mode", default=None)
+    p_logd.add_argument("--packet-path", default=None)
+    p_logd.add_argument("--prompt-path", default=None)
+    p_logd.add_argument("--result-path", default=None)
     p_logd.set_defaults(func=cmd_log_dispatch)
 
     p_dlog = sub.add_parser("dispatch-log")
