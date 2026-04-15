@@ -69,7 +69,18 @@ def test_engine_exposes_all_runner_commands(tmp_path):
 
     engine = PrincipiaEngine(root=tmp_path)
 
-    for command in ("build", "dashboard", "next", "packet", "prompt", "dispatch_log", "patch_status", "validate", "results"):
+    commands = (
+        "build",
+        "dashboard",
+        "next",
+        "packet",
+        "prompt",
+        "dispatch_log",
+        "patch_status",
+        "validate",
+        "results",
+    )
+    for command in commands:
         method = getattr(engine, command, None)
         assert callable(method), f"PrincipiaEngine is missing {command}()"
 

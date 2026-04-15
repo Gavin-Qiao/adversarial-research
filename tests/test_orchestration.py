@@ -719,8 +719,9 @@ class TestDetectInvestigationState:
 
     def test_uses_dependency_waves_without_explicit_db_path(self, tmp_path):
         """Regression: detect_investigation_state should respect claim deps without a passed db_path."""
-        from config import init_paths
         from db import build_db
+
+        from config import init_paths
 
         rd = _make_investigation_dir(tmp_path)
         init_paths(rd)

@@ -10,7 +10,7 @@ import sqlite3
 import sys
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from . import config as _cfg
 from .db import (
@@ -1182,45 +1182,7 @@ def cmd_context(args: argparse.Namespace) -> None:
 
 def _legacy_cmd_prompt(args: argparse.Namespace) -> None:
     """Generate self-contained prompt for external agent dispatch."""
-    from .orchestration import (
-        assemble_context,
-        compute_paths,
-        detect_state,
-        generate_external_prompt,
-        list_context_files,
-        load_config,
-    )
-
-    _check_path_containment(args.path)
-    config = load_config(_cfg.DEFAULT_ORCH_CONFIG)
-    state = detect_state(_cfg.RESEARCH_DIR, args.path, config)
-    agent = state.get("agent")
-    if not agent:
-        print("ERROR: No agent to dispatch in current state.")
-        sys.exit(1)
-
-    paths = compute_paths(args.path, agent, state.get("round"))
-    state.update(paths)
-
-    mr = config.get("debate_loop", {}).get("max_rounds", 3)
-    files = list_context_files(
-        _cfg.RESEARCH_DIR, args.path, state["action"], state.get("round"), agent=agent, max_rounds=mr
-    )
-    context = assemble_context(_cfg.RESEARCH_DIR, files)
-
-    # Read agent instructions
-    agent_file = _cfg.PLUGIN_ROOT / "agents" / f"{agent}.md"
-    instructions = ""
-    if agent_file.exists():
-        instructions = get_body(agent_file.read_text(encoding="utf-8"))
-
-    prompt = generate_external_prompt(state, context, instructions)
-
-    # Write to prompt_path
-    prompt_path = _cfg.RESEARCH_DIR / state["prompt_path"]
-    prompt_path.parent.mkdir(parents=True, exist_ok=True)
-    _cfg._atomic_write(prompt_path, prompt)
-    print(f"Written: {prompt_path}")
+    cmd_prompt(args)
 
 
 def cmd_dispatch_log(args: argparse.Namespace) -> None:
@@ -1397,7 +1359,7 @@ def _waiting_matches_handoff(waiting_for: str | None, agent: str, round_num: int
 
 
 def _classify_dispatch_handoff(row: sqlite3.Row, claim_state: dict[str, Any]) -> str:
-    action = row["action"]
+    action = str(row["action"])
     if action in {"received", "recorded"}:
         return action
 
@@ -1493,18 +1455,21 @@ def _summarize_workspace_dispatches(
     for row in rows:
         sub_unit = str(row["sub_unit"])
         lifecycle = _summarize_dispatch_lifecycle(conn, research_root, config, sub_unit)
-        ready_to_send = [handoff for handoff in lifecycle["handoffs"] if handoff["status"] == "ready_to_send"]
-        waiting_result = [handoff for handoff in lifecycle["handoffs"] if handoff["status"] == "waiting_result"]
+        handoffs = cast(list[dict[str, Any]], lifecycle["handoffs"])
+        outstanding = cast(list[dict[str, Any]], lifecycle["outstanding"])
+        stale = cast(list[dict[str, Any]], lifecycle["stale"])
+        ready_to_send = [handoff for handoff in handoffs if handoff["status"] == "ready_to_send"]
+        waiting_result = [handoff for handoff in handoffs if handoff["status"] == "waiting_result"]
         claims.append(
             {
                 "claim": lifecycle["claim"],
                 "latest": lifecycle["latest"],
-                "outstanding_count": len(lifecycle["outstanding"]),
-                "stale_count": len(lifecycle["stale"]),
+                "outstanding_count": len(outstanding),
+                "stale_count": len(stale),
                 "ready_to_send_count": len(ready_to_send),
                 "waiting_result_count": len(waiting_result),
-                "outstanding": lifecycle["outstanding"],
-                "stale": lifecycle["stale"],
+                "outstanding": outstanding,
+                "stale": stale,
                 "ready_to_send": ready_to_send,
                 "waiting_result": waiting_result,
             }
@@ -1628,15 +1593,14 @@ def get_dashboard_payload(root: Path | None = None) -> dict[str, object]:
                 "code": "north_star_drift",
                 "severity": "warning",
                 "message": (
-                    f"{patch_status['needs_review_count']} claim(s) are stale or missing a "
-                    "north-star version stamp."
+                    f"{patch_status['needs_review_count']} claim(s) are stale or missing a north-star version stamp."
                 ),
                 "count": patch_status["needs_review_count"],
                 "claims": patch_status["needs_review"][:5],
             }
         )
     if dispatch_overview.get("stale_claim_count", 0):
-        stale_claims = list(dispatch_overview["stale_claims"])
+        stale_claims = cast(list[dict[str, Any]], dispatch_overview["stale_claims"])
         warnings.append(
             {
                 "code": "dispatch_handoff_stale",

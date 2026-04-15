@@ -977,9 +977,7 @@ class TestCmdNext:
         sub_path = self._make_sub_unit(research_dir)
         result_file = research_dir / sub_path / "architect" / "round-1" / "result.md"
         result_file.parent.mkdir(parents=True, exist_ok=True)
-        result_file.write_text(
-            "---\nid: arch-r1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Proposal\n"
-        )
+        result_file.write_text("---\nid: arch-r1\ntype: claim\nstatus: active\ndate: 2026-01-01\n---\n\n# Proposal\n")
 
         rc, _out, _ = run_manage(research_dir, "next", sub_path)
         assert rc == 0
@@ -988,9 +986,7 @@ class TestCmdNext:
         assert rc == 0
         data = json.loads(out)
         received = next(
-            row
-            for row in data
-            if row["action"] == "received" and row["agent"] == "architect" and row["round"] == 1
+            row for row in data if row["action"] == "received" and row["agent"] == "architect" and row["round"] == 1
         )
         assert received["sub_unit"] == sub_path
         assert received["result_path"].endswith("architect/round-1/result.md")
@@ -2284,10 +2280,10 @@ class TestCmdDashboard:
         (research_dir / "context" / "survey-topic.md").write_text("# Survey\n", encoding="utf-8")
         (research_dir / "blueprint.md").write_text(
             "# Blueprint\n\n```yaml\n# CLAIM_REGISTRY\nclaims:\n"
-            "  - id: active\n    statement: \"Active claim\"\n    maturity: conjecture\n    confidence: low\n"
-            "    depends_on: []\n    falsification: \"Refute it\"\n"
-            "  - id: stale\n    statement: \"Stale claim\"\n    maturity: conjecture\n    confidence: low\n"
-            "    depends_on: []\n    falsification: \"Refute it\"\n```\n",
+            '  - id: active\n    statement: "Active claim"\n    maturity: conjecture\n    confidence: low\n'
+            '    depends_on: []\n    falsification: "Refute it"\n'
+            '  - id: stale\n    statement: "Stale claim"\n    maturity: conjecture\n    confidence: low\n'
+            '    depends_on: []\n    falsification: "Refute it"\n```\n',
             encoding="utf-8",
         )
 
