@@ -102,10 +102,14 @@ def _resolve_plugin_root() -> Path:
     """Prefer the repo root, but fall back to packaged assets when present."""
     candidates = (_REPO_ROOT, _PACKAGE_ROOT)
     for candidate in candidates:
-        if (candidate / "config" / "orchestration.yaml").exists() and (candidate / "agents").exists():
+        if (candidate / "config" / "orchestration.yaml").exists():
             return candidate
     return _REPO_ROOT
 
 
 PLUGIN_ROOT = _resolve_plugin_root()
 DEFAULT_ORCH_CONFIG = PLUGIN_ROOT / "config" / "orchestration.yaml"
+
+# Claude-specific plugin bundle — contains agents/*.md with Claude frontmatter.
+# After the adapter split, agent files live here only (not in the core package).
+CLAUDE_PLUGIN_ROOT = _REPO_ROOT / "plugins" / "claude"

@@ -779,7 +779,7 @@ def _resolve_workspace_root(root: Path | None = None) -> Path:
 
 
 def _load_agent_instructions(agent: str) -> str:
-    agent_file = _cfg.PLUGIN_ROOT / "agents" / f"{agent}.md"
+    agent_file = _cfg.CLAUDE_PLUGIN_ROOT / "agents" / f"{agent}.md"
     if not agent_file.exists():
         return ""
     return get_body(agent_file.read_text(encoding="utf-8"))
