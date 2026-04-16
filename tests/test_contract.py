@@ -457,3 +457,59 @@ class TestBookkeepingContract:
         rc, out, err = _run("--root", str(workspace), "codebook")
         assert rc == 0, err
         assert "Generated:" in out
+
+    def test_parse_framework_json_shape(self, workspace: Path) -> None:
+        """parse-framework emits the envelope when given a valid blueprint."""
+        blueprint = workspace / "blueprint.md"
+        blueprint.write_text(
+            "# Blueprint\n\n"
+            "```yaml\n"
+            "# CLAIM_REGISTRY\n"
+            "claims:\n"
+            "  - id: claim-1-foo\n"
+            "    statement: test claim\n"
+            "    maturity: conjecture\n"
+            "    confidence: moderate\n"
+            "    depends_on: []\n"
+            "    falsification: none\n"
+            "```\n"
+        )
+        rc, out, err = _run("--root", str(workspace), "parse-framework")
+        assert rc == 0, f"parse-framework failed: {err}\n{out}"
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        assert isinstance(payload["data"], list)
+        assert len(payload["data"]) >= 1
+        claim = payload["data"][0]
+        assert claim["id"] == "claim-1-foo"
+        assert "statement" in claim
+        assert "maturity" in claim
+        assert "confidence" in claim
+        assert "depends_on" in claim
+        assert "falsification" in claim
+
+    def test_post_verdict_json_shape(self, workspace: Path) -> None:
+        """post-verdict emits the envelope after applying a verdict."""
+        # Scaffold a claim and build DB
+        rc, _out, err = _run("--root", str(workspace), "scaffold", "claim", "pv-test")
+        assert rc == 0, f"scaffold failed: {err}"
+        _run("--root", str(workspace), "build")
+        claim_dir = workspace / "claims" / "claim-1-pv-test"
+        # Seed verdict file
+        arb_results = claim_dir / "arbiter" / "results"
+        arb_results.mkdir(parents=True, exist_ok=True)
+        (arb_results / "verdict.md").write_text(
+            "---\nid: verdict-pv\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n"
+            "# Verdict\n\n**Verdict**: PROVEN\n**Confidence**: high\n"
+        )
+        _run("--root", str(workspace), "build")
+        rc, out, err = _run("--root", str(workspace), "post-verdict", "claims/claim-1-pv-test")
+        assert rc == 0, f"post-verdict failed: {err}\n{out}"
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        assert "data" in payload
+        data = payload["data"]
+        assert data["verdict"] == "PROVEN"
+        assert "confidence" in data
+        assert "node_id" in data
+        assert isinstance(data["changes"], list)

@@ -54,7 +54,7 @@ All invoked as `python -m principia.cli.manage --root <root> <op> [args]`.
 | `list` | `[--json]` | `[{id, type, status, maturity?, confidence?, title?, file_path}, ...]` | All nodes. |
 | `waves` | `[--claim id] [--json]` | `[[{id, type, status, ...}, ...], ...]` — list of lists of row dicts | Parallelizable claim groups. |
 | `dispatch-log` | `[--cycle N] [--json]` | `[{cycle_id, agent, action, round, timestamp, details, sub_unit?, dispatch_mode, packet_path, prompt_path, result_path}, ...]` | Dispatch history. `cycle_id` identifies which claim the dispatch belongs to. `sub_unit` is nullable (present in every row, may be null). |
-| `dashboard` | `--root` | `{phase, action, breadcrumb, active_claim, active_cycle, dispatch_lifecycle, dispatch_overview, last_verdict, claims, blocked, pending_decisions, autonomy, init, ...}` | Workspace state payload. |
+| `dashboard` | `--root` | `{phase, action, breadcrumb, active_claim, active_cycle, dispatch_lifecycle, dispatch_overview, last_verdict, claims, blocked, pending_decisions, autonomy, init, patch_status, warnings, preferences}` | Workspace state payload. `warnings` (inner) is `[{code, severity, message, count, claims}, ...]` — domain-specific structured objects; distinct from the envelope-level `warnings` (array of strings). |
 | `next` | `[<claim-path>]` | `{action, phase, agent?, round?, sub_unit?, dispatch_mode?, packet_path?, prompt_path?, result_path?, context_files?, north_star?}` | Next state for one claim (or investigation-wide if no path). |
 | `investigate-next` | `--root` | `{action, phase, substeps?, breadcrumb}` | Next investigation-wide state. |
 
@@ -95,6 +95,27 @@ These operations print human-readable text to stdout. The plugin contract is: **
 | `context` | `<claim-path>` | 0 = context document printed. |
 | `packet` | `<claim-path>` | 0 = packet artifact written. |
 | `prompt` | `<claim-path>` | 0 = prompt artifact written. |
+| `results` | `--root` | 0 = `RESULTS.md` summary regenerated. |
+| `validate-paste` | `--agent <role> --file <path>` | 0 = pasted artifact is structurally valid for the given agent role. Non-zero = validation errors printed. Used by skills to check pasted external-agent output; not intended for general adapter use. |
+
+## Internal subparsers
+
+The following subcommands exist in `manage.py` but are internal implementation details. They are listed here so omission from the tables above is deliberate, not an oversight. Adapters MUST NOT depend on their output shape.
+
+| Subcommand | Notes |
+|---|---|
+| `register` | Artifact bookkeeping used by specific skills. Listed under text-only above. |
+| `codebook` | Generates `TOOLKIT.md`; listed under text-only above. |
+
+## Conventions
+
+**Envelope-level `warnings` vs payload-level `warnings`**
+
+The JSON envelope has a top-level `warnings` field that is always `array of strings` — non-fatal notices about the operation itself (e.g., deprecated usage, missing optional config). Some `data` payloads also include their own `warnings` field with domain-specific structured shape. Currently:
+
+- `dashboard.data.warnings` — `[{code, severity, message, count, claims}, ...]` — structured objects describing workspace health issues (e.g., stale dispatches, north-star drift).
+
+Plugin consumers MUST parse these separately: `payload["warnings"]` (strings) vs `payload["data"]["warnings"]` (objects).
 
 ## Versioning
 
@@ -104,4 +125,4 @@ These operations print human-readable text to stdout. The plugin contract is: **
 
 ## Non-contract (internal)
 
-Subcommands of `manage.py` NOT listed above are internal and may change without notice. Adapters MUST NOT reference them directly; wire them through the adapter's wrapper.
+Subcommands of `manage.py` not listed in the tables above or in the "Internal subparsers" section are internal and may change without notice. Adapters MUST NOT reference them directly; wire them through the adapter's wrapper.
