@@ -1,33 +1,35 @@
 from pathlib import Path
 
 BUNDLE_ROOT = Path("plugins/claude")
-PACKAGED_MANAGE = "uv run python -m principia.cli.manage --root principia"
 LEGACY_MANAGE_PATHS = ("${CLAUDE_PLUGIN_ROOT}/scripts/manage.py", "scripts/manage.py")
-REPRESENTATIVE_FILES = (
-    "README.md",
-    "agents/conductor.md",
-    "agents/experimenter.md",
-    "hooks/hooks.json",
-    "skills/design/SKILL.md",
-    "skills/falsify/SKILL.md",
+PP_WRAPPER = "${CLAUDE_PLUGIN_ROOT}/scripts/pp"
+# Commands and skills now route through the pp wrapper; agents retain direct
+# manage calls (they are spawned with codebase access and require it).
+COMMAND_FILES = (
+    "commands/design.md",
+    "commands/falsify.md",
+    "commands/impact.md",
+    "commands/init.md",
+    "commands/new.md",
+    "commands/query.md",
+    "commands/scaffold.md",
+    "commands/settle.md",
+    "commands/status.md",
+    "commands/step.md",
+    "commands/validate.md",
+)
+SKILL_FILES = (
     "skills/help/SKILL.md",
-    "skills/impact/SKILL.md",
-    "skills/init/SKILL.md",
-    "skills/new/SKILL.md",
-    "skills/query/SKILL.md",
-    "skills/scaffold/SKILL.md",
-    "skills/settle/SKILL.md",
-    "skills/status/SKILL.md",
-    "skills/step/SKILL.md",
-    "skills/validate/SKILL.md",
+    "skills/methodology/SKILL.md",
 )
 
 
 def test_claude_bundle_uses_packaged_manage_entrypoint() -> None:
-    for relative_path in REPRESENTATIVE_FILES:
+    # Commands and skills must use the pp wrapper (not raw manage entrypoints).
+    for relative_path in (*COMMAND_FILES, *SKILL_FILES):
         text = (BUNDLE_ROOT / relative_path).read_text()
 
-        assert PACKAGED_MANAGE in text
+        assert PP_WRAPPER in text, f"pp wrapper not found in {relative_path}"
         for legacy_path in LEGACY_MANAGE_PATHS:
             assert legacy_path not in text
 

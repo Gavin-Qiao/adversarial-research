@@ -1,24 +1,16 @@
 ---
-name: new
-description: Create a new design file with auto-generated frontmatter. Use when the system needs to add a new design proposal, result, prompt, or any design document to the log.
-user-invocable: false
-argument-hint: <relative-path>
-allowed-tools:
-  - Bash
+description: Create a new principia markdown file with auto-generated frontmatter.
+argument-hint: "<relative-path>"
+allowed-tools: Bash
 ---
 
-# Create Design File
+Create a new markdown file with auto-generated frontmatter (type, status, id derived from path).
 
-Create a new markdown file in the design log with auto-generated YAML frontmatter.
+Run: !`${CLAUDE_PLUGIN_ROOT}/scripts/pp new "$1"`
 
-## Usage
+Confirm the file was created and report its id.
 
-Run:
-```bash
-uv run python -m principia.cli.manage --root principia new "$ARGUMENTS"
-```
-
-The path should be relative to `principia/`. Examples:
+The path should be relative to the principia root. Examples:
 - `claims/claim-1-enrichment/architect/round-1/prompt.md`
 - `claims/claim-1-enrichment/experimenter/results/output.md`
 - `context/assumptions/my-assumption.md`

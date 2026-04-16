@@ -1,21 +1,14 @@
 ---
-name: falsify
-description: Disprove a design claim or assumption and cascade to dependents. Use when evidence refutes a design proposal, an assumption is invalidated, or a claim needs to be marked as disproven.
-user-invocable: false
-argument-hint: <node-id> [--by <evidence-id>]
-allowed-tools:
-  - Bash
+description: Mark a principia claim as disproven and cascade the weakening to dependents.
+argument-hint: "<claim-id> [--by id]"
+allowed-tools: Bash
 ---
 
-# Disprove Node
+Mark the claim as disproven. The core will cascade the effect to all dependents.
 
-Mark a design node as disproven and cascade the status change to all transitive dependents.
+Run: !`${CLAUDE_PLUGIN_ROOT}/scripts/pp falsify $ARGUMENTS`
 
-## Usage
-
-```bash
-uv run python -m principia.cli.manage --root principia falsify $ARGUMENTS
-```
+Report what was weakened by the cascade.
 
 Examples:
 - `falsify assumption-homogeneity --by c1-u1-experimenter-output`

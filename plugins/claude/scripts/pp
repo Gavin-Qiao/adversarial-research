@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# pp — Principia plugin contract wrapper.
+#
+# This is the ONE plugin file that knows the current principia CLI shape.
+# All commands, skills, agents, and hooks in this bundle invoke core
+# functionality through `pp <operation> [args]`.
+#
+# When the core CLI changes, only this file updates. See docs/CONTRACT.md
+# for the stable operation surface.
+
+set -euo pipefail
+
+if [ $# -lt 1 ]; then
+  echo "usage: pp <operation> [args...]" >&2
+  exit 2
+fi
+
+op="$1"; shift
+root="${PRINCIPIA_ROOT:-principia}"
+
+# Supported operations (see docs/CONTRACT.md for shapes):
+#   Workflow:     build next investigate-next post-verdict extend-debate reopen replace-verdict
+#   Inspection:   status validate query list dashboard dispatch-log assumptions
+#   Mutation:     scaffold new settle falsify register
+#   Planning:     cascade waves context packet prompt
+#   Bookkeeping:  log-dispatch parse-framework artifacts codebook autonomy-config results
+#   Discovery:    paths roles phases schema
+#   (Text-only vs JSON-emitting distinction is per docs/CONTRACT.md — pp forwards either.)
+#   (validate-paste is text-only but not intended for general adapter use; omitted.)
+
+case "$op" in
+  build|next|investigate-next|post-verdict|extend-debate|reopen|replace-verdict|\
+  status|validate|query|list|dashboard|dispatch-log|assumptions|\
+  scaffold|new|settle|falsify|register|\
+  cascade|waves|context|packet|prompt|\
+  log-dispatch|parse-framework|artifacts|codebook|autonomy-config|results|\
+  paths|roles|phases|schema)
+    exec uv run python -m principia.cli.manage --root "$root" "$op" "$@"
+    ;;
+  *)
+    echo "pp: unknown operation '$op'" >&2
+    echo "See docs/CONTRACT.md for the public operation surface." >&2
+    exit 2
+    ;;
+esac

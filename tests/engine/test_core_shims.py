@@ -77,7 +77,7 @@ def test_package_config_resolves_repo_assets() -> None:
     from principia.core.orchestration import load_config
 
     assert cfg.DEFAULT_ORCH_CONFIG.exists()
-    assert (cfg.PLUGIN_ROOT / "agents" / "architect.md").exists()
+    assert (cfg.CLAUDE_PLUGIN_ROOT / "agents" / "architect.md").exists()
 
     roles = [r.get("name") for r in load_config(cfg.DEFAULT_ORCH_CONFIG).get("roles", []) if isinstance(r, dict)]
     assert {"architect", "adversary", "experimenter", "arbiter"} <= set(roles)
@@ -139,7 +139,10 @@ prompt = (claim_dir / "architect" / "round-1" / "prompt.md").read_text(encoding=
 
 assert cfg.DEFAULT_ORCH_CONFIG.exists()
 assert {"architect", "adversary", "experimenter", "arbiter"} <= set(roles)
-assert "Do NOT attempt to read files from the codebase" in prompt
+# In a package-only distribution the Claude plugin bundle is absent, so
+# Claude-specific agent instructions are not embedded in the prompt.
+# We verify the core prompt scaffolding was generated correctly instead.
+assert "Dispatch Packet: architect" in prompt
 print("OK")
 """
     result = subprocess.run(
@@ -154,37 +157,52 @@ print("OK")
     assert "OK" in result.stdout
 
 
-def test_runtime_resolved_agent_instructions_use_packaged_manage_entrypoint() -> None:
-    experimenter_command = "uv run python -m principia.cli.manage --root principia codebook"
-    conductor_command = "uv run python -m principia.cli.manage --root principia next <claim-path>"
+def test_agent_files_use_pp_wrapper_not_raw_cli() -> None:
+    """Agent files must call core through pp, not `python -m principia.cli.manage` directly.
 
-    for path in (
-        Path("agents/experimenter.md"),
-        Path("principia/agents/experimenter.md"),
-    ):
-        text = path.read_text(encoding="utf-8")
-        assert experimenter_command in text
-        assert "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" not in text
-        assert "python3 scripts/manage.py" not in text
+    This enforces the adapter architecture at the bundle level.
+    """
+    from principia.core import config as cfg
 
-    for path in (
-        Path("agents/conductor.md"),
-        Path("principia/agents/conductor.md"),
-    ):
+    forbidden_patterns = [
+        "uv run python -m principia.cli.manage",
+        "--root principia",
+    ]
+
+    agents_dir = cfg.CLAUDE_PLUGIN_ROOT / "agents"
+    for path in agents_dir.glob("*.md"):
         text = path.read_text(encoding="utf-8")
-        assert conductor_command in text
-        assert "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" not in text
-        assert "python3 scripts/manage.py" not in text
+        for pattern in forbidden_patterns:
+            assert pattern not in text, (
+                f"{path.name} contains forbidden pattern '{pattern}'. "
+                f"Use `pp <op>` via ${{CLAUDE_PLUGIN_ROOT}}/scripts/pp instead."
+            )
+
+    # Positive assertion: at least one agent file must reference pp,
+    # proving the wrapper is actually used (not just absent).
+    any_pp_reference = any("pp " in (agents_dir / p.name).read_text(encoding="utf-8") for p in agents_dir.glob("*.md"))
+    assert any_pp_reference, "No agent file references the pp wrapper. Agents that invoke core should use `pp <op>`."
 
 
 def test_packaged_protocol_doc_is_shipped_and_referenced() -> None:
+    from principia.core import config as cfg
+
     protocol_path = Path("principia/config/protocol.md")
     assert protocol_path.exists()
 
     for path in (
-        Path("agents/conductor.md"),
-        Path("principia/agents/conductor.md"),
-        Path("agents/synthesizer.md"),
-        Path("principia/agents/synthesizer.md"),
+        cfg.CLAUDE_PLUGIN_ROOT / "agents" / "conductor.md",
+        cfg.CLAUDE_PLUGIN_ROOT / "agents" / "synthesizer.md",
     ):
         assert "principia/config/protocol.md" in path.read_text(encoding="utf-8")
+
+
+def test_core_package_has_no_agents_dir() -> None:
+    """After the adapter split, agents/*.md files live in plugin bundles only,
+    not in the core Python package."""
+    import principia
+
+    pkg_root = Path(principia.__file__).parent
+    assert not (pkg_root / "agents").exists(), (
+        "principia package should not ship agents/*.md; those belong in plugins/claude/agents/ only"
+    )

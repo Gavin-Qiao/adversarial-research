@@ -24,13 +24,23 @@ Requires **Python 3.12+** (stdlib only -- no pip packages at runtime).
 
 ### Claude Code
 
-Use the canonical Claude bundle directly from the checkout:
+Install via Claude Code's local marketplace (the supported path in plugin 0.5.0):
 
 ```bash
-claude --plugin-dir ./plugins/claude
+# Clone the repo (requires the core to be installable locally)
+git clone https://github.com/Gavin-Qiao/principia
+cd principia
+uv sync --dev
+
+# From a Claude Code session:
+/plugin marketplace add /absolute/path/to/principia
+/plugin install principia@principia
+/reload-plugins
 ```
 
-After Claude starts, run `/help` to confirm the namespaced Principia skills are loaded from `plugins/claude`.
+See [`plugins/claude/README.md`](plugins/claude/README.md) for the full Claude plugin guide.
+
+Public GitHub-shorthand install (`/plugin marketplace add Gavin-Qiao/principia`) is pending the core Python package being published to PyPI.
 
 ### Codex
 

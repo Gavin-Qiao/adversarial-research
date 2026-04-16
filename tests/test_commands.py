@@ -458,7 +458,8 @@ class TestCmdLogDispatch:
 
         rc, out, _ = run_manage(research_dir, "dispatch-log", "--json")
         assert rc == 0
-        data = json.loads(out)
+        payload = json.loads(out)
+        data = payload["data"]
         assert data[0]["sub_unit"] == "claims/claim-1-test"
         assert data[0]["dispatch_mode"] == "external"
         assert data[0]["packet_path"].endswith("packet.md")
@@ -525,7 +526,8 @@ class TestCmdDispatchLog:
         )
         rc, out, _ = run_manage(research_dir, "dispatch-log", "--json")
         assert rc == 0
-        data = json.loads(out)
+        payload = json.loads(out)
+        data = payload["data"]
         assert len(data) == 1
         assert data[0]["agent"] == "refutor"
 
@@ -559,18 +561,22 @@ class TestCmdDispatchLog:
 
 class TestCmdWavesJson:
     def test_json_flag_empty(self, research_dir):
+        import json
+
         run_manage(research_dir, "build")
         rc, out, _ = run_manage(research_dir, "waves", "--json")
         assert rc == 0
-        assert out.strip() == "[]"
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        assert payload["data"] == []
 
     def test_json_flag_with_data(self, populated_research):
         rc, out, _ = run_manage(populated_research, "waves", "--json")
         assert rc == 0
         import json
 
-        data = json.loads(out)
-        assert isinstance(data, list)
+        payload = json.loads(out)
+        assert isinstance(payload["data"], list)
 
     def test_assumption_edges_order_waves(self, research_dir):
         import json
@@ -591,7 +597,8 @@ class TestCmdWavesJson:
         rc, out, _ = run_manage(research_dir, "waves", "--json")
 
         assert rc == 0
-        waves = json.loads(out)
+        payload = json.loads(out)
+        waves = payload["data"]
         assert [node["id"] for node in waves[0]] == ["a1"]
         assert [node["id"] for node in waves[1]] == ["h1-claim"]
 
@@ -603,7 +610,7 @@ class TestCmdInvestigateNext:
         import json
 
         state = json.loads(out)
-        assert state["action"] == "understand"
+        assert state["data"]["action"] == "understand"
 
 
 class TestCmdParseFramework:
@@ -629,7 +636,9 @@ claims:
         assert rc == 0
         import json
 
-        claims = json.loads(out)
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        claims = payload["data"]
         assert len(claims) == 1
         assert claims[0]["id"] == "test-claim"
 
@@ -769,7 +778,9 @@ class TestCmdList:
 
         rc, out, _ = run_manage(sample_node, "list", "--json")
         assert rc == 0
-        data = json.loads(out)
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        data = payload["data"]
         assert isinstance(data, list)
         assert len(data) >= 1
         assert "id" in data[0]
@@ -893,14 +904,20 @@ class TestCmdQueryJson:
 
         rc, out, _ = run_manage(sample_node, "query", "--json", "SELECT id, type FROM nodes")
         assert rc == 0
-        data = json.loads(out)
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        data = payload["data"]
         assert isinstance(data, list)
         assert len(data) >= 1
 
     def test_query_json_empty(self, research_dir):
+        import json
+
         rc, out, _ = run_manage(research_dir, "query", "--json", "SELECT * FROM nodes")
         assert rc == 0
-        assert out.strip() == "[]"
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        assert payload["data"] == []
 
 
 class TestCmdValidateJson:
@@ -909,7 +926,9 @@ class TestCmdValidateJson:
 
         rc, out, _ = run_manage(sample_node, "validate", "--json")
         assert rc == 0
-        data = json.loads(out)
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        data = payload["data"]
         assert data["valid"] is True
         assert data["error_count"] == 0
 
@@ -933,7 +952,7 @@ class TestCmdNext:
         rc, out, _ = run_manage(research_dir, "next", sub_path)
         assert rc == 0
         state = json.loads(out)
-        assert state["action"] == "dispatch_architect"
+        assert state["data"]["action"] == "dispatch_architect"
 
     def test_with_architect_dispatches_adversary(self, research_dir):
         import json
@@ -948,7 +967,7 @@ class TestCmdNext:
         rc, out, _ = run_manage(research_dir, "next", sub_path)
         assert rc == 0
         state = json.loads(out)
-        assert state["action"] == "dispatch_adversary"
+        assert state["data"]["action"] == "dispatch_adversary"
 
     def test_includes_context_files(self, research_dir):
         import json
@@ -957,8 +976,8 @@ class TestCmdNext:
         rc, out, _ = run_manage(research_dir, "next", sub_path)
         assert rc == 0
         state = json.loads(out)
-        assert "context_files" in state
-        assert isinstance(state["context_files"], list)
+        assert "context_files" in state["data"]
+        assert isinstance(state["data"]["context_files"], list)
 
     def test_includes_packet_path_and_north_star_status(self, research_dir):
         import json
@@ -968,8 +987,8 @@ class TestCmdNext:
         rc, out, _ = run_manage(research_dir, "next", sub_path)
         assert rc == 0
         state = json.loads(out)
-        assert state["packet_path"].endswith("architect/round-1/packet.md")
-        assert state["north_star"]["status"] in {"missing_version", "stale", "current"}
+        assert state["data"]["packet_path"].endswith("architect/round-1/packet.md")
+        assert state["data"]["north_star"]["status"] in {"missing_version", "stale", "current"}
 
     def test_syncs_received_events_for_completed_results(self, research_dir):
         import json
@@ -984,7 +1003,8 @@ class TestCmdNext:
 
         rc, out, _ = run_manage(research_dir, "dispatch-log", "--json")
         assert rc == 0
-        data = json.loads(out)
+        payload = json.loads(out)
+        data = payload["data"]
         received = next(
             row for row in data if row["action"] == "received" and row["agent"] == "architect" and row["round"] == 1
         )
@@ -1003,8 +1023,8 @@ class TestCmdNext:
         rc, out, _ = run_manage(research_dir, "next", "auto")
         assert rc == 0
         state = json.loads(out)
-        assert state["sub_unit"] == sub_path
-        assert state["action"] == "dispatch_architect"
+        assert state["data"]["sub_unit"] == sub_path
+        assert state["data"]["action"] == "dispatch_architect"
 
 
 class TestCmdContext:
@@ -1060,7 +1080,8 @@ class TestCmdPrompt:
 
         rc, out, _ = run_manage(research_dir, "dispatch-log", "--json")
         assert rc == 0
-        data = json.loads(out)
+        payload = json.loads(out)
+        data = payload["data"]
         assert any(row["action"] == "dispatch" for row in data)
         logged = next(row for row in data if row["action"] == "dispatch")
         assert logged["sub_unit"] == "cycles/cycle-1/unit-1-test/sub-1a-probe"
@@ -1101,7 +1122,8 @@ class TestCmdPacket:
 
         rc, out, _ = run_manage(research_dir, "dispatch-log", "--json")
         assert rc == 0
-        data = json.loads(out)
+        payload = json.loads(out)
+        data = payload["data"]
         assert any(row["action"] == "packet" for row in data)
         logged = next(row for row in data if row["action"] == "packet")
         assert logged["packet_path"].endswith("packet.md")
@@ -1154,7 +1176,9 @@ class TestCmdPostVerdict:
         run_manage(research_dir, "build")
         rc, out, _ = run_manage(research_dir, "post-verdict", sub_path)
         assert rc == 0
-        result = json.loads(out)
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        result = payload["data"]
         assert result["verdict"] == "PROVEN"
         # Claim status should be updated
         from frontmatter import parse_frontmatter
@@ -1184,7 +1208,8 @@ class TestCmdPostVerdict:
 
         rc, out, _ = run_manage(research_dir, "dispatch-log", "--json")
         assert rc == 0
-        data = json.loads(out)
+        payload = json.loads(out)
+        data = payload["data"]
         recorded = next(row for row in data if row["action"] == "recorded" and row["agent"] == "arbiter")
         assert recorded["sub_unit"] == sub_path
         assert recorded["result_path"].endswith("arbiter/results/verdict.md")
@@ -1203,7 +1228,9 @@ class TestCmdPostVerdict:
         run_manage(research_dir, "build")
         rc, out, _ = run_manage(research_dir, "post-verdict", sub_path)
         assert rc == 0
-        result = json.loads(out)
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        result = payload["data"]
         assert result["verdict"] == "DISPROVEN"
         assert any("Weakened" in c for c in result["changes"])
 
@@ -1235,7 +1262,9 @@ class TestCmdPostVerdict:
         run_manage(research_dir, "build")
         rc, out, _ = run_manage(research_dir, "post-verdict", sub_path)
         assert rc == 0
-        result = json.loads(out)
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        result = payload["data"]
         assert result["verdict"] == "PARTIAL"
 
     def test_no_verdict_file_errors(self, research_dir):
@@ -1841,8 +1870,8 @@ class TestBreadcrumb:
         rc, out, _ = run_manage(research_dir, "investigate-next")
         assert rc == 0
         state = json.loads(out)
-        assert "breadcrumb" in state
-        assert "[Understand" in state["breadcrumb"]
+        assert "breadcrumb" in state["data"]
+        assert "[Understand" in state["data"]["breadcrumb"]
 
     def test_divide_breadcrumb(self, research_dir):
         """investigate-next includes breadcrumb for divide phase."""
@@ -1854,7 +1883,7 @@ class TestBreadcrumb:
         rc, out, _ = run_manage(research_dir, "investigate-next")
         assert rc == 0
         state = json.loads(out)
-        assert "[Divide]" in state["breadcrumb"]
+        assert "[Divide]" in state["data"]["breadcrumb"]
 
     def test_breadcrumb_includes_north_star(self, research_dir):
         """Breadcrumb includes north star title when .north-star.md exists."""
@@ -1864,7 +1893,7 @@ class TestBreadcrumb:
         rc, out, _ = run_manage(research_dir, "investigate-next")
         assert rc == 0
         state = json.loads(out)
-        assert "Topology-preserving" in state["breadcrumb"]
+        assert "Topology-preserving" in state["data"]["breadcrumb"]
 
 
 class TestValidatePaste:
@@ -1984,7 +2013,7 @@ class TestCmdNextArbiterConfidence:
         import json
 
         state = json.loads(out)
-        assert state.get("confidence") == "high", f"Expected 'high' but got {state.get('confidence')}"
+        assert state["data"].get("confidence") == "high", f"Expected 'high' but got {state['data'].get('confidence')}"
 
 
 class TestScaffoldClaimMetadata:
@@ -2076,12 +2105,14 @@ class TestAutonomyConfig:
     """Test autonomy-config CLI command."""
 
     def test_autonomy_config_outputs_json(self, research_dir):
-        """autonomy-config outputs valid JSON with mode and checkpoint_at."""
+        """autonomy-config outputs valid JSON envelope with mode and checkpoint_at."""
         rc, out, _ = run_manage(research_dir, "autonomy-config")
         assert rc == 0, f"autonomy-config failed: {out}"
         import json
 
-        result = json.loads(out)
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        result = payload["data"]
         assert result["mode"] == "checkpoints"
         assert "understand" in result["checkpoint_at"]
 
@@ -2095,7 +2126,9 @@ class TestAutonomyConfig:
 
         rc, out, _ = run_manage(research_dir, "autonomy-config")
         assert rc == 0, f"autonomy-config failed: {out}"
-        result = json.loads(out)
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        result = payload["data"]
         assert result["mode"] == "yolo"
         assert "understand" in result["checkpoint_at"]
 
@@ -2108,8 +2141,8 @@ class TestCmdDashboard:
         rc, out, _ = run_manage(research_dir, "dashboard")
         assert rc == 0
         result = json.loads(out[out.find("{") :])
-        assert result["init"]["status"] == "missing_workspace"
-        assert result["init"]["workspace_exists"] is False
+        assert result["data"]["init"]["status"] == "missing_workspace"
+        assert result["data"]["init"]["workspace_exists"] is False
 
     def test_reports_init_discussion_state_without_north_star(self, research_dir):
         import json
@@ -2117,10 +2150,10 @@ class TestCmdDashboard:
         rc, out, _ = run_manage(research_dir, "dashboard")
         assert rc == 0
         result = json.loads(out)
-        assert result["init"]["status"] == "discussion_in_progress"
-        assert result["init"]["north_star_locked"] is False
-        assert result["preferences"]["workflow_autonomy"] == "checkpoints"
-        assert result["preferences"]["sidecars"]["deep-thinker"] == "ask"
+        assert result["data"]["init"]["status"] == "discussion_in_progress"
+        assert result["data"]["init"]["north_star_locked"] is False
+        assert result["data"]["preferences"]["workflow_autonomy"] == "checkpoints"
+        assert result["data"]["preferences"]["sidecars"]["deep-thinker"] == "ask"
 
     def test_reports_ready_for_claims_after_north_star_is_locked(self, research_dir):
         import json
@@ -2131,10 +2164,10 @@ class TestCmdDashboard:
         rc, out, _ = run_manage(research_dir, "dashboard")
         assert rc == 0
         result = json.loads(out)
-        assert result["init"]["north_star_locked"] is True
-        assert result["init"]["status"] in {"ready_for_claims", "north_star_locked"}
-        assert result["patch_status"]["current_version"]
-        assert result["warnings"] == []
+        assert result["data"]["init"]["north_star_locked"] is True
+        assert result["data"]["init"]["status"] in {"ready_for_claims", "north_star_locked"}
+        assert result["data"]["patch_status"]["current_version"]
+        assert result["data"]["warnings"] == []
 
     def test_reports_stale_patch_status_when_claim_version_lags(self, research_dir):
         import json
@@ -2157,10 +2190,10 @@ class TestCmdDashboard:
         rc, out, _ = run_manage(research_dir, "dashboard")
         assert rc == 0
         result = json.loads(out)
-        assert result["patch_status"]["stale_claim_count"] == 1
-        assert result["patch_status"]["needs_review"][0]["id"] == "h1-claim"
-        assert result["warnings"][0]["code"] == "north_star_drift"
-        assert result["warnings"][0]["count"] == 1
+        assert result["data"]["patch_status"]["stale_claim_count"] == 1
+        assert result["data"]["patch_status"]["needs_review"][0]["id"] == "h1-claim"
+        assert result["data"]["warnings"][0]["code"] == "north_star_drift"
+        assert result["data"]["warnings"][0]["count"] == 1
 
     def test_reports_active_claim_dispatch_lifecycle(self, research_dir):
         import json
@@ -2182,7 +2215,7 @@ class TestCmdDashboard:
         rc, out, _ = run_manage(research_dir, "dashboard")
         assert rc == 0
         result = json.loads(out)
-        lifecycle = result["dispatch_lifecycle"]
+        lifecycle = result["data"]["dispatch_lifecycle"]
         assert lifecycle["claim"] == "claims/claim-1-test"
         assert lifecycle["latest"]["action"] == "dispatch"
         assert lifecycle["latest"]["status"] == "waiting_result"
@@ -2211,11 +2244,11 @@ class TestCmdDashboard:
         rc, out, _ = run_manage(research_dir, "dashboard")
         assert rc == 0
         result = json.loads(out)
-        lifecycle = result["dispatch_lifecycle"]
+        lifecycle = result["data"]["dispatch_lifecycle"]
         assert lifecycle["latest"]["status"] == "ready_to_send"
         assert lifecycle["outstanding"][0]["status"] == "ready_to_send"
         assert lifecycle["stale"] == []
-        overview = result["dispatch_overview"]
+        overview = result["data"]["dispatch_overview"]
         assert overview["ready_to_send_claim_count"] == 1
         assert overview["ready_to_send_handoff_count"] == 1
         assert overview["ready_to_send_claims"][0]["claim"] == "claims/claim-1-test"
@@ -2260,14 +2293,14 @@ class TestCmdDashboard:
         rc, out, _ = run_manage(research_dir, "dashboard")
         assert rc == 0
         result = json.loads(out)
-        lifecycle = result["dispatch_lifecycle"]
+        lifecycle = result["data"]["dispatch_lifecycle"]
         assert lifecycle["stale"][0]["agent"] == "architect"
         assert lifecycle["stale"][0]["status"] == "stale"
-        overview = result["dispatch_overview"]
+        overview = result["data"]["dispatch_overview"]
         assert overview["stale_claim_count"] == 1
         assert overview["stale_handoff_count"] == 1
         assert overview["stale_claims"][0]["claim"] == "claims/claim-1-test"
-        warning = next(w for w in result["warnings"] if w["code"] == "dispatch_handoff_stale")
+        warning = next(w for w in result["data"]["warnings"] if w["code"] == "dispatch_handoff_stale")
         assert warning["count"] == 1
         assert warning["claim_count"] == 1
         assert warning["claims"][0]["claim"] == "claims/claim-1-test"
@@ -2327,14 +2360,14 @@ class TestCmdDashboard:
         rc, out, _ = run_manage(research_dir, "dashboard")
         assert rc == 0
         result = json.loads(out)
-        assert result["dispatch_lifecycle"]["claim"] == "claims/claim-1-active"
-        assert result["dispatch_lifecycle"]["stale"] == []
-        overview = result["dispatch_overview"]
+        assert result["data"]["dispatch_lifecycle"]["claim"] == "claims/claim-1-active"
+        assert result["data"]["dispatch_lifecycle"]["stale"] == []
+        overview = result["data"]["dispatch_overview"]
         assert overview["stale_claim_count"] == 1
         assert overview["waiting_result_claim_count"] == 1
         assert overview["stale_claims"][0]["claim"] == "claims/claim-2-stale"
         assert overview["waiting_result_claims"][0]["claim"] == "claims/claim-1-active"
-        warning = next(w for w in result["warnings"] if w["code"] == "dispatch_handoff_stale")
+        warning = next(w for w in result["data"]["warnings"] if w["code"] == "dispatch_handoff_stale")
         assert warning["claim_count"] == 1
         assert warning["claims"][0]["claim"] == "claims/claim-2-stale"
 
@@ -2350,7 +2383,7 @@ class TestCmdDashboard:
         rc, out, _ = run_manage(research_dir, "dashboard")
         assert rc == 0
         result = json.loads(out)
-        assert result["claims"].get("pending") == 1
+        assert result["data"]["claims"].get("pending") == 1
 
     def test_excludes_verdict_artifacts_from_claim_counts(self, research_dir):
         import json
@@ -2368,7 +2401,7 @@ class TestCmdDashboard:
         rc, out, _ = run_manage(research_dir, "dashboard")
         assert rc == 0
         result = json.loads(out)
-        assert result["claims"].get("active") == 1
+        assert result["data"]["claims"].get("active") == 1
 
     def test_reports_assumption_blocked_claims(self, research_dir):
         import json
@@ -2388,7 +2421,7 @@ class TestCmdDashboard:
         rc, out, _ = run_manage(research_dir, "dashboard")
         assert rc == 0
         result = json.loads(out)
-        assert result["blocked"] == [{"id": "h1-claim", "blocked_by": "a1"}]
+        assert result["data"]["blocked"] == [{"id": "h1-claim", "blocked_by": "a1"}]
 
     def test_last_verdict_ignores_non_claim_falsify_events(self, research_dir):
         import json
@@ -2405,7 +2438,7 @@ class TestCmdDashboard:
         rc, out, _ = run_manage(research_dir, "dashboard")
         assert rc == 0
         result = json.loads(out)
-        assert result["last_verdict"] is None
+        assert result["data"]["last_verdict"] is None
 
 
 class TestExtendDebate:

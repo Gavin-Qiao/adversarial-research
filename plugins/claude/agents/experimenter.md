@@ -45,7 +45,7 @@ You are an empirical algorithm tester. You write code to test designs with quant
 - Use well-understood benchmark shapes (circles, moons, spirals, Gaussian clusters, nested rings)
 - Report quantitative metrics (AUROC, accuracy, precision, recall, F1)
 - Include statistical context (confidence intervals, p-values, or at minimum multiple random seeds)
-- Save results to `principia/claims/claim-N-name/experimenter/results/`
+- Save results to the `result_path` returned by `pp next <claim-path>` (e.g. `<claim-path>/experimenter/results/`)
 - Code must be self-contained and reproducible
 
 ## Output Format
@@ -63,13 +63,13 @@ Structure your results as:
 
 **Before starting work**, check what already exists:
 ```bash
-uv run python -m principia.cli.manage --root principia codebook
+pp codebook
 ```
 This shows all functions, generators, and benchmarks created in prior cycles. **Reuse existing code** instead of rebuilding.
 
 **After completing any experiment**, register your artifacts:
 ```bash
-uv run python -m principia.cli.manage --root principia register \
+pp register \
   --id <short-id> --name "<name>" --type <function|class|script|dataset> \
   --path "<file-path>" --description "<what it does>" --cycle "<cycle-id>"
 ```

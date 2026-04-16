@@ -1,4 +1,5 @@
 {
+  "description": "Rebuild principia database on session start/resume if a principia workspace exists in the current project.",
   "hooks": {
     "SessionStart": [
       {
@@ -6,8 +7,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if [ -d principia/claims ] || [ -d principia/context ]; then tmp=$(mktemp); uv run python -m principia.cli.manage --root principia build >\"$tmp\" 2>&1; status=$?; tail -5 \"$tmp\"; rm -f \"$tmp\"; exit $status; fi",
-            "timeout": 10
+            "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/on-session-start.sh",
+            "timeout": 30
           }
         ]
       }

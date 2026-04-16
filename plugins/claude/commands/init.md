@@ -1,10 +1,14 @@
 ---
-name: init
-description: Initialize a new Principia repository workspace. Use when the user wants to start a new Principia project, set up the principia directory structure, or bootstrap the system.
-argument-hint: [project-title]
+description: Initialize a new Principia workspace — inspect the repo, guide the user through the north star, and bootstrap the directory + DB.
+argument-hint: "[project-title]"
 allowed-tools:
   - Bash
   - Write
+  - Read
+  - Glob
+  - Grep
+  - Agent
+  - AskUserQuestion
 ---
 
 # Initialize Principia Project
@@ -36,18 +40,18 @@ Bootstrap a new principia workspace in the current working directory.
 
 4. Run the initial build:
    ```bash
-   uv run python -m principia.cli.manage --root principia build
+   ${CLAUDE_PLUGIN_ROOT}/scripts/pp build
    ```
 
 5. Generate initial PROGRESS.md and FOUNDATIONS.md:
    ```bash
-   uv run python -m principia.cli.manage --root principia status
-   uv run python -m principia.cli.manage --root principia assumptions
+   ${CLAUDE_PLUGIN_ROOT}/scripts/pp status
+   ${CLAUDE_PLUGIN_ROOT}/scripts/pp assumptions
    ```
 
-6. Add `principia/.db/` to `.gitignore` if not already present.
+6. Add the database directory to `.gitignore`: run `pp paths --json` and add the `db` path to `.gitignore` if not already present.
 
-7. Save default config to `principia/.config.md`. This file controls **agent dispatch mode only** (internal = subagent, external = prompt file for copy/paste). It does NOT control workflow behavior -- that's in `config/orchestration.yaml`.
+7. Save default config to `principia/.config.md`. This file controls **agent dispatch mode only** (internal = subagent, external = prompt file for copy/paste). It does NOT control workflow behavior — that's in `config/orchestration.yaml`.
    ```markdown
    # Design Configuration
 

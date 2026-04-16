@@ -1,23 +1,13 @@
 ---
-name: status
-description: Generate the design progress and assumptions report. Use when the user wants to see the current state of the design, what's proven, what's disproven, what's next, or the assumption registry.
-allowed-tools:
-  - Bash
-  - Read
+description: Regenerate principia/PROGRESS.md from the current database state.
+allowed-tools: Bash
 ---
 
-# Design Status
+Rebuild PROGRESS.md to reflect the current workspace state.
 
-Regenerate PROGRESS.md and FOUNDATIONS.md from the current state of all design files.
+Run: !`${CLAUDE_PLUGIN_ROOT}/scripts/pp status`
 
-## Usage
-
-```bash
-uv run python -m principia.cli.manage --root principia status
-uv run python -m principia.cli.manage --root principia assumptions
-```
-
-Then read and present the key sections from `principia/PROGRESS.md`:
+Then read and present the key sections from PROGRESS.md:
 - **Current blockers**: Active nodes blocking pending work
 - **What is proven**: Claims that have been established
 - **What is disproven**: Claims that have been refuted

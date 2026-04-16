@@ -1,20 +1,14 @@
 ---
-name: validate
-description: Check design log integrity. Use when the system needs to verify the design database, check for broken references, cycles, or invalid metadata.
-user-invocable: false
-allowed-tools:
-  - Bash
+description: Run integrity checks on the principia workspace (frontmatter, referential integrity, cycles).
+argument-hint: "[--json]"
+allowed-tools: Bash
 ---
 
-# Validate Design Log
+Check the workspace for broken references, invalid frontmatter, and dependency cycles.
 
-Run integrity checks on the design database.
+Run: !`${CLAUDE_PLUGIN_ROOT}/scripts/pp validate $ARGUMENTS`
 
-## Usage
-
-```bash
-uv run python -m principia.cli.manage --root principia validate
-```
+Summarize errors and warnings for the user. If `--json` was requested, preserve the structured output.
 
 ## Checks performed
 

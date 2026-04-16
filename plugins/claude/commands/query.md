@@ -1,20 +1,14 @@
 ---
-name: query
-description: Run SQL queries against the design database. Use when the user wants to query nodes, edges, or the audit ledger directly.
-argument-hint: "<SQL query>"
-allowed-tools:
-  - Bash
+description: Run a SQL query against the principia database.
+argument-hint: "\"<sql>\""
+allowed-tools: Bash
 ---
 
-# Query Design Database
+Run an SQL query against the principia database and report the result.
 
-Run read-only SQL against the design SQLite database.
+Run: !`${CLAUDE_PLUGIN_ROOT}/scripts/pp query "$1"`
 
-## Usage
-
-```bash
-uv run python -m principia.cli.manage --root principia query "$ARGUMENTS"
-```
+Format the result as a readable table for the user.
 
 ## Available tables
 

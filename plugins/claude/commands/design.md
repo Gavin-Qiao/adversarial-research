@@ -1,7 +1,6 @@
 ---
-name: design
-description: Run a full principia design process through 4 phases (Understand > Divide > Test > Synthesize). Takes an algorithm design principle, uses the investigation state machine to drive each phase. Use when the user wants comprehensive automated algorithm design from first principles.
-argument-hint: "<algorithm design principle> [--quick]"
+description: Run the full 4-phase principia design pipeline (Understand → Divide → Test → Synthesize) from a principle.
+argument-hint: "\"<principle>\" [--quick]"
 allowed-tools:
   - Bash
   - Read
@@ -27,7 +26,7 @@ If the user's input contains `--quick` or the question is a single focused claim
 1. **Understand**: Skip Research (no scout). Brief discussion (1-2 questions max). Inspection runs.
 2. **Divide**: Scaffold single claim directly (skip synthesizer decomposition):
    ```bash
-   uv run python -m principia.cli.manage --root principia scaffold claim <slugified-question>
+   ${CLAUDE_PLUGIN_ROOT}/scripts/pp scaffold claim <slugified-question>
    ```
 3. **Test**: 1 debate round, then experimenter, then verdict.
 4. **Synthesize**: Generate RESULTS.md directly.
@@ -36,16 +35,16 @@ Use `investigate-next --quick` throughout.
 
 ## Steps (Full Mode)
 
-0. **Pre-check**: If `principia/` directory does not exist, tell the user: "No Principia project found. Run `/principia:init` first to set up the project structure."
+0. **Pre-check**: If no principia workspace exists, tell the user: "No Principia project found. Run `/principia:init` first to set up the project structure."
 
 1. **Initialize** (if not already done):
    ```bash
-   uv run python -m principia.cli.manage --root principia build
+   ${CLAUDE_PLUGIN_ROOT}/scripts/pp build
    ```
 
 2. **Get the current state**:
    ```bash
-   uv run python -m principia.cli.manage --root principia investigate-next
+   ${CLAUDE_PLUGIN_ROOT}/scripts/pp investigate-next
    ```
    Print the `breadcrumb` field to show the user where they are.
 
@@ -90,7 +89,7 @@ The state includes a `substeps` list of remaining sub-steps. Handle each in orde
 - **Checkpoints mode**: Ask the user: "Ready to decompose into testable claims, or want to research more?" If user wants more research, dispatch `@scout` again.
 - **Yolo mode**: Report "[Understand] Complete. Proceeding to Divide." and continue automatically.
 
-When ready, run `investigate-next` to get the next state.
+When ready, run `${CLAUDE_PLUGIN_ROOT}/scripts/pp investigate-next` to get the next state.
 
 ### Phase 2: Divide
 
@@ -99,7 +98,7 @@ When ready, run `investigate-next` to get the next state.
 - Tell synthesizer to produce `blueprint.md` with a claim registry (3-7 claims)
 - Verify registry parses:
   ```bash
-  uv run python -m principia.cli.manage --root principia parse-framework
+  ${CLAUDE_PLUGIN_ROOT}/scripts/pp parse-framework
   ```
 - If decomposition involves hard math, dispatch `@deep-thinker`, then re-dispatch `@synthesizer` with the analysis
 - Report: `[Divide] Decomposing into testable claims...`
@@ -107,10 +106,10 @@ When ready, run `investigate-next` to get the next state.
 **Action: `scaffold`**
 - For each claim in the `claims` list, scaffold:
   ```bash
-  uv run python -m principia.cli.manage --root principia scaffold claim <claim-id>
+  ${CLAUDE_PLUGIN_ROOT}/scripts/pp scaffold claim <claim-id>
   ```
 - Write the claim statement to `claim.md`
-- After scaffolding, run `uv run python -m principia.cli.manage --root principia build`
+- After scaffolding, run `${CLAUDE_PLUGIN_ROOT}/scripts/pp build`
 - For each claim, show the user: claim statement, maturity, dependencies, falsification criterion
 - **Checkpoints mode**: Ask: "Investigate deeper (spawn sub-investigation) or treat as atomic?"
   - If deeper: spawn child principia (see Recursive Structure below)
@@ -120,7 +119,7 @@ When ready, run `investigate-next` to get the next state.
 **Action: `scaffold_quick`** (quick mode only)
 - Scaffold a single claim directly from the principle:
   ```bash
-  uv run python -m principia.cli.manage --root principia scaffold claim <slugified-principle> \
+  ${CLAUDE_PLUGIN_ROOT}/scripts/pp scaffold claim <slugified-principle> \
     --statement "<principle>" --falsification "<user-provided or auto-generated>"
   ```
 - Write the principle as the claim statement
@@ -133,19 +132,19 @@ When ready, run `investigate-next` to get the next state.
 
 **Action: `test_claim`**
 - The state includes `cycle` (claim name) and `sub_unit` (claim path)
-- Read `.config.md` to check dispatch mode for the conductor
+- Get config path via `${CLAUDE_PLUGIN_ROOT}/scripts/pp paths --json` and read the `config` field to check dispatch mode for the conductor
 - If **internal**: Dispatch `@conductor` with the claim path, claim statement, and reference to `config/protocol.md`
-- If **external**: Generate conductor prompt with `uv run python -m principia.cli.manage --root principia prompt <path>` and tell user to paste result
-- After conductor completes, call `investigate-next` again (it will return `record_verdict`)
+- If **external**: Generate conductor prompt with `${CLAUDE_PLUGIN_ROOT}/scripts/pp prompt <path>` and tell user to paste result
+- After conductor completes, call `${CLAUDE_PLUGIN_ROOT}/scripts/pp investigate-next` again (it will return `record_verdict`)
 - Report: `[Test > <claim>] Dispatching @conductor`
 
 **Action: `record_verdict`**
 - Run post-verdict bookkeeping:
   ```bash
-  uv run python -m principia.cli.manage --root principia post-verdict <path>
+  ${CLAUDE_PLUGIN_ROOT}/scripts/pp post-verdict <path>
   ```
 - Report the verdict to the user with breadcrumb
-- Call `investigate-next` again — if more claims remain, it returns the next `test_claim`
+- Call `${CLAUDE_PLUGIN_ROOT}/scripts/pp investigate-next` again — if more claims remain, it returns the next `test_claim`
 - **Continue the loop** until `investigate-next` returns `synthesize` or `complete`
 - Report: `[Test > <claim>] Verdict: <VERDICT> (confidence: <level>)`
 
@@ -162,54 +161,67 @@ When `investigate-next` returns a claim with `complete_partial` or `complete_inc
 
 **Action: `synthesize`**
 - The state includes `completed_cycles` and `proven_claims`
+- Discover workspace output paths:
+  ```bash
+  ${CLAUDE_PLUGIN_ROOT}/scripts/pp paths --json
+  ```
+  Extract `synthesis` and `composition` from the `data` field of the JSON response.
 - If proven claims exist:
   1. Dispatch `@synthesizer` with all verdicts, debate transcripts, experimental results, and north star
-  2. Synthesizer produces `principia/composition.md` (algorithm) and `principia/synthesis.md` (cross-claim analysis)
+  2. Instruct synthesizer to write the algorithm to the `composition` path and the cross-claim analysis to the `synthesis` path
   3. If conflicting verdicts need mathematical reconciliation, dispatch `@deep-thinker`, then re-dispatch `@synthesizer`
-- **Quick mode**: Dispatch `@synthesizer` to produce only `principia/synthesis.md` (skip `composition.md`)
+- **Quick mode**: Dispatch `@synthesizer` to write only to the `synthesis` path (skip `composition`)
 - If no proven claims:
-  1. Dispatch `@synthesizer` to produce only `principia/synthesis.md` (analysis of what was disproven and why)
+  1. Dispatch `@synthesizer` to write only to the `synthesis` path (analysis of what was disproven and why)
 - Generate RESULTS.md:
   ```bash
-  uv run python -m principia.cli.manage --root principia results
+  ${CLAUDE_PLUGIN_ROOT}/scripts/pp results
   ```
-- Read `principia/RESULTS.md` and present the final design to the user
+- Get the results file path and read it:
+  ```bash
+  ${CLAUDE_PLUGIN_ROOT}/scripts/pp paths --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["results"])'
+  ```
+  Read the file at that path and present the final design to the user.
 - Report: `[Synthesize] Composing final design from N proven claims...`
 
 **Action: `complete`**
-- Read and present `principia/RESULTS.md`
+- Get the results file path:
+  ```bash
+  ${CLAUDE_PLUGIN_ROOT}/scripts/pp paths --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["results"])'
+  ```
+  Read the file at that path and present it to the user.
 - Report: `[Complete] Design process finished. See RESULTS.md.`
 
 ### Autonomy
 
 At the start of the design process, check the autonomy mode:
 ```bash
-uv run python -m principia.cli.manage --root principia autonomy-config
+${CLAUDE_PLUGIN_ROOT}/scripts/pp autonomy-config
 ```
 This returns JSON: `{"mode": "checkpoints", "checkpoint_at": [...]}`. Cache the result for the session.
 
 - **checkpoints** (default): At each phase transition listed in `checkpoint_at`, pause and ask the user: "[Phase] complete. Continue to [next phase]?" Show a summary of what was accomplished. Also ask for user input on claim complexity and non-terminal verdicts.
 - **yolo**: Report what happened at each phase transition but continue automatically without waiting for user input. Treat all claims as atomic. Accept partial/inconclusive verdicts and move on.
 
-Throughout this skill, actions marked "Checkpoints mode" or "Yolo mode" depend on this setting. To change mode, edit `config/orchestration.yaml` and set `autonomy.mode` to `yolo`.
+Throughout this command, actions marked "Checkpoints mode" or "Yolo mode" depend on this setting. To change mode, edit `config/orchestration.yaml` and set `autonomy.mode` to `yolo`.
 
-4. **After each action**, run `uv run python -m principia.cli.manage --root principia investigate-next` again and go to step 3. Continue until `complete`.
+4. **After each action**, run `${CLAUDE_PLUGIN_ROOT}/scripts/pp investigate-next` again and go to step 3. Continue until `complete`.
 
 ## Dispatch Mode
 
-Read `principia/.config.md` before each agent dispatch. For each agent:
+Get the config file path via `${CLAUDE_PLUGIN_ROOT}/scripts/pp paths --json` (use the `config` field) and read it before each agent dispatch. For each agent:
 - **internal**: Dispatch as Claude Code subagent via `@agent-name`
-- **external**: Run `uv run python -m principia.cli.manage --root principia prompt <path>` to generate a self-contained prompt. Tell user: "Prompt written to `<path>`. Copy it to your preferred tool, then paste the result back."
+- **external**: Run `${CLAUDE_PLUGIN_ROOT}/scripts/pp prompt <path>` to generate a self-contained prompt. Tell user: "Prompt written to `<path>`. Copy it to your preferred tool, then paste the result back."
 
 When user pastes a result for external dispatch:
-1. Validate with: `uv run python -m principia.cli.manage --root principia validate-paste --agent <name> --file <path>`
+1. Validate with: `${CLAUDE_PLUGIN_ROOT}/scripts/pp validate-paste --agent <name> --file <path>`
 2. If valid: save to the correct `result_path` and continue
 3. If invalid: tell the user what's wrong and ask to re-paste
 
 ## Recursive Structure
 
 When a claim in the Divide phase is marked as complex (user chooses "investigate deeper"):
-1. Create a child investigation: `principia/claims/claim-N-name/principia/`
+1. Create a child investigation: `<claim-path>/principia/`
 2. Copy parent's `.north-star.md` and `.context.md` into the child `principia/` directory
 3. The child runs through all 4 phases independently
 4. Child's verdict feeds back into parent's Test phase for that claim
@@ -226,7 +238,7 @@ After each state transition, output the breadcrumb from the JSON state:
 ## Notes
 
 - The conductor follows `config/protocol.md` for routing rules
-- All dispatches are logged via `uv run python -m principia.cli.manage --root principia log-dispatch`
+- All dispatches are logged via `${CLAUDE_PLUGIN_ROOT}/scripts/pp log-dispatch`
 - A clean disproval is a valid, productive result
 - Deep Thinker is available in ALL phases but only for specific mathematical/theoretical questions
 - Scout and Experimenter are available in Understand and Test phases only

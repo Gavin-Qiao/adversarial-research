@@ -41,6 +41,20 @@ def _check_path_containment(sub_path: str) -> None:
         sys.exit(1)
 
 
+def emit_envelope(data: Any, warnings: list[str] | None = None) -> None:
+    """Emit the canonical JSON envelope to stdout.
+
+    All public commands that produce machine-readable output route through
+    this helper so the contract envelope shape stays in one place.
+    """
+    payload = {
+        "schema_version": 1,
+        "data": data,
+        "warnings": warnings or [],
+    }
+    print(json.dumps(payload, indent=2))
+
+
 def _primary_claim_file(target: str | os.PathLike[str]) -> Path:
     """Return the main claim document for a target directory.
 
@@ -476,7 +490,7 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
         "node_id": node_id,
         "changes": changes,
     }
-    print(json.dumps(result, indent=2))
+    emit_envelope(result)
 
 
 # ---------------------------------------------------------------------------
@@ -636,13 +650,13 @@ def cmd_query(args: argparse.Namespace) -> None:
 
     if not rows:
         if getattr(args, "json", False):
-            print("[]")
+            emit_envelope([])
         else:
             print("(no results)")
         return
 
     if getattr(args, "json", False):
-        print(json.dumps([dict(r) for r in rows], indent=2))
+        emit_envelope([dict(r) for r in rows])
         return
 
     # Print as table
@@ -694,7 +708,7 @@ def cmd_list(args: argparse.Namespace) -> None:
     rows = conn.execute(sql, params).fetchall()
 
     if getattr(args, "json", False):
-        print(json.dumps([dict(r) for r in rows], indent=2))
+        emit_envelope([dict(r) for r in rows])
         return
 
     if not rows:
@@ -765,7 +779,7 @@ def _resolve_workspace_root(root: Path | None = None) -> Path:
 
 
 def _load_agent_instructions(agent: str) -> str:
-    agent_file = _cfg.PLUGIN_ROOT / "agents" / f"{agent}.md"
+    agent_file = _cfg.CLAUDE_PLUGIN_ROOT / "agents" / f"{agent}.md"
     if not agent_file.exists():
         return ""
     return get_body(agent_file.read_text(encoding="utf-8"))
@@ -1190,11 +1204,14 @@ def cmd_dispatch_log(args: argparse.Namespace) -> None:
     rows = get_dispatch_log_payload(cycle=args.cycle)
 
     if not rows:
-        print("No dispatches logged.")
+        if args.json:
+            emit_envelope([])
+        else:
+            print("No dispatches logged.")
         return
 
     if args.json:
-        print(json.dumps(rows, indent=2))
+        emit_envelope(rows)
         return
 
     print(f"{'Timestamp':<28} {'Cycle':<25} {'Agent':<12} {'Action':<16} {'Round':<6} Details")
@@ -1216,7 +1233,7 @@ def cmd_next(args: argparse.Namespace) -> None:
     sub_path = args.path
     if sub_path != "auto":
         _check_path_containment(sub_path)
-    print(json.dumps(get_next_payload(sub_path), indent=2))
+    emit_envelope(get_next_payload(sub_path))
 
 
 def cmd_packet(args: argparse.Namespace) -> None:
@@ -1248,14 +1265,14 @@ def cmd_waves(args: argparse.Namespace) -> None:
     waves = compute_waves(_cfg.RESEARCH_DIR)
     if not waves:
         if getattr(args, "json", False):
-            print("[]")
+            emit_envelope([])
         else:
             print("No nodes in database. Run 'build' first.")
         return
 
     if getattr(args, "json", False):
         out = [[dict(n) for n in wave] for wave in waves]
-        print(json.dumps(out, indent=2))
+        emit_envelope(out)
         return
 
     for i, wave in enumerate(waves, 1):
@@ -1280,7 +1297,7 @@ def cmd_investigate_next(args: argparse.Namespace) -> None:
         config["debate_loop"] = {**config.get("debate_loop", {}), "max_rounds": 1}
     state = detect_investigation_state(_cfg.RESEARCH_DIR, config, quick=quick)
     state["breadcrumb"] = _format_investigation_breadcrumb(state, _cfg.RESEARCH_DIR)
-    print(json.dumps(state, indent=2))
+    emit_envelope(state)
 
 
 def cmd_parse_framework(args: argparse.Namespace) -> None:
@@ -1293,7 +1310,7 @@ def cmd_parse_framework(args: argparse.Namespace) -> None:
         print("No claim registry found in blueprint.md.")
         print("Ensure the synthesizer included a ```yaml block with # CLAIM_REGISTRY.", file=sys.stderr)
         sys.exit(1)
-    print(json.dumps(claims, indent=2))
+    emit_envelope(claims)
 
 
 def cmd_autonomy_config(args: argparse.Namespace) -> None:
@@ -1304,7 +1321,7 @@ def cmd_autonomy_config(args: argparse.Namespace) -> None:
     repo_config = read_repo_config(_cfg.RESEARCH_DIR)
     if repo_config.get("workflow_autonomy") in ("checkpoints", "yolo"):
         result["mode"] = repo_config["workflow_autonomy"]
-    print(json.dumps(result))
+    emit_envelope(result)
 
 
 def _build_init_status(workspace_exists: bool, research_root: Path, inv_state: dict[str, Any]) -> dict[str, object]:
@@ -1644,7 +1661,7 @@ def get_dashboard_payload(root: Path | None = None) -> dict[str, object]:
 
 def cmd_dashboard(args: argparse.Namespace) -> None:
     """Single-view control panel: phase, active claim, last verdict, blockers, config."""
-    print(json.dumps(get_dashboard_payload(root=_cfg.RESEARCH_DIR), indent=2))
+    emit_envelope(get_dashboard_payload(root=_cfg.RESEARCH_DIR))
 
 
 def cmd_reopen(args: argparse.Namespace) -> None:
@@ -1822,3 +1839,78 @@ def cmd_extend_debate(args: argparse.Namespace) -> None:
     override_file = target / ".max_rounds_override"
     override_file.write_text(str(args.to), encoding="utf-8")
     print(f"Debate extended to {args.to} rounds for {args.path}")
+
+
+# ---------------------------------------------------------------------------
+# Discovery commands (paths, roles, phases, schema)
+# ---------------------------------------------------------------------------
+
+
+def cmd_paths(args: argparse.Namespace) -> None:
+    """Emit workspace path layout as versioned JSON."""
+    data = {
+        "root": str(_cfg.RESEARCH_DIR),
+        "db": str(_cfg.DB_PATH),
+        "claims_dir": str(_cfg.RESEARCH_DIR / "claims"),
+        "context_dir": str(_cfg.CONTEXT_DIR),
+        "progress": str(_cfg.PROGRESS_PATH),
+        "foundations": str(_cfg.FOUNDATIONS_PATH),
+        "config": str(_cfg.RESEARCH_DIR / ".config.md"),
+        "results": str(_cfg.RESEARCH_DIR / "RESULTS.md"),
+        "synthesis": str(_cfg.RESEARCH_DIR / "synthesis.md"),
+        "composition": str(_cfg.RESEARCH_DIR / "composition.md"),
+    }
+    emit_envelope(data)
+
+
+def cmd_roles(args: argparse.Namespace) -> None:
+    """Emit the role registry from orchestration config as JSON."""
+    from .orchestration import load_config
+
+    cfg = load_config(_cfg.DEFAULT_ORCH_CONFIG)
+    roles_data = []
+    for role in cfg.get("roles", []):
+        if not isinstance(role, dict):
+            continue
+        entry: dict[str, Any] = {"name": role.get("name")}
+        if "type" in role:
+            entry["type"] = role["type"]
+        # Assign phase from phases mapping
+        for phase_name, phase_spec in cfg.get("phases", {}).items():
+            if isinstance(phase_spec, dict) and role.get("name") in phase_spec.get("roles", []):
+                entry["phase"] = phase_name
+                break
+        roles_data.append(entry)
+    emit_envelope(roles_data)
+
+
+def cmd_phases(args: argparse.Namespace) -> None:
+    """Emit the phase machinery from orchestration config as JSON."""
+    from .orchestration import load_config
+
+    cfg = load_config(_cfg.DEFAULT_ORCH_CONFIG)
+    phases_data = []
+    for phase_name, phase_spec in cfg.get("phases", {}).items():
+        if not isinstance(phase_spec, dict):
+            continue
+        entry: dict[str, Any] = {
+            "name": phase_name,
+            "roles": list(phase_spec.get("roles", [])),
+        }
+        if "exit_condition" in phase_spec:
+            entry["exit_condition"] = phase_spec["exit_condition"]
+        phases_data.append(entry)
+    emit_envelope(phases_data)
+
+
+def cmd_schema(args: argparse.Namespace) -> None:
+    """Emit the frontmatter value sets as JSON."""
+    from .ids import VALID_CONFIDENCES, VALID_MATURITIES, VALID_STATUSES, VALID_TYPES
+
+    data = {
+        "types": sorted(VALID_TYPES),
+        "statuses": sorted(VALID_STATUSES),
+        "maturities": sorted(v for v in VALID_MATURITIES if v is not None),
+        "confidences": sorted(v for v in VALID_CONFIDENCES if v is not None),
+    }
+    emit_envelope(data)

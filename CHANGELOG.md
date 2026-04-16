@@ -4,6 +4,39 @@ All notable changes to this project are documented in this file.
 
 The format is inspired by Keep a Changelog, but organized around the release-note sections used for Principia releases: Features, Changed, Fixes, Docs, Packaging, Upgrade Notes, and Verification.
 
+## 0.5.0 — 2026-04-16 (Claude plugin: v0.5.claude)
+
+This release introduces the **adapter architecture** for the Claude Code plugin bundle. The plugin is now a thin distribution surface over a versioned CLI contract; internal core refactors no longer ripple into plugin files.
+
+### Added
+
+- **`docs/CONTRACT.md`** — stable specification of public CLI operations with input/output schemas, JSON envelope, and versioning rules (contract v1).
+- **Four new core CLI commands**: `paths`, `roles`, `phases`, `schema`. Expose workspace path layout, role registry, phase machinery, and frontmatter value sets so plugin code never hardcodes these.
+- **`schema_version: 1`** envelope on every JSON-emitting command for forward-compatible evolution. `emit_envelope` helper in `principia/core/commands.py` centralizes the shape.
+- **`plugins/claude/scripts/pp`** — single-file bash wrapper; the only plugin file aware of the current CLI shape.
+- **Root `.claude-plugin/marketplace.json`** — repo-level marketplace manifest. Enables `/plugin marketplace add <path>` → `/plugin install principia@principia` as the supported install flow.
+- **`tests/test_contract.py`**, **`tests/plugins/test_claude_wrapper.py`**, **`tests/plugins/test_claude_roles.py`** — contract + wrapper + role-coverage conformance tests.
+- **CI `plugin-smoke` job** — shape checks, decoupling grep audit, wrapper smoke.
+
+### Changed
+
+- **11 skills → 11 commands**. The user-invoked items (`init`, `design`, `step`, `status`, `validate`, `query`, `new`, `scaffold`, `settle`, `falsify`, `impact`) now live as flat `plugins/claude/commands/*.md` files with command-style frontmatter. Invocation pattern is unchanged (`/principia:init` etc.).
+- **Skills trimmed to 2**: `help` (adaptive onboarding) and `methodology` (reference), both now use third-person trigger descriptions and pull live data via `pp`.
+- **SessionStart hook** extracted from inline bash into `hooks/on-session-start.sh`; uses `${CLAUDE_PLUGIN_ROOT}` for portability; timeout 10s → 30s.
+- **`plugins/claude/.claude-plugin/plugin.json`** — version bumped to 0.5.0; added `author.email` and `homepage`.
+
+### Removed
+
+- **`principia/agents/`** and repo-root **`/agents/`** — Claude-shaped agent files consolidated into `plugins/claude/agents/` only. Core Python wheel no longer ships Claude-specific assets.
+- **`agents/*.md`** dropped from `pyproject.toml` package-data.
+- **`plugins/claude/.claude-plugin/marketplace.json`** — legacy nested file replaced by the repo-root manifest.
+
+### Notes
+
+- **Codex bundle (`plugins/codex/`)** is unchanged; verified to have no dependency on the deleted `principia/agents/` directory.
+- **Public GitHub-shorthand install** (`/plugin marketplace add Gavin-Qiao/principia`) remains unsupported until the core Python package is published to PyPI — tracked for a future iteration.
+- **Merge, tag (`v0.5.claude`), and post-merge release actions** are supervisor-owned; the branch commits are the agent-side deliverable.
+
 ## [0.4.0b4] - 2026-04-15
 
 ### Features
