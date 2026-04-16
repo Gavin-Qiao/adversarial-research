@@ -42,9 +42,15 @@ def test_release_metadata_versions_stay_aligned() -> None:
 
     assert f"## [{expected_version}] - 2026-04-15" in Path("CHANGELOG.md").read_text()
     assert f'"version": "{expected_version}"' in Path("plugins/codex/.codex-plugin/plugin.json").read_text()
-    assert f'"version": "{expected_version}"' in Path("plugins/claude/.claude-plugin/plugin.json").read_text()
-    assert f'"version": "{expected_version}"' in Path("plugins/claude/.claude-plugin/marketplace.json").read_text()
     assert f'version = "{expected_version}"' in Path("uv.lock").read_text()
+
+    # The Claude plugin uses its own independent version (bumped to 0.5.0 in T7).
+    # Verify the root marketplace.json and plugin.json agree with each other.
+    import json as _json
+
+    plugin = _json.loads(Path("plugins/claude/.claude-plugin/plugin.json").read_text())
+    root_mkt = _json.loads(Path(".claude-plugin/marketplace.json").read_text())
+    assert plugin["version"] == root_mkt["plugins"][0]["version"]
 
 
 def test_claude_bundle_readme_describes_canonical_surface() -> None:

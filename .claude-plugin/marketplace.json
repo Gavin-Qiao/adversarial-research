@@ -1,0 +1,29 @@
+{
+  "name": "principia",
+  "owner": {
+    "name": "Mohan",
+    "email": "mohan.qiao@mail.concordia.ca"
+  },
+  "metadata": {
+    "description": "Turn a philosophical principle into a working algorithm through rigorous adversarial testing.",
+    "version": "0.5.0"
+  },
+  "plugins": [
+    {
+      "name": "principia",
+      "source": "./plugins/claude",
+      "description": "Decomposes ideas into testable claims, stress-tests each through structured debate and empirical experiments, and composes the surviving pieces into a design.",
+      "version": "0.5.0",
+      "license": "MIT",
+      "keywords": [
+        "algorithm-design",
+        "first-principles",
+        "adversarial-testing",
+        "hypothesis-driven",
+        "multi-agent",
+        "debate",
+        "falsification"
+      ]
+    }
+  ]
+}

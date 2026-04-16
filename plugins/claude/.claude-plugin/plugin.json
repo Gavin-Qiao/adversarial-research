@@ -1,7 +1,7 @@
 {
   "name": "principia",
   "description": "Turn a philosophical principle into a working algorithm through rigorous adversarial testing. Decomposes ideas into testable claims, stress-tests each through structured debate and empirical experiments, and composes the surviving pieces into a design you can build on.",
-  "version": "0.4.0b4",
+  "version": "0.5.0",
   "license": "MIT",
   "keywords": [
     "algorithm-design",
@@ -13,7 +13,9 @@
     "falsification"
   ],
   "author": {
-    "name": "Mohan"
+    "name": "Mohan",
+    "email": "mohan.qiao@mail.concordia.ca"
   },
+  "homepage": "https://github.com/Gavin-Qiao/principia",
   "repository": "https://github.com/Gavin-Qiao/principia"
 }
