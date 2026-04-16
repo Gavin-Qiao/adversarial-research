@@ -49,7 +49,7 @@ Bootstrap a new principia workspace in the current working directory.
    ${CLAUDE_PLUGIN_ROOT}/scripts/pp assumptions
    ```
 
-6. Add `principia/.db/` to `.gitignore` if not already present.
+6. Add the database directory to `.gitignore`: run `pp paths --json` and add the `db` path to `.gitignore` if not already present.
 
 7. Save default config to `principia/.config.md`. This file controls **agent dispatch mode only** (internal = subagent, external = prompt file for copy/paste). It does NOT control workflow behavior — that's in `config/orchestration.yaml`.
    ```markdown

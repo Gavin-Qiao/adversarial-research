@@ -18,12 +18,12 @@ The intended first command is `/principia:init`, which now treats `principia/` a
 
 ## Runtime
 
-The canonical Claude bundle uses the packaged Principia CLI instead of the old root plugin wrapper:
+The canonical Claude bundle uses the `pp` wrapper (in `scripts/pp`) for all core CLI calls:
 
 ```bash
-uv run python -m principia.cli.manage --root principia build
-uv run python -m principia.cli.manage --root principia investigate-next
-uv run python -m principia.cli.manage --root principia next <claim-path>
+pp build
+pp investigate-next
+pp next <claim-path>
 ```
 
 Use `plugins/claude/skills` for workflow commands, `plugins/claude/agents` for orchestration roles, and `plugins/claude/hooks/hooks.json` for session hooks.

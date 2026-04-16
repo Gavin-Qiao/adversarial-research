@@ -221,7 +221,7 @@ When user pastes a result for external dispatch:
 ## Recursive Structure
 
 When a claim in the Divide phase is marked as complex (user chooses "investigate deeper"):
-1. Create a child investigation: `principia/claims/claim-N-name/principia/`
+1. Create a child investigation: `<claim-path>/principia/`
 2. Copy parent's `.north-star.md` and `.context.md` into the child `principia/` directory
 3. The child runs through all 4 phases independently
 4. Child's verdict feeds back into parent's Test phase for that claim

@@ -27,3 +27,61 @@ jobs:
         run: uv run ruff format --check scripts/ tests/
       - name: Type check
         run: uv run --python 3.12 python -m mypy scripts/
+
+  plugin-smoke:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: uv sync --dev
+
+      - name: Plugin shape checks
+        run: |
+          set -euo pipefail
+          test -f .claude-plugin/marketplace.json
+          test -f plugins/claude/.claude-plugin/plugin.json
+          test ! -e plugins/claude/.claude-plugin/marketplace.json
+          test ! -d principia/agents
+          test ! -d agents
+          test -x plugins/claude/scripts/pp
+          test -x plugins/claude/hooks/on-session-start.sh
+          test -f plugins/claude/hooks/hooks.json
+          cmd_count=$(ls plugins/claude/commands/*.md | wc -l)
+          sk_count=$(ls -d plugins/claude/skills/*/ | wc -l)
+          ag_count=$(ls plugins/claude/agents/*.md | wc -l)
+          test "$cmd_count" = "11" || { echo "expected 11 commands, got $cmd_count"; exit 1; }
+          test "$sk_count" = "2"  || { echo "expected 2 skills, got $sk_count"; exit 1; }
+          test "$ag_count" = "8"  || { echo "expected 8 agents, got $ag_count"; exit 1; }
+          echo "plugin shape OK"
+
+      - name: Grep audit — no core internals leaked into plugin prose
+        run: |
+          set -euo pipefail
+          # Exclude the wrapper itself, which legitimately references the CLI.
+          # Use find + -not path to exclude scripts/pp and .claude-plugin/
+          matches=$(grep -rn "manage\.py\|--root principia\|principia/\.db\|principia/claims/" \
+             plugins/claude/ \
+             --exclude-dir=.claude-plugin \
+             --exclude=pp 2>/dev/null || true)
+          if [ -n "$matches" ]; then
+            echo "ERROR: plugin file references core internals. Use pp wrapper instead."
+            echo "$matches"
+            exit 1
+          fi
+          echo "decoupling audit OK"
+
+      - name: Wrapper smoke — paths and roles
+        run: |
+          set -euo pipefail
+          plugins/claude/scripts/pp paths --json | python3 -c \
+            "import json, sys; p=json.load(sys.stdin); assert p['schema_version']==1, p"
+          plugins/claude/scripts/pp roles --json | python3 -c \
+            "import json, sys; p=json.load(sys.stdin); assert p['schema_version']==1, p"
+          echo "wrapper smoke OK"
