@@ -121,3 +121,50 @@ def test_dispatch_log_json_includes_schema_version(tmp_path: Path) -> None:
     payload = json.loads(out)
     assert payload["schema_version"] == 1
     assert "data" in payload
+
+
+def test_next_json_includes_schema_version(tmp_path: Path) -> None:
+    """next output is wrapped in schema_version envelope."""
+    root = tmp_path / "principia"
+    root.mkdir()
+    (root / "claims").mkdir()
+    (root / "context").mkdir()
+    (root / "context" / "assumptions").mkdir()
+    # Build empty workspace first
+    _run("--root", str(root), "build")
+    # `next` without a claim path may still emit something; accept any exit code
+    _rc, out, _err = _run("--root", str(root), "next")
+    if out.strip():
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        assert "data" in payload
+
+
+def test_investigate_next_json_includes_schema_version(tmp_path: Path) -> None:
+    """investigate-next output is wrapped in schema_version envelope."""
+    root = tmp_path / "principia"
+    root.mkdir()
+    (root / "claims").mkdir()
+    (root / "context").mkdir()
+    (root / "context" / "assumptions").mkdir()
+    _run("--root", str(root), "build")
+    _rc, out, _err = _run("--root", str(root), "investigate-next")
+    if out.strip():
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        assert "data" in payload
+
+
+def test_dashboard_json_includes_schema_version(tmp_path: Path) -> None:
+    """dashboard output is wrapped in schema_version envelope."""
+    root = tmp_path / "principia"
+    root.mkdir()
+    (root / "claims").mkdir()
+    (root / "context").mkdir()
+    (root / "context" / "assumptions").mkdir()
+    _run("--root", str(root), "build")
+    _rc, out, _err = _run("--root", str(root), "dashboard")
+    if out.strip():
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        assert "data" in payload

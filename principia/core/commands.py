@@ -1219,7 +1219,7 @@ def cmd_next(args: argparse.Namespace) -> None:
     sub_path = args.path
     if sub_path != "auto":
         _check_path_containment(sub_path)
-    print(json.dumps(get_next_payload(sub_path), indent=2))
+    print(json.dumps({"schema_version": 1, "data": get_next_payload(sub_path), "warnings": []}, indent=2))
 
 
 def cmd_packet(args: argparse.Namespace) -> None:
@@ -1283,7 +1283,7 @@ def cmd_investigate_next(args: argparse.Namespace) -> None:
         config["debate_loop"] = {**config.get("debate_loop", {}), "max_rounds": 1}
     state = detect_investigation_state(_cfg.RESEARCH_DIR, config, quick=quick)
     state["breadcrumb"] = _format_investigation_breadcrumb(state, _cfg.RESEARCH_DIR)
-    print(json.dumps(state, indent=2))
+    print(json.dumps({"schema_version": 1, "data": state, "warnings": []}, indent=2))
 
 
 def cmd_parse_framework(args: argparse.Namespace) -> None:
@@ -1647,7 +1647,8 @@ def get_dashboard_payload(root: Path | None = None) -> dict[str, object]:
 
 def cmd_dashboard(args: argparse.Namespace) -> None:
     """Single-view control panel: phase, active claim, last verdict, blockers, config."""
-    print(json.dumps(get_dashboard_payload(root=_cfg.RESEARCH_DIR), indent=2))
+    payload = get_dashboard_payload(root=_cfg.RESEARCH_DIR)
+    print(json.dumps({"schema_version": 1, "data": payload, "warnings": []}, indent=2))
 
 
 def cmd_reopen(args: argparse.Namespace) -> None:
