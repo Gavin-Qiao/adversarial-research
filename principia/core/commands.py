@@ -1856,6 +1856,9 @@ def cmd_paths(args: argparse.Namespace) -> None:
         "progress": str(_cfg.PROGRESS_PATH),
         "foundations": str(_cfg.FOUNDATIONS_PATH),
         "config": str(_cfg.RESEARCH_DIR / ".config.md"),
+        "results": str(_cfg.RESEARCH_DIR / "RESULTS.md"),
+        "synthesis": str(_cfg.RESEARCH_DIR / "synthesis.md"),
+        "composition": str(_cfg.RESEARCH_DIR / "composition.md"),
     }
     emit_envelope(data)
 

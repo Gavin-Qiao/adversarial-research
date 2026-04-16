@@ -86,6 +86,9 @@ class TestDiscoveryContract:
             "progress",
             "foundations",
             "config",
+            "results",
+            "synthesis",
+            "composition",
         ):
             assert key in payload["data"], f"paths data missing key: {key}"
 

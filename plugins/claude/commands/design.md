@@ -161,22 +161,35 @@ When `investigate-next` returns a claim with `complete_partial` or `complete_inc
 
 **Action: `synthesize`**
 - The state includes `completed_cycles` and `proven_claims`
+- Discover workspace output paths:
+  ```bash
+  ${CLAUDE_PLUGIN_ROOT}/scripts/pp paths --json
+  ```
+  Extract `synthesis` and `composition` from the `data` field of the JSON response.
 - If proven claims exist:
   1. Dispatch `@synthesizer` with all verdicts, debate transcripts, experimental results, and north star
-  2. Synthesizer produces `principia/composition.md` (algorithm) and `principia/synthesis.md` (cross-claim analysis)
+  2. Instruct synthesizer to write the algorithm to the `composition` path and the cross-claim analysis to the `synthesis` path
   3. If conflicting verdicts need mathematical reconciliation, dispatch `@deep-thinker`, then re-dispatch `@synthesizer`
-- **Quick mode**: Dispatch `@synthesizer` to produce only `principia/synthesis.md` (skip `composition.md`)
+- **Quick mode**: Dispatch `@synthesizer` to write only to the `synthesis` path (skip `composition`)
 - If no proven claims:
-  1. Dispatch `@synthesizer` to produce only `principia/synthesis.md` (analysis of what was disproven and why)
+  1. Dispatch `@synthesizer` to write only to the `synthesis` path (analysis of what was disproven and why)
 - Generate RESULTS.md:
   ```bash
   ${CLAUDE_PLUGIN_ROOT}/scripts/pp results
   ```
-- Read `principia/RESULTS.md` and present the final design to the user
+- Get the results file path and read it:
+  ```bash
+  ${CLAUDE_PLUGIN_ROOT}/scripts/pp paths --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["results"])'
+  ```
+  Read the file at that path and present the final design to the user.
 - Report: `[Synthesize] Composing final design from N proven claims...`
 
 **Action: `complete`**
-- Read and present `principia/RESULTS.md`
+- Get the results file path:
+  ```bash
+  ${CLAUDE_PLUGIN_ROOT}/scripts/pp paths --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["data"]["results"])'
+  ```
+  Read the file at that path and present it to the user.
 - Report: `[Complete] Design process finished. See RESULTS.md.`
 
 ### Autonomy

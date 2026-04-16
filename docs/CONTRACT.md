@@ -40,7 +40,7 @@ All invoked as `python -m principia.cli.manage --root <root> <op> [args]`.
 
 | Op | Input | `data` shape | Semantics |
 |---|---|---|---|
-| `paths` | `--root [--json]` | `{root, db, claims_dir, context_dir, progress, foundations, config}` | Workspace path layout. |
+| `paths` | `--root [--json]` | `{root, db, claims_dir, context_dir, progress, foundations, config, results, synthesis, composition}` | Workspace path layout. |
 | `roles` | `--root [--json]` | `[{name, phase, type?}, ...]` | Role registry. |
 | `phases` | `--root [--json]` | `[{name, roles, exit_condition?}, ...]` | Phase machinery. |
 | `schema` | `--root [--json]` | `{types, statuses, maturities, confidences}` | Frontmatter value sets. |

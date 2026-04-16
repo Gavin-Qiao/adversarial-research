@@ -36,7 +36,18 @@ def test_paths_json_shape(tmp_path: Path) -> None:
     payload = json.loads(out)
     assert payload["schema_version"] == 1
     data = payload["data"]
-    for key in ("root", "db", "claims_dir", "context_dir", "progress", "foundations", "config"):
+    for key in (
+        "root",
+        "db",
+        "claims_dir",
+        "context_dir",
+        "progress",
+        "foundations",
+        "config",
+        "results",
+        "synthesis",
+        "composition",
+    ):
         assert key in data, f"paths --json missing key: {key}"
 
 
