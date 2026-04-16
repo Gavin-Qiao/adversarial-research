@@ -490,7 +490,7 @@ def cmd_post_verdict(args: argparse.Namespace) -> None:
         "node_id": node_id,
         "changes": changes,
     }
-    print(json.dumps(result, indent=2))
+    emit_envelope(result)
 
 
 # ---------------------------------------------------------------------------
@@ -1310,7 +1310,7 @@ def cmd_parse_framework(args: argparse.Namespace) -> None:
         print("No claim registry found in blueprint.md.")
         print("Ensure the synthesizer included a ```yaml block with # CLAIM_REGISTRY.", file=sys.stderr)
         sys.exit(1)
-    print(json.dumps(claims, indent=2))
+    emit_envelope(claims)
 
 
 def cmd_autonomy_config(args: argparse.Namespace) -> None:
@@ -1321,7 +1321,7 @@ def cmd_autonomy_config(args: argparse.Namespace) -> None:
     repo_config = read_repo_config(_cfg.RESEARCH_DIR)
     if repo_config.get("workflow_autonomy") in ("checkpoints", "yolo"):
         result["mode"] = repo_config["workflow_autonomy"]
-    print(json.dumps(result))
+    emit_envelope(result)
 
 
 def _build_init_status(workspace_exists: bool, research_root: Path, inv_state: dict[str, Any]) -> dict[str, object]:

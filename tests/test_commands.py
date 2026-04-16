@@ -636,7 +636,9 @@ claims:
         assert rc == 0
         import json
 
-        claims = json.loads(out)
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        claims = payload["data"]
         assert len(claims) == 1
         assert claims[0]["id"] == "test-claim"
 
@@ -1174,7 +1176,9 @@ class TestCmdPostVerdict:
         run_manage(research_dir, "build")
         rc, out, _ = run_manage(research_dir, "post-verdict", sub_path)
         assert rc == 0
-        result = json.loads(out)
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        result = payload["data"]
         assert result["verdict"] == "PROVEN"
         # Claim status should be updated
         from frontmatter import parse_frontmatter
@@ -1224,7 +1228,9 @@ class TestCmdPostVerdict:
         run_manage(research_dir, "build")
         rc, out, _ = run_manage(research_dir, "post-verdict", sub_path)
         assert rc == 0
-        result = json.loads(out)
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        result = payload["data"]
         assert result["verdict"] == "DISPROVEN"
         assert any("Weakened" in c for c in result["changes"])
 
@@ -1256,7 +1262,9 @@ class TestCmdPostVerdict:
         run_manage(research_dir, "build")
         rc, out, _ = run_manage(research_dir, "post-verdict", sub_path)
         assert rc == 0
-        result = json.loads(out)
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        result = payload["data"]
         assert result["verdict"] == "PARTIAL"
 
     def test_no_verdict_file_errors(self, research_dir):
@@ -2097,12 +2105,14 @@ class TestAutonomyConfig:
     """Test autonomy-config CLI command."""
 
     def test_autonomy_config_outputs_json(self, research_dir):
-        """autonomy-config outputs valid JSON with mode and checkpoint_at."""
+        """autonomy-config outputs valid JSON envelope with mode and checkpoint_at."""
         rc, out, _ = run_manage(research_dir, "autonomy-config")
         assert rc == 0, f"autonomy-config failed: {out}"
         import json
 
-        result = json.loads(out)
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        result = payload["data"]
         assert result["mode"] == "checkpoints"
         assert "understand" in result["checkpoint_at"]
 
@@ -2116,7 +2126,9 @@ class TestAutonomyConfig:
 
         rc, out, _ = run_manage(research_dir, "autonomy-config")
         assert rc == 0, f"autonomy-config failed: {out}"
-        result = json.loads(out)
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        result = payload["data"]
         assert result["mode"] == "yolo"
         assert "understand" in result["checkpoint_at"]
 

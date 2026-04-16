@@ -25,71 +25,76 @@ All machine-readable (JSON) responses share this structure:
 - **Additive change** (new optional field in `data`): no bump. Adapters ignore unknown fields.
 - **Breaking change** (remove/rename field, change type, change semantics): bump `schema_version`; adapters update.
 
-## Public operations
+## Categories
+
+Operations are grouped by output form:
+
+- **JSON-emitting**: return the envelope `{schema_version, data, warnings}`. Plugin parses `data`.
+- **Text-only**: print human-readable output. Plugin reads exit code and optionally displays stdout to the user. No stable structured contract.
 
 All invoked as `python -m principia.cli.manage --root <root> <op> [args]`.
 
-### Workflow
+## JSON-emitting operations
 
-| Op | Input | Output (data) | Semantics |
-|---|---|---|---|
-| `build` | `--root` | `{nodes_count, edges_count}` (when `--json`; human text otherwise) | Rebuild SQLite DB from markdown. |
-| `next` | `<claim-path>` | `{breadcrumb, action, dispatch_mode, context_files, ...}` | Next state for one claim. |
-| `investigate-next` | `--root` | same shape as `next` | Next investigation-wide state. |
-| `post-verdict` | `<claim-path>` | `{actions_taken, cascaded}` | Apply cascade after verdict. |
-| `extend-debate` | `<claim-path> <round_count>` | `{new_max_rounds}` | Allow more debate rounds. |
-| `reopen` | `<claim-path>` | `{reopened}` | Revert verdict, reopen claim. |
-| `replace-verdict` | `<claim-path>` | `{replaced}` | Substitute a new verdict. |
+### Discovery
 
-### Inspection
-
-| Op | Input | Output (data) | Semantics |
-|---|---|---|---|
-| `status` | `--root` | (writes `PROGRESS.md`; stdout = summary) | Regenerate `PROGRESS.md`. |
-| `validate` | `--root [--json]` | `{errors: [...], warnings: [...], node_count, ok}` | Integrity check. |
-| `query` | `"<sql>" [--json]` | `{columns, rows}` | Run SQL against the DB. |
-| `dashboard` | `--root` | `{phase, claims, verdicts, blockers, dispatch_overview, ...}` | Workspace state payload. |
-| `dispatch-log` | `[--cycle N] [--json]` | `[{timestamp, agent, round, claim}, ...]` | Dispatch history. |
-| `assumptions` | `--root` | (writes `FOUNDATIONS.md`) | Regenerate `FOUNDATIONS.md`. |
-
-### Mutation
-
-| Op | Input | Output (data) | Semantics |
-|---|---|---|---|
-| `scaffold` | `<level> <name>` | `{created, path}` | Create claim directory skeleton. |
-| `new` | `<relative-path>` | `{created, path, id}` | Create markdown with auto frontmatter. |
-| `settle` | `<claim-id>` | `{settled, id}` | Mark claim proven. |
-| `falsify` | `<claim-id> [--by id]` | `{falsified, id, cascade: [...]}` | Mark claim disproven, cascade. |
-| `register` | `<path>` | `{registered, id}` | Register a new claim in the DB. |
-
-### Planning
-
-| Op | Input | Output (data) | Semantics |
-|---|---|---|---|
-| `cascade` | `<claim-id>` | `{would_weaken: [...]}` | Preview cascade impact. |
-| `waves` | `[--claim id] [--json]` | `[[claim-id, ...], ...]` | Parallelizable claim groups. |
-| `context` | `<claim-path>` | `{files: [...], summary}` | Gather agent context. |
-| `packet` | `<claim-path>` | `{written_to}` | Write context packet artifact. |
-| `prompt` | `<claim-path>` | `{prompt}` | External-mode prompt text. |
-
-### Bookkeeping
-
-| Op | Input | Output (data) | Semantics |
-|---|---|---|---|
-| `log-dispatch` | `<claim-path> <agent> <round>` | `{logged}` | Record agent dispatch. |
-| `parse-framework` | `<path>` | `{claims: [...]}` | Parse synthesizer blueprint. |
-| `artifacts` | `<claim-path>` | `{artifacts: [...]}` | List artifacts for a claim. |
-| `codebook` | (none) | `{patterns: [...]}` | Experimentation patterns reference. |
-| `autonomy-config` | `--root` | `{autonomy, dispatch_prefs}` | Read `principia/.config.md`. |
-
-### Discovery (contract v1)
-
-| Op | Input | Output (data) | Semantics |
+| Op | Input | `data` shape | Semantics |
 |---|---|---|---|
 | `paths` | `--root [--json]` | `{root, db, claims_dir, context_dir, progress, foundations, config}` | Workspace path layout. |
 | `roles` | `--root [--json]` | `[{name, phase, type?}, ...]` | Role registry. |
 | `phases` | `--root [--json]` | `[{name, roles, exit_condition?}, ...]` | Phase machinery. |
 | `schema` | `--root [--json]` | `{types, statuses, maturities, confidences}` | Frontmatter value sets. |
+
+### Inspection
+
+| Op | Input | `data` shape | Semantics |
+|---|---|---|---|
+| `validate` | `--root [--json]` | `{valid, error_count, errors, node_count?, edge_count?}` | Integrity check. `node_count`/`edge_count` present only when `valid` is true. |
+| `query` | `"<sql>" [--json]` | `[{col: val, ...}, ...]` — flat list of row dicts | Run SQL against the DB. |
+| `list` | `[--json]` | `[{id, type, status, maturity?, confidence?, title?, file_path}, ...]` | All nodes. |
+| `waves` | `[--claim id] [--json]` | `[[{id, type, status, ...}, ...], ...]` — list of lists of row dicts | Parallelizable claim groups. |
+| `dispatch-log` | `[--cycle N] [--json]` | `[{agent, action, round, timestamp, details, dispatch_mode, packet_path, prompt_path, result_path}, ...]` | Dispatch history. |
+| `dashboard` | `--root` | `{phase, action, breadcrumb, active_claim, active_cycle, dispatch_lifecycle, dispatch_overview, last_verdict, claims, blocked, pending_decisions, autonomy, init, ...}` | Workspace state payload. |
+| `next` | `[<claim-path>]` | `{action, phase, agent?, round?, sub_unit?, dispatch_mode?, packet_path?, prompt_path?, result_path?, context_files?, north_star?}` | Next state for one claim (or investigation-wide if no path). |
+| `investigate-next` | `--root` | `{action, phase, substeps?, breadcrumb}` | Next investigation-wide state. |
+
+### Workflow
+
+| Op | Input | `data` shape | Semantics |
+|---|---|---|---|
+| `post-verdict` | `<claim-path>` | `{verdict, confidence, node_id, changes}` | Apply cascade after verdict. `changes` is a list of strings. |
+
+### Bookkeeping
+
+| Op | Input | `data` shape | Semantics |
+|---|---|---|---|
+| `parse-framework` | (reads `blueprint.md`) | `[{id, statement, maturity, confidence, depends_on, falsification}, ...]` | Parse synthesizer blueprint. |
+| `autonomy-config` | `--root` | `{mode, checkpoint_at}` | Read autonomy settings. `mode` is `"checkpoints"` or `"yolo"`. |
+
+## Text-only operations
+
+These operations print human-readable text to stdout. The plugin contract is: **exit code** (0 = success, non-zero = failure) plus optional display of stdout to the user. There is no stable structured JSON contract for these.
+
+| Op | Input | Exit code semantics |
+|---|---|---|
+| `build` | `--root` | 0 = DB rebuilt. (Note: `--json` flag is not supported; output is always text.) |
+| `status` | `--root` | 0 = `PROGRESS.md` regenerated. |
+| `assumptions` | `--root` | 0 = `FOUNDATIONS.md` regenerated. |
+| `scaffold` | `<level> <name>` | 0 = directory skeleton created. |
+| `new` | `<relative-path>` | 0 = markdown file created with auto frontmatter. |
+| `settle` | `<claim-id>` | 0 = claim marked proven. |
+| `falsify` | `<claim-id> [--force] [--by id]` | 0 = claim marked disproven; cascade applied. |
+| `reopen` | `<claim-path>` | 0 = verdict reverted, claim reopened. |
+| `replace-verdict` | `<claim-path>` | 0 = verdict replaced. |
+| `extend-debate` | `<claim-path> <round_count>` | 0 = max rounds increased. |
+| `cascade` | `<claim-id>` | 0 = cascade preview printed (dry-run, no mutations). |
+| `log-dispatch` | `--cycle <id> --agent <a> --action <act> --round <n>` | 0 = dispatch event recorded. |
+| `register` | `<id> --name <n> --type <t> --path <p>` | 0 = artifact registered. |
+| `artifacts` | `--root` | 0 = artifact table printed. |
+| `codebook` | `--root` | 0 = `TOOLKIT.md` generated. |
+| `context` | `<claim-path>` | 0 = context document printed. |
+| `packet` | `<claim-path>` | 0 = packet artifact written. |
+| `prompt` | `<claim-path>` | 0 = prompt artifact written. |
 
 ## Versioning
 

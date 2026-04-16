@@ -2,33 +2,22 @@
 
 For each public operation listed in docs/CONTRACT.md, assert the CLI
 accepts documented input and returns JSON with schema_version == 1
-and the declared fields.
+and the declared fields (for JSON-emitting ops), or exits 0 with
+human-readable text (for text-only ops).
 
 Run: uv run pytest tests/test_contract.py -v
 
-NOTE — known drift between this test file and CONTRACT.md v1:
-The following ops return text (not a JSON envelope) in the current
-implementation.  They are tested here for basic functionality only;
-a shape assertion against the envelope contract is left as TODO until
-the implementation catches up:
+JSON-emitting ops (envelope expected):
+  paths, roles, phases, schema (discovery)
+  validate, query, list, waves, dispatch-log, dashboard,
+  next, investigate-next (inspection)
+  post-verdict (workflow)
+  parse-framework, autonomy-config (bookkeeping)
 
-  scaffold, new, settle, falsify, reopen, replace-verdict, extend-debate
-    → text output; contract declares {created/settled/falsified/...} envelope
-  cascade
-    → text output; contract declares {would_weaken: [...]} envelope
-  log-dispatch
-    → text output; contract declares {logged} envelope
-  post-verdict
-    → raw json.dumps (no schema_version); contract declares envelope
-  parse-framework, autonomy-config, codebook
-    → raw json.dumps (no schema_version); contract declares envelope
-  query (--json)
-    → data is a list of row dicts; contract declares {columns, rows} object
-  waves (--json)
-    → data is list of lists of dicts; contract declares [[id, ...], ...]
-
-These drift items are flagged for the controller; they are NOT addressed
-by modifying the contract.  See docs/CONTRACT.md for the authoritative shape.
+Text-only ops (smoke-test rc==0):
+  build, status, assumptions, scaffold, new, settle, falsify,
+  reopen, replace-verdict, extend-debate, cascade, log-dispatch,
+  register, artifacts, codebook, context, packet, prompt
 
 Mutation ops that require a seeded workspace (scaffold, new, settle,
 falsify, register, post-verdict, extend-debate, reopen, replace-verdict,
@@ -165,8 +154,6 @@ class TestInspectionContract:
         payload = json.loads(out)
         assert payload["schema_version"] == 1
         assert "data" in payload
-        # Actual fields: valid, error_count, errors (not ok/node_count/warnings as in contract)
-        # This is a known drift item — the contract spec differs from implementation
         assert "errors" in payload["data"]
 
     def test_validate_empty_workspace_exits_zero(self, workspace: Path) -> None:
@@ -179,13 +166,27 @@ class TestInspectionContract:
         assert "valid" in payload["data"]
         assert isinstance(payload["data"]["valid"], bool)
 
+    def test_validate_error_count_present(self, workspace: Path) -> None:
+        _rc, out, _err = _run("--root", str(workspace), "validate", "--json")
+        payload = json.loads(out)
+        assert "error_count" in payload["data"]
+        assert isinstance(payload["data"]["error_count"], int)
+
+    def test_validate_node_count_when_valid(self, workspace: Path) -> None:
+        # On empty (valid) workspace, node_count and edge_count should be present
+        _rc, out, _err = _run("--root", str(workspace), "validate", "--json")
+        payload = json.loads(out)
+        if payload["data"]["valid"]:
+            assert "node_count" in payload["data"]
+            assert "edge_count" in payload["data"]
+
     def test_query_json_shape(self, workspace: Path) -> None:
         rc, out, err = _run("--root", str(workspace), "query", "--json", "SELECT 1 AS x")
         assert rc == 0, err
         payload = json.loads(out)
         assert payload["schema_version"] == 1
         assert "data" in payload
-        # Actual: list of row dicts (not {columns, rows} as in contract)
+        # data is a flat list of row dicts
         assert isinstance(payload["data"], list)
 
     def test_query_returns_rows(self, workspace: Path) -> None:
@@ -201,8 +202,16 @@ class TestInspectionContract:
         payload = json.loads(out)
         assert payload["schema_version"] == 1
         assert "data" in payload
-        # Actual: list of lists of dicts (not [[id, ...]] as in contract)
+        # data is a list of lists of row dicts
         assert isinstance(payload["data"], list)
+
+    def test_waves_inner_lists_are_lists(self, seeded_workspace: tuple[Path, str]) -> None:
+        root, _claim_path = seeded_workspace
+        rc, out, err = _run("--root", str(root), "waves", "--json")
+        assert rc == 0, err
+        payload = json.loads(out)
+        for wave in payload["data"]:
+            assert isinstance(wave, list)
 
     def test_dispatch_log_json_shape(self, workspace: Path) -> None:
         rc, out, err = _run("--root", str(workspace), "dispatch-log", "--json")
@@ -261,7 +270,7 @@ class TestMutationContract:
         claim_dir = workspace / "claims" / "claim-1-my-claim"
         assert claim_dir.exists()
         assert (claim_dir / "claim.md").exists()
-        # Text output (no envelope yet — known drift)
+        # Text output (no envelope — text-only op by contract)
         assert "Created:" in out
 
     def test_scaffold_creates_role_dirs(self, workspace: Path) -> None:
@@ -275,7 +284,7 @@ class TestMutationContract:
         rc, out, err = _run("--root", str(workspace), "new", "claims/evidence.md")
         assert rc == 0, err
         assert (workspace / "claims" / "evidence.md").exists()
-        # Text output (no envelope yet — known drift)
+        # Text output (no envelope — text-only op by contract)
         assert "Created:" in out
 
     def test_settle_marks_proven(self, seeded_workspace: tuple[Path, str]) -> None:
@@ -320,7 +329,7 @@ class TestPlanningContract:
         node_id = rows[0]["id"]
         rc, out, err = _run("--root", str(root), "cascade", node_id)
         assert rc == 0, err
-        # Text output (no envelope yet — known drift)
+        # Text output (no envelope — text-only op by contract)
         assert "Cascade analysis" in out
 
     def test_waves_with_content(self, seeded_workspace: tuple[Path, str]) -> None:
@@ -347,7 +356,7 @@ class TestPlanningContract:
 
 
 # ---------------------------------------------------------------------------
-# Bookkeeping operations — seeded workspace smoke tests
+# Bookkeeping operations — seeded workspace smoke tests + envelope assertions
 # ---------------------------------------------------------------------------
 
 
@@ -368,7 +377,7 @@ class TestBookkeepingContract:
             "1",
         )
         assert rc == 0, err
-        # Text output (no envelope yet — known drift)
+        # Text output (no envelope — text-only op by contract)
         assert "Logged:" in out
 
     def test_dispatch_log_after_logging(self, seeded_workspace: tuple[Path, str]) -> None:
@@ -392,15 +401,30 @@ class TestBookkeepingContract:
         assert payload["schema_version"] == 1
         assert len(payload["data"]) >= 1
 
-    def test_autonomy_config_runs(self, workspace: Path) -> None:
+    def test_autonomy_config_envelope(self, workspace: Path) -> None:
         rc, out, err = _run("--root", str(workspace), "autonomy-config")
         assert rc == 0, err
-        # Raw json.dumps output (no envelope yet — known drift)
-        result = json.loads(out)
-        assert isinstance(result, dict)
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        assert "data" in payload
+        assert "mode" in payload["data"]
+        assert "checkpoint_at" in payload["data"]
+        assert isinstance(payload["data"]["checkpoint_at"], list)
+
+    def test_autonomy_config_mode_value(self, workspace: Path) -> None:
+        rc, out, err = _run("--root", str(workspace), "autonomy-config")
+        assert rc == 0, err
+        payload = json.loads(out)
+        assert payload["data"]["mode"] in ("checkpoints", "yolo")
 
     def test_artifacts_runs(self, seeded_workspace: tuple[Path, str]) -> None:
         root, _claim_path = seeded_workspace
-        # artifacts command takes no claim path in current impl
+        # artifacts command takes no claim path in current impl; text-only op
         rc, _out, err = _run("--root", str(root), "artifacts")
         assert rc == 0, err
+
+    def test_codebook_runs(self, workspace: Path) -> None:
+        # codebook is text-only: generates TOOLKIT.md and prints a path
+        rc, out, err = _run("--root", str(workspace), "codebook")
+        assert rc == 0, err
+        assert "Generated:" in out
