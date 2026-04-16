@@ -157,23 +157,31 @@ print("OK")
     assert "OK" in result.stdout
 
 
-def test_runtime_resolved_agent_instructions_use_packaged_manage_entrypoint() -> None:
+def test_agent_files_use_pp_wrapper_not_raw_cli() -> None:
+    """Agent files must call core through pp, not `python -m principia.cli.manage` directly.
+
+    This enforces the adapter architecture at the bundle level.
+    """
     from principia.core import config as cfg
 
-    experimenter_command = "uv run python -m principia.cli.manage --root principia codebook"
-    conductor_command = "uv run python -m principia.cli.manage --root principia next <claim-path>"
+    forbidden_patterns = [
+        "uv run python -m principia.cli.manage",
+        "--root principia",
+    ]
 
-    for path in (cfg.CLAUDE_PLUGIN_ROOT / "agents" / "experimenter.md",):
+    agents_dir = cfg.CLAUDE_PLUGIN_ROOT / "agents"
+    for path in agents_dir.glob("*.md"):
         text = path.read_text(encoding="utf-8")
-        assert experimenter_command in text
-        assert "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" not in text
-        assert "python3 scripts/manage.py" not in text
+        for pattern in forbidden_patterns:
+            assert pattern not in text, (
+                f"{path.name} contains forbidden pattern '{pattern}'. "
+                f"Use `pp <op>` via ${{CLAUDE_PLUGIN_ROOT}}/scripts/pp instead."
+            )
 
-    for path in (cfg.CLAUDE_PLUGIN_ROOT / "agents" / "conductor.md",):
-        text = path.read_text(encoding="utf-8")
-        assert conductor_command in text
-        assert "${CLAUDE_PLUGIN_ROOT}/scripts/manage.py" not in text
-        assert "python3 scripts/manage.py" not in text
+    # Positive assertion: at least one agent file must reference pp,
+    # proving the wrapper is actually used (not just absent).
+    any_pp_reference = any("pp " in (agents_dir / p.name).read_text(encoding="utf-8") for p in agents_dir.glob("*.md"))
+    assert any_pp_reference, "No agent file references the pp wrapper. Agents that invoke core should use `pp <op>`."
 
 
 def test_packaged_protocol_doc_is_shipped_and_referenced() -> None:
