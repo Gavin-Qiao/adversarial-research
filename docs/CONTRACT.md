@@ -53,7 +53,7 @@ All invoked as `python -m principia.cli.manage --root <root> <op> [args]`.
 | `query` | `"<sql>" [--json]` | `[{col: val, ...}, ...]` — flat list of row dicts | Run SQL against the DB. |
 | `list` | `[--json]` | `[{id, type, status, maturity?, confidence?, title?, file_path}, ...]` | All nodes. |
 | `waves` | `[--claim id] [--json]` | `[[{id, type, status, ...}, ...], ...]` — list of lists of row dicts | Parallelizable claim groups. |
-| `dispatch-log` | `[--cycle N] [--json]` | `[{agent, action, round, timestamp, details, dispatch_mode, packet_path, prompt_path, result_path}, ...]` | Dispatch history. |
+| `dispatch-log` | `[--cycle N] [--json]` | `[{cycle_id, agent, action, round, timestamp, details, sub_unit?, dispatch_mode, packet_path, prompt_path, result_path}, ...]` | Dispatch history. `cycle_id` identifies which claim the dispatch belongs to. `sub_unit` is nullable (present in every row, may be null). |
 | `dashboard` | `--root` | `{phase, action, breadcrumb, active_claim, active_cycle, dispatch_lifecycle, dispatch_overview, last_verdict, claims, blocked, pending_decisions, autonomy, init, ...}` | Workspace state payload. |
 | `next` | `[<claim-path>]` | `{action, phase, agent?, round?, sub_unit?, dispatch_mode?, packet_path?, prompt_path?, result_path?, context_files?, north_star?}` | Next state for one claim (or investigation-wide if no path). |
 | `investigate-next` | `--root` | `{action, phase, substeps?, breadcrumb}` | Next investigation-wide state. |

@@ -221,6 +221,35 @@ class TestInspectionContract:
         assert "data" in payload
         assert isinstance(payload["data"], list)
 
+    def test_dispatch_log_row_fields(self, workspace: Path) -> None:
+        # Seed one dispatch so the list is non-empty, then verify field contract.
+        rc_ld, _out_ld, err_ld = _run(
+            "--root",
+            str(workspace),
+            "log-dispatch",
+            "--cycle",
+            "claim-test",
+            "--agent",
+            "conductor",
+            "--action",
+            "dispatch",
+            "--round",
+            "1",
+        )
+        assert rc_ld == 0, err_ld
+        rc, out, err = _run("--root", str(workspace), "dispatch-log", "--json")
+        assert rc == 0, err
+        payload = json.loads(out)
+        data = payload["data"]
+        # The seeded row guarantees at least one entry exists — guard is non-vacuous.
+        assert len(data) >= 1, "expected at least the seeded dispatch row"
+        required_keys = {"cycle_id", "agent", "round", "timestamp"}
+        for row in data:
+            missing = required_keys - row.keys()
+            assert not missing, f"dispatch-log row missing keys: {missing}"
+            # sub_unit is always present in every row (nullable per contract)
+            assert "sub_unit" in row, "dispatch-log row missing sub_unit key"
+
     def test_list_json_shape(self, workspace: Path) -> None:
         rc, out, err = _run("--root", str(workspace), "list", "--json")
         assert rc == 0, err
