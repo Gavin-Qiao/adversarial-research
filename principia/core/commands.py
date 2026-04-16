@@ -636,13 +636,13 @@ def cmd_query(args: argparse.Namespace) -> None:
 
     if not rows:
         if getattr(args, "json", False):
-            print("[]")
+            print(json.dumps({"schema_version": 1, "data": [], "warnings": []}, indent=2))
         else:
             print("(no results)")
         return
 
     if getattr(args, "json", False):
-        print(json.dumps([dict(r) for r in rows], indent=2))
+        print(json.dumps({"schema_version": 1, "data": [dict(r) for r in rows], "warnings": []}, indent=2))
         return
 
     # Print as table
@@ -694,7 +694,7 @@ def cmd_list(args: argparse.Namespace) -> None:
     rows = conn.execute(sql, params).fetchall()
 
     if getattr(args, "json", False):
-        print(json.dumps([dict(r) for r in rows], indent=2))
+        print(json.dumps({"schema_version": 1, "data": [dict(r) for r in rows], "warnings": []}, indent=2))
         return
 
     if not rows:
@@ -1190,11 +1190,14 @@ def cmd_dispatch_log(args: argparse.Namespace) -> None:
     rows = get_dispatch_log_payload(cycle=args.cycle)
 
     if not rows:
-        print("No dispatches logged.")
+        if args.json:
+            print(json.dumps({"schema_version": 1, "data": [], "warnings": []}, indent=2))
+        else:
+            print("No dispatches logged.")
         return
 
     if args.json:
-        print(json.dumps(rows, indent=2))
+        print(json.dumps({"schema_version": 1, "data": rows, "warnings": []}, indent=2))
         return
 
     print(f"{'Timestamp':<28} {'Cycle':<25} {'Agent':<12} {'Action':<16} {'Round':<6} Details")
@@ -1248,14 +1251,14 @@ def cmd_waves(args: argparse.Namespace) -> None:
     waves = compute_waves(_cfg.RESEARCH_DIR)
     if not waves:
         if getattr(args, "json", False):
-            print("[]")
+            print(json.dumps({"schema_version": 1, "data": [], "warnings": []}, indent=2))
         else:
             print("No nodes in database. Run 'build' first.")
         return
 
     if getattr(args, "json", False):
         out = [[dict(n) for n in wave] for wave in waves]
-        print(json.dumps(out, indent=2))
+        print(json.dumps({"schema_version": 1, "data": out, "warnings": []}, indent=2))
         return
 
     for i, wave in enumerate(waves, 1):
@@ -1822,3 +1825,79 @@ def cmd_extend_debate(args: argparse.Namespace) -> None:
     override_file = target / ".max_rounds_override"
     override_file.write_text(str(args.to), encoding="utf-8")
     print(f"Debate extended to {args.to} rounds for {args.path}")
+
+
+# ---------------------------------------------------------------------------
+# Discovery commands (paths, roles, phases, schema)
+# ---------------------------------------------------------------------------
+
+
+def cmd_paths(args: argparse.Namespace) -> None:
+    """Emit workspace path layout as versioned JSON."""
+    data = {
+        "root": str(_cfg.RESEARCH_DIR),
+        "db": str(_cfg.DB_PATH),
+        "claims_dir": str(_cfg.RESEARCH_DIR / "claims"),
+        "context_dir": str(_cfg.CONTEXT_DIR),
+        "progress": str(_cfg.PROGRESS_PATH),
+        "foundations": str(_cfg.FOUNDATIONS_PATH),
+        "config": str(_cfg.RESEARCH_DIR / ".config.md"),
+    }
+    payload = {"schema_version": 1, "data": data, "warnings": []}
+    print(json.dumps(payload, indent=2))
+
+
+def cmd_roles(args: argparse.Namespace) -> None:
+    """Emit the role registry from orchestration config as JSON."""
+    from .orchestration import load_config
+
+    cfg = load_config(_cfg.DEFAULT_ORCH_CONFIG)
+    roles_data = []
+    for role in cfg.get("roles", []):
+        if not isinstance(role, dict):
+            continue
+        entry: dict[str, Any] = {"name": role.get("name")}
+        if "type" in role:
+            entry["type"] = role["type"]
+        # Assign phase from phases mapping
+        for phase_name, phase_spec in cfg.get("phases", {}).items():
+            if isinstance(phase_spec, dict) and role.get("name") in phase_spec.get("roles", []):
+                entry["phase"] = phase_name
+                break
+        roles_data.append(entry)
+    payload = {"schema_version": 1, "data": roles_data, "warnings": []}
+    print(json.dumps(payload, indent=2))
+
+
+def cmd_phases(args: argparse.Namespace) -> None:
+    """Emit the phase machinery from orchestration config as JSON."""
+    from .orchestration import load_config
+
+    cfg = load_config(_cfg.DEFAULT_ORCH_CONFIG)
+    phases_data = []
+    for phase_name, phase_spec in cfg.get("phases", {}).items():
+        if not isinstance(phase_spec, dict):
+            continue
+        entry: dict[str, Any] = {
+            "name": phase_name,
+            "roles": list(phase_spec.get("roles", [])),
+        }
+        if "exit_condition" in phase_spec:
+            entry["exit_condition"] = phase_spec["exit_condition"]
+        phases_data.append(entry)
+    payload = {"schema_version": 1, "data": phases_data, "warnings": []}
+    print(json.dumps(payload, indent=2))
+
+
+def cmd_schema(args: argparse.Namespace) -> None:
+    """Emit the frontmatter value sets as JSON."""
+    from .ids import VALID_CONFIDENCES, VALID_MATURITIES, VALID_STATUSES, VALID_TYPES
+
+    data = {
+        "types": sorted(VALID_TYPES),
+        "statuses": sorted(VALID_STATUSES),
+        "maturities": sorted(v for v in VALID_MATURITIES if v is not None),
+        "confidences": sorted(v for v in VALID_CONFIDENCES if v is not None),
+    }
+    payload = {"schema_version": 1, "data": data, "warnings": []}
+    print(json.dumps(payload, indent=2))

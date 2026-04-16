@@ -41,15 +41,19 @@ from principia.core.commands import (
     cmd_log_dispatch,
     cmd_new,
     cmd_next,
-    cmd_parse_framework,
     cmd_packet,
+    cmd_parse_framework,
+    cmd_paths,
+    cmd_phases,
     cmd_post_verdict,
     cmd_prompt,
     cmd_query,
     cmd_register,
     cmd_reopen,
     cmd_replace_verdict,
+    cmd_roles,
     cmd_scaffold,
+    cmd_schema,
     cmd_settle,
     cmd_waves,
 )
@@ -244,6 +248,22 @@ def main() -> None:
     p_ed.add_argument("path", help="Claim path")
     p_ed.add_argument("--to", type=int, required=True, help="New max rounds")
     p_ed.set_defaults(func=cmd_extend_debate)
+
+    p_paths = sub.add_parser("paths", help="Emit workspace path layout as JSON")
+    p_paths.add_argument("--json", action="store_true", default=True, help="Output as JSON (default)")
+    p_paths.set_defaults(func=cmd_paths)
+
+    p_roles = sub.add_parser("roles", help="Emit role registry from orchestration config as JSON")
+    p_roles.add_argument("--json", action="store_true", default=True, help="Output as JSON (default)")
+    p_roles.set_defaults(func=cmd_roles)
+
+    p_phases = sub.add_parser("phases", help="Emit phase machinery from orchestration config as JSON")
+    p_phases.add_argument("--json", action="store_true", default=True, help="Output as JSON (default)")
+    p_phases.set_defaults(func=cmd_phases)
+
+    p_schema = sub.add_parser("schema", help="Emit frontmatter value sets as JSON")
+    p_schema.add_argument("--json", action="store_true", default=True, help="Output as JSON (default)")
+    p_schema.set_defaults(func=cmd_schema)
 
     args = parser.parse_args()
     init_paths(args.root)

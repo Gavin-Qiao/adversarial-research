@@ -458,7 +458,8 @@ class TestCmdLogDispatch:
 
         rc, out, _ = run_manage(research_dir, "dispatch-log", "--json")
         assert rc == 0
-        data = json.loads(out)
+        payload = json.loads(out)
+        data = payload["data"]
         assert data[0]["sub_unit"] == "claims/claim-1-test"
         assert data[0]["dispatch_mode"] == "external"
         assert data[0]["packet_path"].endswith("packet.md")
@@ -525,7 +526,8 @@ class TestCmdDispatchLog:
         )
         rc, out, _ = run_manage(research_dir, "dispatch-log", "--json")
         assert rc == 0
-        data = json.loads(out)
+        payload = json.loads(out)
+        data = payload["data"]
         assert len(data) == 1
         assert data[0]["agent"] == "refutor"
 
@@ -559,18 +561,22 @@ class TestCmdDispatchLog:
 
 class TestCmdWavesJson:
     def test_json_flag_empty(self, research_dir):
+        import json
+
         run_manage(research_dir, "build")
         rc, out, _ = run_manage(research_dir, "waves", "--json")
         assert rc == 0
-        assert out.strip() == "[]"
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        assert payload["data"] == []
 
     def test_json_flag_with_data(self, populated_research):
         rc, out, _ = run_manage(populated_research, "waves", "--json")
         assert rc == 0
         import json
 
-        data = json.loads(out)
-        assert isinstance(data, list)
+        payload = json.loads(out)
+        assert isinstance(payload["data"], list)
 
     def test_assumption_edges_order_waves(self, research_dir):
         import json
@@ -591,7 +597,8 @@ class TestCmdWavesJson:
         rc, out, _ = run_manage(research_dir, "waves", "--json")
 
         assert rc == 0
-        waves = json.loads(out)
+        payload = json.loads(out)
+        waves = payload["data"]
         assert [node["id"] for node in waves[0]] == ["a1"]
         assert [node["id"] for node in waves[1]] == ["h1-claim"]
 
@@ -769,7 +776,9 @@ class TestCmdList:
 
         rc, out, _ = run_manage(sample_node, "list", "--json")
         assert rc == 0
-        data = json.loads(out)
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        data = payload["data"]
         assert isinstance(data, list)
         assert len(data) >= 1
         assert "id" in data[0]
@@ -893,14 +902,20 @@ class TestCmdQueryJson:
 
         rc, out, _ = run_manage(sample_node, "query", "--json", "SELECT id, type FROM nodes")
         assert rc == 0
-        data = json.loads(out)
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        data = payload["data"]
         assert isinstance(data, list)
         assert len(data) >= 1
 
     def test_query_json_empty(self, research_dir):
+        import json
+
         rc, out, _ = run_manage(research_dir, "query", "--json", "SELECT * FROM nodes")
         assert rc == 0
-        assert out.strip() == "[]"
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        assert payload["data"] == []
 
 
 class TestCmdValidateJson:
@@ -909,7 +924,9 @@ class TestCmdValidateJson:
 
         rc, out, _ = run_manage(sample_node, "validate", "--json")
         assert rc == 0
-        data = json.loads(out)
+        payload = json.loads(out)
+        assert payload["schema_version"] == 1
+        data = payload["data"]
         assert data["valid"] is True
         assert data["error_count"] == 0
 
@@ -984,7 +1001,8 @@ class TestCmdNext:
 
         rc, out, _ = run_manage(research_dir, "dispatch-log", "--json")
         assert rc == 0
-        data = json.loads(out)
+        payload = json.loads(out)
+        data = payload["data"]
         received = next(
             row for row in data if row["action"] == "received" and row["agent"] == "architect" and row["round"] == 1
         )
@@ -1060,7 +1078,8 @@ class TestCmdPrompt:
 
         rc, out, _ = run_manage(research_dir, "dispatch-log", "--json")
         assert rc == 0
-        data = json.loads(out)
+        payload = json.loads(out)
+        data = payload["data"]
         assert any(row["action"] == "dispatch" for row in data)
         logged = next(row for row in data if row["action"] == "dispatch")
         assert logged["sub_unit"] == "cycles/cycle-1/unit-1-test/sub-1a-probe"
@@ -1101,7 +1120,8 @@ class TestCmdPacket:
 
         rc, out, _ = run_manage(research_dir, "dispatch-log", "--json")
         assert rc == 0
-        data = json.loads(out)
+        payload = json.loads(out)
+        data = payload["data"]
         assert any(row["action"] == "packet" for row in data)
         logged = next(row for row in data if row["action"] == "packet")
         assert logged["packet_path"].endswith("packet.md")
@@ -1184,7 +1204,8 @@ class TestCmdPostVerdict:
 
         rc, out, _ = run_manage(research_dir, "dispatch-log", "--json")
         assert rc == 0
-        data = json.loads(out)
+        payload = json.loads(out)
+        data = payload["data"]
         recorded = next(row for row in data if row["action"] == "recorded" and row["agent"] == "arbiter")
         assert recorded["sub_unit"] == sub_path
         assert recorded["result_path"].endswith("arbiter/results/verdict.md")

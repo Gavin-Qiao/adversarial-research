@@ -259,7 +259,7 @@ def cmd_validate(args: argparse.Namespace) -> None:
     errors = result["errors"]
 
     if getattr(args, "json", False):
-        print(json.dumps(result, indent=2))
+        print(json.dumps({"schema_version": 1, "data": result, "warnings": []}, indent=2))
         if errors:
             sys.exit(1)
         return
