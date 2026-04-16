@@ -19,6 +19,16 @@ def _run(*args: str, cwd: Path | None = None) -> tuple[int, str, str]:
     return result.returncode, result.stdout, result.stderr
 
 
+def _minimal_workspace(tmp_path: Path) -> Path:
+    """Create a minimal empty workspace and return its root path."""
+    root = tmp_path / "principia"
+    root.mkdir()
+    (root / "claims").mkdir()
+    (root / "context").mkdir()
+    (root / "context" / "assumptions").mkdir()
+    return root
+
+
 def test_paths_json_shape(tmp_path: Path) -> None:
     """paths --json returns schema_version and workspace paths."""
     rc, out, err = _run("--root", str(tmp_path / "principia"), "paths", "--json")
@@ -125,46 +135,32 @@ def test_dispatch_log_json_includes_schema_version(tmp_path: Path) -> None:
 
 def test_next_json_includes_schema_version(tmp_path: Path) -> None:
     """next output is wrapped in schema_version envelope."""
-    root = tmp_path / "principia"
-    root.mkdir()
-    (root / "claims").mkdir()
-    (root / "context").mkdir()
-    (root / "context" / "assumptions").mkdir()
-    # Build empty workspace first
+    root = _minimal_workspace(tmp_path)
     _run("--root", str(root), "build")
-    # `next` without a claim path may still emit something; accept any exit code
-    _rc, out, _err = _run("--root", str(root), "next")
-    if out.strip():
-        payload = json.loads(out)
-        assert payload["schema_version"] == 1
-        assert "data" in payload
+    _rc, out, err = _run("--root", str(root), "next")
+    assert out.strip(), f"next produced no output. stderr: {err}"
+    payload = json.loads(out)
+    assert payload["schema_version"] == 1
+    assert "data" in payload
 
 
 def test_investigate_next_json_includes_schema_version(tmp_path: Path) -> None:
     """investigate-next output is wrapped in schema_version envelope."""
-    root = tmp_path / "principia"
-    root.mkdir()
-    (root / "claims").mkdir()
-    (root / "context").mkdir()
-    (root / "context" / "assumptions").mkdir()
+    root = _minimal_workspace(tmp_path)
     _run("--root", str(root), "build")
-    _rc, out, _err = _run("--root", str(root), "investigate-next")
-    if out.strip():
-        payload = json.loads(out)
-        assert payload["schema_version"] == 1
-        assert "data" in payload
+    _rc, out, err = _run("--root", str(root), "investigate-next")
+    assert out.strip(), f"investigate-next produced no output. stderr: {err}"
+    payload = json.loads(out)
+    assert payload["schema_version"] == 1
+    assert "data" in payload
 
 
 def test_dashboard_json_includes_schema_version(tmp_path: Path) -> None:
     """dashboard output is wrapped in schema_version envelope."""
-    root = tmp_path / "principia"
-    root.mkdir()
-    (root / "claims").mkdir()
-    (root / "context").mkdir()
-    (root / "context" / "assumptions").mkdir()
+    root = _minimal_workspace(tmp_path)
     _run("--root", str(root), "build")
-    _rc, out, _err = _run("--root", str(root), "dashboard")
-    if out.strip():
-        payload = json.loads(out)
-        assert payload["schema_version"] == 1
-        assert "data" in payload
+    _rc, out, err = _run("--root", str(root), "dashboard")
+    assert out.strip(), f"dashboard produced no output. stderr: {err}"
+    payload = json.loads(out)
+    assert payload["schema_version"] == 1
+    assert "data" in payload

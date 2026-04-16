@@ -41,6 +41,20 @@ def _check_path_containment(sub_path: str) -> None:
         sys.exit(1)
 
 
+def emit_envelope(data: Any, warnings: list[str] | None = None) -> None:
+    """Emit the canonical JSON envelope to stdout.
+
+    All public commands that produce machine-readable output route through
+    this helper so the contract envelope shape stays in one place.
+    """
+    payload = {
+        "schema_version": 1,
+        "data": data,
+        "warnings": warnings or [],
+    }
+    print(json.dumps(payload, indent=2))
+
+
 def _primary_claim_file(target: str | os.PathLike[str]) -> Path:
     """Return the main claim document for a target directory.
 
@@ -636,13 +650,13 @@ def cmd_query(args: argparse.Namespace) -> None:
 
     if not rows:
         if getattr(args, "json", False):
-            print(json.dumps({"schema_version": 1, "data": [], "warnings": []}, indent=2))
+            emit_envelope([])
         else:
             print("(no results)")
         return
 
     if getattr(args, "json", False):
-        print(json.dumps({"schema_version": 1, "data": [dict(r) for r in rows], "warnings": []}, indent=2))
+        emit_envelope([dict(r) for r in rows])
         return
 
     # Print as table
@@ -694,7 +708,7 @@ def cmd_list(args: argparse.Namespace) -> None:
     rows = conn.execute(sql, params).fetchall()
 
     if getattr(args, "json", False):
-        print(json.dumps({"schema_version": 1, "data": [dict(r) for r in rows], "warnings": []}, indent=2))
+        emit_envelope([dict(r) for r in rows])
         return
 
     if not rows:
@@ -1191,13 +1205,13 @@ def cmd_dispatch_log(args: argparse.Namespace) -> None:
 
     if not rows:
         if args.json:
-            print(json.dumps({"schema_version": 1, "data": [], "warnings": []}, indent=2))
+            emit_envelope([])
         else:
             print("No dispatches logged.")
         return
 
     if args.json:
-        print(json.dumps({"schema_version": 1, "data": rows, "warnings": []}, indent=2))
+        emit_envelope(rows)
         return
 
     print(f"{'Timestamp':<28} {'Cycle':<25} {'Agent':<12} {'Action':<16} {'Round':<6} Details")
@@ -1219,7 +1233,7 @@ def cmd_next(args: argparse.Namespace) -> None:
     sub_path = args.path
     if sub_path != "auto":
         _check_path_containment(sub_path)
-    print(json.dumps({"schema_version": 1, "data": get_next_payload(sub_path), "warnings": []}, indent=2))
+    emit_envelope(get_next_payload(sub_path))
 
 
 def cmd_packet(args: argparse.Namespace) -> None:
@@ -1251,14 +1265,14 @@ def cmd_waves(args: argparse.Namespace) -> None:
     waves = compute_waves(_cfg.RESEARCH_DIR)
     if not waves:
         if getattr(args, "json", False):
-            print(json.dumps({"schema_version": 1, "data": [], "warnings": []}, indent=2))
+            emit_envelope([])
         else:
             print("No nodes in database. Run 'build' first.")
         return
 
     if getattr(args, "json", False):
         out = [[dict(n) for n in wave] for wave in waves]
-        print(json.dumps({"schema_version": 1, "data": out, "warnings": []}, indent=2))
+        emit_envelope(out)
         return
 
     for i, wave in enumerate(waves, 1):
@@ -1283,7 +1297,7 @@ def cmd_investigate_next(args: argparse.Namespace) -> None:
         config["debate_loop"] = {**config.get("debate_loop", {}), "max_rounds": 1}
     state = detect_investigation_state(_cfg.RESEARCH_DIR, config, quick=quick)
     state["breadcrumb"] = _format_investigation_breadcrumb(state, _cfg.RESEARCH_DIR)
-    print(json.dumps({"schema_version": 1, "data": state, "warnings": []}, indent=2))
+    emit_envelope(state)
 
 
 def cmd_parse_framework(args: argparse.Namespace) -> None:
@@ -1647,8 +1661,7 @@ def get_dashboard_payload(root: Path | None = None) -> dict[str, object]:
 
 def cmd_dashboard(args: argparse.Namespace) -> None:
     """Single-view control panel: phase, active claim, last verdict, blockers, config."""
-    payload = get_dashboard_payload(root=_cfg.RESEARCH_DIR)
-    print(json.dumps({"schema_version": 1, "data": payload, "warnings": []}, indent=2))
+    emit_envelope(get_dashboard_payload(root=_cfg.RESEARCH_DIR))
 
 
 def cmd_reopen(args: argparse.Namespace) -> None:
@@ -1844,8 +1857,7 @@ def cmd_paths(args: argparse.Namespace) -> None:
         "foundations": str(_cfg.FOUNDATIONS_PATH),
         "config": str(_cfg.RESEARCH_DIR / ".config.md"),
     }
-    payload = {"schema_version": 1, "data": data, "warnings": []}
-    print(json.dumps(payload, indent=2))
+    emit_envelope(data)
 
 
 def cmd_roles(args: argparse.Namespace) -> None:
@@ -1866,8 +1878,7 @@ def cmd_roles(args: argparse.Namespace) -> None:
                 entry["phase"] = phase_name
                 break
         roles_data.append(entry)
-    payload = {"schema_version": 1, "data": roles_data, "warnings": []}
-    print(json.dumps(payload, indent=2))
+    emit_envelope(roles_data)
 
 
 def cmd_phases(args: argparse.Namespace) -> None:
@@ -1886,8 +1897,7 @@ def cmd_phases(args: argparse.Namespace) -> None:
         if "exit_condition" in phase_spec:
             entry["exit_condition"] = phase_spec["exit_condition"]
         phases_data.append(entry)
-    payload = {"schema_version": 1, "data": phases_data, "warnings": []}
-    print(json.dumps(payload, indent=2))
+    emit_envelope(phases_data)
 
 
 def cmd_schema(args: argparse.Namespace) -> None:
@@ -1900,5 +1910,4 @@ def cmd_schema(args: argparse.Namespace) -> None:
         "maturities": sorted(v for v in VALID_MATURITIES if v is not None),
         "confidences": sorted(v for v in VALID_CONFIDENCES if v is not None),
     }
-    payload = {"schema_version": 1, "data": data, "warnings": []}
-    print(json.dumps(payload, indent=2))
+    emit_envelope(data)

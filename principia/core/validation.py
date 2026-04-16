@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import TypedDict
 
 from . import config as _cfg
+from .commands import emit_envelope
 from .db import build_db
 from .ids import VALID_ATTACK_TYPES, VALID_STATUSES, VALID_TYPES
 
@@ -259,7 +259,7 @@ def cmd_validate(args: argparse.Namespace) -> None:
     errors = result["errors"]
 
     if getattr(args, "json", False):
-        print(json.dumps({"schema_version": 1, "data": result, "warnings": []}, indent=2))
+        emit_envelope(result)
         if errors:
             sys.exit(1)
         return
