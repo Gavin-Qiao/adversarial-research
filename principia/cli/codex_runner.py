@@ -12,7 +12,17 @@ def main() -> None:
     parser.add_argument("--root", type=Path, default=Path("principia"))
     parser.add_argument(
         "command",
-        choices=["build", "dashboard", "next", "packet", "prompt", "dispatch-log", "patch-status", "validate", "results"],
+        choices=[
+            "build",
+            "dashboard",
+            "next",
+            "packet",
+            "prompt",
+            "dispatch-log",
+            "patch-status",
+            "validate",
+            "results",
+        ],
     )
     parser.add_argument("--path", default="auto")
     parser.add_argument("--cycle", default=None)
