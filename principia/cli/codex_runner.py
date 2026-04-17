@@ -30,6 +30,7 @@ def main() -> None:
     args = parser.parse_args()
 
     engine = PrincipiaEngine(root=args.root)
+    payload: object
     if args.command == "next":
         payload = engine.next(path=args.path)
     elif args.command == "packet":
@@ -43,7 +44,7 @@ def main() -> None:
     else:
         payload = getattr(engine, args.command)()
     print(json.dumps(payload, indent=2))
-    if args.command == "validate" and not payload.get("valid", True):
+    if args.command == "validate" and isinstance(payload, dict) and not payload.get("valid", True):
         raise SystemExit(1)
 
 

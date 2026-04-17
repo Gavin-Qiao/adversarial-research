@@ -19,16 +19,16 @@ def test_pre_commit_covers_ci_python_quality_gates() -> None:
     local_hooks = {hook["entry"]: hook for repo in config["repos"] if repo["repo"] == "local" for hook in repo["hooks"]}
 
     expected_hooks = {
-        "uv run ruff check scripts/ tests/": "pre-commit",
-        "uv run ruff format --check scripts/ tests/": "pre-commit",
-        "uv run --python 3.12 python -m pytest tests/ -q": "pre-push",
-        "uv run --python 3.12 python -m mypy scripts/": "pre-push",
+        "uv run ruff check scripts/ tests/": ["pre-commit"],
+        "uv run ruff format --check scripts/ tests/": ["pre-commit"],
+        "uv run --python 3.12 python -m pytest tests/ -q": ["pre-push"],
+        "uv run --python 3.12 python -m mypy scripts/ principia/": ["pre-commit", "pre-push"],
     }
 
-    for command, stage in expected_hooks.items():
+    for command, stages in expected_hooks.items():
         assert command in ci_commands
         assert command in local_hooks
-        assert local_hooks[command]["stages"] == [stage]
+        assert local_hooks[command]["stages"] == stages
         assert local_hooks[command]["pass_filenames"] is False
 
 

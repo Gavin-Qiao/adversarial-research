@@ -923,11 +923,11 @@ def _claim_waves(
                 )
             remaining.clear()
             break
-        wave_index = len([wave for wave in waves if wave["kind"] == "wave"]) + 1
+        wave_number = len([wave for wave in waves if wave["kind"] == "wave"]) + 1
         waves.append(
             {
                 "kind": "wave",
-                "index": wave_index,
+                "index": wave_number,
                 "claim_ids": ready,
                 "detail": "Independent claims that can run in parallel.",
             }
@@ -937,12 +937,18 @@ def _claim_waves(
             for other in remaining:
                 if claim_id in deps.get(other, []):
                     in_degree[other] -= 1
-    wave_index = {
+    wave_index_map = {
         claim_id: int(wave["index"]) for wave in waves if wave["kind"] == "wave" for claim_id in wave["claim_ids"]
     }
     cycle_ids = {claim_id for wave in waves if wave["kind"] == "cycle" for claim_id in wave["claim_ids"]}
     blocked_ids = {claim_id for wave in waves if wave["kind"] == "blocked" for claim_id in wave["claim_ids"]}
-    return waves, wave_index, cycle_ids, blocked_ids
+    return waves, wave_index_map, cycle_ids, blocked_ids
+
+
+def _dashboard_items(value: object) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
 
 
 def build_workspace_explorer_payload(root: Path | None = None) -> dict[str, Any]:
@@ -972,7 +978,7 @@ def build_workspace_explorer_payload(root: Path | None = None) -> dict[str, Any]
         conn.close()
 
     blocked_map: dict[str, list[str]] = {}
-    for item in dashboard.get("blocked", []):
+    for item in _dashboard_items(dashboard.get("blocked")):
         blocked_map.setdefault(str(item["id"]), []).append(str(item["blocked_by"]))
 
     dependencies: dict[str, list[str]] = {claim_id: [] for claim_id in claim_ids}
@@ -1105,7 +1111,7 @@ def build_workspace_explorer_payload(root: Path | None = None) -> dict[str, Any]
 
     selected_claim = dashboard.get("active_claim")
     if not isinstance(selected_claim, str) or selected_claim not in {claim["sub_unit"] for claim in claim_payloads}:
-        pending = dashboard.get("pending_decisions", [])
+        pending = _dashboard_items(dashboard.get("pending_decisions"))
         if pending:
             pending_file = pending[0].get("file")
             if isinstance(pending_file, str):

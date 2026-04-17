@@ -25,10 +25,10 @@ repos:
         stages: [pre-push]
       - id: ci-mypy
         name: ci mypy
-        entry: uv run --python 3.12 python -m mypy scripts/
+        entry: uv run --python 3.12 python -m mypy scripts/ principia/
         language: system
         pass_filenames: false
-        stages: [pre-push]
+        stages: [pre-commit, pre-push]
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
