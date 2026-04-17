@@ -4,6 +4,41 @@ All notable changes to this project are documented in this file.
 
 The format is inspired by Keep a Changelog, but organized around the release-note sections used for Principia releases: Features, Changed, Fixes, Docs, Packaging, Upgrade Notes, and Verification.
 
+## [0.4.0b5] - 2026-04-17
+
+### Features
+
+- Added a generated static workspace explorer for Codex and shared CLI users, including claim hierarchy columns, dependency links, transition history, timeline events, and full packet/prompt/response artifact panes per claim.
+
+### Changed
+
+- Extended the packaged Codex runner and shared engine API to expose `visualize`, so the Codex plugin can generate the explorer without shelling back to legacy wrapper paths.
+- Published a root `marketplace.json` alongside the repo-local marketplace entry so Codex `0.121.0` and newer can install Principia directly from GitHub.
+- Optimized explorer interactions so selection updates reuse the rendered graph, search input is debounced, and link drawing reuses cached node geometry instead of querying the DOM per edge.
+
+### Fixes
+
+- Corrected filtered graph summary counts so dependency, cycle, and cycle-blocked metrics reflect the currently visible claims rather than the entire workspace.
+- Ignored generated workspace report artifacts and packaging output so normal workflow commands stop dirtying the repository with `PROGRESS.md`, `FOUNDATIONS.md`, `RESULTS.md`, `TOOLKIT.md`, explorer output, and `build/`.
+- Added subprocess coverage for the packaged Codex runner commands `dashboard`, `dispatch-log`, `patch-status`, `results`, and `visualize`.
+
+### Docs
+
+- Updated the top-level README, Codex bundle README, and Codex skills README to document remote marketplace installation and the new explorer generation flow.
+
+### Packaging
+
+- Bumped Principia, Codex plugin, and Claude plugin metadata to `0.4.0b5`.
+
+### Upgrade Notes
+
+- Treat `visualize` as the canonical way to inspect a live workspace graph from either the shared CLI or the Codex plugin. Open the generated `WORKSPACE_EXPLORER.html` directly or serve the workspace directory over HTTP.
+
+### Verification
+
+- `uv run ruff check principia/core/explorer.py tests/test_explorer.py tests/engine/test_engine_lifecycle.py tests/harnesses/test_codex_engine_runner.py tests/harnesses/test_codex_layout.py tests/harnesses/test_readme_installation.py`
+- `uv run python -m pytest tests/test_explorer.py tests/engine/test_engine_lifecycle.py tests/harnesses/test_codex_engine_runner.py tests/harnesses/test_codex_layout.py tests/harnesses/test_readme_installation.py -q`
+
 ## [0.4.0b4] - 2026-04-15
 
 ### Features

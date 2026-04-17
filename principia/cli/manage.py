@@ -9,6 +9,7 @@ User-facing commands:
     query <sql>             Query the evidence database
     list [--type] [--status] Browse claims and evidence
     results                 Generate RESULTS.md summary
+    visualize               Generate static HTML explorer for claims and state flow
     cascade <id>            Preview impact of disproving a claim
     settle <id>             Mark a claim as proven
     falsify <id> [--by id]  Mark a claim as disproven and cascade
@@ -41,8 +42,8 @@ from principia.core.commands import (
     cmd_log_dispatch,
     cmd_new,
     cmd_next,
-    cmd_parse_framework,
     cmd_packet,
+    cmd_parse_framework,
     cmd_post_verdict,
     cmd_prompt,
     cmd_query,
@@ -54,6 +55,7 @@ from principia.core.commands import (
     cmd_waves,
 )
 from principia.core.config import init_paths
+from principia.core.explorer import cmd_visualize
 from principia.core.reports import cmd_assumptions, cmd_codebook, cmd_results, cmd_status
 from principia.core.validation import cmd_validate, cmd_validate_paste
 
@@ -158,6 +160,9 @@ def main() -> None:
 
     p_results = sub.add_parser("results", help="Generate RESULTS.md summary document")
     p_results.set_defaults(func=cmd_results)
+
+    p_visualize = sub.add_parser("visualize", help="Generate a static HTML workspace explorer")
+    p_visualize.set_defaults(func=cmd_visualize)
 
     p_reg = sub.add_parser("register")
     p_reg.add_argument("--id", required=True)

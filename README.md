@@ -34,9 +34,17 @@ After Claude starts, run `/help` to confirm the namespaced Principia skills are 
 
 ### Codex
 
-Codex uses the repo-local marketplace entry at `.agents/plugins/marketplace.json`, which points to `./plugins/codex`.
+Codex CLI `0.121.0` and newer can add the published Principia marketplace directly from GitHub:
 
-Open the Principia checkout in Codex, then install the `principia` plugin from the repo-local marketplace. The installed bundle uses the packaged runtime entrypoint under `principia/cli/codex_runner.py`.
+```bash
+codex marketplace add Gavin-Qiao/principia
+```
+
+The remote install surface is the repository root `marketplace.json`, which exposes `./plugins/codex` from the cloned marketplace root.
+
+For local development and repo-scoped discovery, the checkout also publishes `.agents/plugins/marketplace.json`, which points to the same `./plugins/codex` bundle.
+
+Open the Principia checkout in Codex, then install the `principia` plugin from either marketplace surface. The installed bundle uses the packaged runtime entrypoint under `principia/cli/codex_runner.py`.
 
 Codex plugins expose Principia through skills rather than slash commands. In Codex, start with the `principia:init` skill, then continue with `principia:status` and `principia:next-step`, or simply ask Codex in natural language to initialize or advance the Principia workflow.
 

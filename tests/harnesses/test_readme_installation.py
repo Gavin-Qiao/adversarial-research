@@ -20,9 +20,11 @@ def test_readme_installation_documents_verified_bundle_flows() -> None:
     text = Path("README.md").read_text()
 
     assert "claude --plugin-dir ./plugins/claude" in text
+    assert "codex marketplace add Gavin-Qiao/principia" in text
+    assert "marketplace.json" in text
     assert ".agents/plugins/marketplace.json" in text
     assert "./plugins/codex" in text
-    assert "install the `principia` plugin from the repo-local marketplace" in text
+    assert "install the `principia` plugin from either marketplace surface" in text
     assert "uv build --wheel" in text
     assert "uv pip install" in text
 
@@ -31,7 +33,7 @@ def test_changelog_tracks_recent_releases() -> None:
     text = Path("CHANGELOG.md").read_text()
     current_version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
 
-    assert f"## [{current_version}] - 2026-04-15" in text
+    assert f"## [{current_version}] - 2026-04-17" in text
     assert "## [0.3.3] - 2026-04-04" in text
     assert "### Features" in text
     assert "### Fixes" in text
@@ -40,7 +42,7 @@ def test_changelog_tracks_recent_releases() -> None:
 def test_release_metadata_versions_stay_aligned() -> None:
     expected_version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
 
-    assert f"## [{expected_version}] - 2026-04-15" in Path("CHANGELOG.md").read_text()
+    assert f"## [{expected_version}] - 2026-04-17" in Path("CHANGELOG.md").read_text()
     assert f'"version": "{expected_version}"' in Path("plugins/codex/.codex-plugin/plugin.json").read_text()
     assert f'"version": "{expected_version}"' in Path("plugins/claude/.claude-plugin/plugin.json").read_text()
     assert f'"version": "{expected_version}"' in Path("plugins/claude/.claude-plugin/marketplace.json").read_text()
@@ -66,7 +68,10 @@ def test_codex_bundle_readme_describes_native_wrapper() -> None:
     assert "plugins/codex" in text
     assert "full Principia checkout" in text
     assert "shared repo content" in text
+    assert "codex marketplace add Gavin-Qiao/principia" in text
+    assert "marketplace.json" in text
     assert "uv run python -m principia.cli.codex_runner --root principia dashboard" in text
+    assert "uv run python -m principia.cli.codex_runner --root principia visualize" in text
     assert "unsupported" in text
     assert ".agents/plugins/marketplace.json" in text
     assert "install the `principia` plugin from the repo-local marketplace" in text

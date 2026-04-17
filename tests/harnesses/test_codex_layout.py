@@ -24,6 +24,7 @@ def test_codex_skills_readme_matches_current_bundle_content() -> None:
     assert "packaged runner" in readme
     assert "principia.cli.codex_runner" in readme
     assert "`patch-status`" in readme
+    assert "`visualize`" in readme
     assert "legacy harness runner path" not in readme
     assert "packaged-runtime migration task" not in readme
 
@@ -34,6 +35,7 @@ def test_codex_bundle_readme_describes_skills_not_slash_commands() -> None:
     assert "skills, not slash commands" in readme
     assert "`principia:init`" in readme
     assert "patch-status" in readme
+    assert "visualize" in readme
     assert "packet --path" in readme
     assert "/principia:init" not in readme
 
@@ -99,10 +101,14 @@ def test_codex_skills_have_expected_canonical_structure() -> None:
 
 
 def test_marketplace_exposes_principia_plugin() -> None:
-    marketplace = json.loads(Path(".agents/plugins/marketplace.json").read_text())
-    assert marketplace["interface"]["displayName"] == "Principia"
+    repo_marketplace = json.loads(Path(".agents/plugins/marketplace.json").read_text())
+    remote_marketplace = json.loads(Path("marketplace.json").read_text())
 
-    plugin = next(plugin for plugin in marketplace["plugins"] if plugin["name"] == "principia")
+    assert repo_marketplace["interface"]["displayName"] == "Principia"
+    assert remote_marketplace["interface"]["displayName"] == "Principia"
+    assert repo_marketplace["plugins"] == remote_marketplace["plugins"]
+
+    plugin = next(plugin for plugin in remote_marketplace["plugins"] if plugin["name"] == "principia")
     assert plugin["source"]["source"] == "local"
     assert plugin["source"]["path"] == "./plugins/codex"
     assert plugin["policy"]["installation"] == "AVAILABLE"

@@ -10,7 +10,14 @@ design/.db/
 .claude/
 .serena/
 .worktrees/
+build/
 docs/superpowers/
 # Test artifacts that leak when tests run with cwd as root
 claims/
 cycles/
+**/PROGRESS.md
+**/FOUNDATIONS.md
+**/RESULTS.md
+**/TOOLKIT.md
+**/WORKSPACE_EXPLORER.html
+**/WORKSPACE_EXPLORER.json

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "principia"
-version = "0.4.0b4"
+version = "0.4.0b5"
 requires-python = ">=3.12"
 description = "Design algorithms from first principles through adversarial testing"
 

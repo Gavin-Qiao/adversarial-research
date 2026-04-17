@@ -13,6 +13,7 @@ from principia.core.commands import (
     write_prompt_artifact,
 )
 from principia.core.db import build_db
+from principia.core.explorer import generate_workspace_explorer
 from principia.core.reports import generate_results_report
 from principia.core.validation import ValidationResult, collect_validation_result
 
@@ -67,4 +68,14 @@ class PrincipiaEngine:
             "results_path": str(results_path),
             "exists": results_path.exists(),
             "message": message,
+        }
+
+    def visualize(self) -> dict[str, object]:
+        html_path, json_path, payload = generate_workspace_explorer(self.root)
+        return {
+            "html_path": str(html_path),
+            "json_path": str(json_path),
+            "claim_count": len(payload["claims"]),
+            "phase": payload["dashboard"]["phase"],
+            "selected_claim": payload["selected_claim"],
         }

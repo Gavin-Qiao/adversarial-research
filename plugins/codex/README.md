@@ -4,9 +4,19 @@ Canonical repo-local `plugins/codex` bundle for Principia.
 
 Install Principia in Codex from the canonical `plugins/codex` surface inside a full Principia checkout.
 
+## Remote marketplace install
+
+Codex CLI `0.121.0` and newer can add Principia from GitHub without first opening the checkout as a repo-local marketplace:
+
+```bash
+codex marketplace add Gavin-Qiao/principia
+```
+
+The remote install surface is the repository root `marketplace.json`, which exposes `./plugins/codex` from the cloned marketplace root.
+
 ## Local marketplace install
 
-The repository publishes a repo-local Codex marketplace entry at `.agents/plugins/marketplace.json`, with `source.path` set to `./plugins/codex`.
+The repository also publishes a repo-local Codex marketplace entry at `.agents/plugins/marketplace.json`, with `source.path` set to `./plugins/codex`.
 
 Open the full Principia checkout in Codex, then install the `principia` plugin from the repo-local marketplace. This keeps the Codex bundle aligned with the official `plugins/<name>` structure while still using the shared runtime from the checkout.
 
@@ -33,6 +43,7 @@ uv run python -m principia.cli.codex_runner --root principia dispatch-log --cycl
 uv run python -m principia.cli.codex_runner --root principia patch-status
 uv run python -m principia.cli.codex_runner --root principia validate
 uv run python -m principia.cli.codex_runner --root principia results
+uv run python -m principia.cli.codex_runner --root principia visualize
 ```
 
 Dispatch lifecycle is now explicit in the audit log:
@@ -58,7 +69,7 @@ Derived handoff statuses in `dispatch_lifecycle` are intentionally state-machine
 
 The bundle depends on shared repo content, including `principia/`, `agents/`, and `config/`. Copying `plugins/codex` by itself is unsupported.
 
-The repo-local marketplace entry in `.agents/plugins/marketplace.json` points at `./plugins/codex`, so Codex discovers this bundle from the checkout rather than from a separate package install.
+The root `marketplace.json` and the repo-local entry in `.agents/plugins/marketplace.json` both point at `./plugins/codex`, so Codex can discover this bundle either from a remote marketplace add flow or directly from the checkout.
 
 ## Layout
 

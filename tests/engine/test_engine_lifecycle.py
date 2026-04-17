@@ -46,3 +46,28 @@ def test_engine_validate_and_results_stay_bound_to_root(tmp_path: Path) -> None:
     assert results_b["results_path"] == str(root_b / "RESULTS.md")
     assert results_a["exists"] is True
     assert results_b["exists"] is True
+
+
+def test_engine_visualize_generates_workspace_bound_explorer(tmp_path: Path) -> None:
+    from principia.api.engine import PrincipiaEngine
+
+    root = tmp_path / "workspace"
+    claim_dir = root / "claims" / "claim-1-test"
+    (root / "context" / "assumptions").mkdir(parents=True)
+    (root / ".db").mkdir(parents=True)
+    claim_dir.mkdir(parents=True)
+    (claim_dir / "claim.md").write_text(
+        "---\nid: h1-claim\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# Test claim\n\nA live summary.\n",
+        encoding="utf-8",
+    )
+    for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+        (claim_dir / role).mkdir()
+
+    engine = PrincipiaEngine(root=root)
+    result = engine.visualize()
+
+    assert result["html_path"] == str(root / "WORKSPACE_EXPLORER.html")
+    assert result["json_path"] == str(root / "WORKSPACE_EXPLORER.json")
+    assert result["claim_count"] == 1
+    assert Path(result["html_path"]).exists()
+    assert Path(result["json_path"]).exists()
