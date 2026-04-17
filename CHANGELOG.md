@@ -21,6 +21,7 @@ The format is inspired by Keep a Changelog, but organized around the release-not
 - Corrected filtered graph summary counts so dependency, cycle, and cycle-blocked metrics reflect the currently visible claims rather than the entire workspace.
 - Ignored generated workspace report artifacts and packaging output so normal workflow commands stop dirtying the repository with `PROGRESS.md`, `FOUNDATIONS.md`, `RESULTS.md`, `TOOLKIT.md`, explorer output, and `build/`.
 - Added subprocess coverage for the packaged Codex runner commands `dashboard`, `dispatch-log`, `patch-status`, `results`, and `visualize`.
+- Fixed the explorer typing regressions that broke the GitHub Actions mypy job, and aligned CI plus pre-commit so `principia/` now gets type-checked locally before push.
 
 ### Docs
 
@@ -38,6 +39,9 @@ The format is inspired by Keep a Changelog, but organized around the release-not
 
 - `uv run ruff check principia/core/explorer.py tests/test_explorer.py tests/engine/test_engine_lifecycle.py tests/harnesses/test_codex_engine_runner.py tests/harnesses/test_codex_layout.py tests/harnesses/test_readme_installation.py`
 - `uv run python -m pytest tests/test_explorer.py tests/engine/test_engine_lifecycle.py tests/harnesses/test_codex_engine_runner.py tests/harnesses/test_codex_layout.py tests/harnesses/test_readme_installation.py -q`
+- `uv run --python 3.12 python -m mypy scripts/ principia/`
+- `uv run pre-commit run ci-mypy --all-files --hook-stage pre-commit`
+- `uv build --wheel --out-dir dist`
 
 ## [0.4.0b4] - 2026-04-15
 
