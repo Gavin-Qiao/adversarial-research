@@ -936,14 +936,53 @@ def get_next_payload(path: str = "auto", root: Path | None = None) -> dict[str, 
 
     research_root = _resolve_workspace_root(root)
     config = load_config(_cfg.DEFAULT_ORCH_CONFIG)
+
+    def _guided_next_payload(
+        dashboard: dict[str, object],
+        *,
+        status: str,
+        message: str,
+        active_claim: str | None = None,
+    ) -> dict[str, Any]:
+        guidance = cast(dict[str, Any], dashboard["operator_guidance"])
+        payload: dict[str, Any] = {
+            "status": status,
+            "message": message,
+            "recommended_action": guidance.get("recommended_action"),
+            "operator_guidance": guidance,
+            "warnings": dashboard.get("warnings", []),
+            "claims": dashboard.get("claims", {}),
+            "init": dashboard.get("init", {}),
+            "phase": dashboard.get("phase"),
+            "dispatch_overview": dashboard.get("dispatch_overview", {}),
+            "patch_status": dashboard.get("patch_status", {}),
+        }
+        if active_claim:
+            payload["active_claim"] = active_claim
+        return payload
+
     sub_path = path
     if sub_path == "auto":
+        dashboard = get_dashboard_payload(root=research_root)
         found = find_active_subunit(research_root)
         if not found:
-            return {
-                "status": "no_active_claims",
-                "message": "No active claims found. Use /principia:scaffold to create one.",
-            }
+            guidance = cast(dict[str, Any], dashboard["operator_guidance"])
+            summary = str(guidance.get("summary") or "No active claim is selected yet.")
+            return _guided_next_payload(
+                dashboard,
+                status="no_active_claims",
+                message=f"No active claim is selected. {summary}",
+            )
+        guidance = cast(dict[str, Any], dashboard["operator_guidance"])
+        recommended_action = cast(dict[str, Any], guidance.get("recommended_action") or {})
+        if found.startswith("claims/") and str(recommended_action.get("command") or "") != "next":
+            summary = str(guidance.get("summary") or f"{found} needs operator attention before claim progression.")
+            return _guided_next_payload(
+                dashboard,
+                status="guided_next",
+                message=summary,
+                active_claim=found,
+            )
         sub_path = found
 
     _sync_dispatch_receipts(sub_path, root=research_root)
@@ -1216,7 +1255,10 @@ def cmd_next(args: argparse.Namespace) -> None:
     sub_path = args.path
     if sub_path != "auto":
         _check_path_containment(sub_path)
-    print(json.dumps(get_next_payload(sub_path), indent=2))
+    payload = get_next_payload(sub_path)
+    if sub_path == "auto" and payload.get("status") != "no_active_claims" and payload.get("sub_unit"):
+        print(f"Auto-detected: {payload['sub_unit']}", file=sys.stderr)
+    print(json.dumps(payload, indent=2))
 
 
 def cmd_packet(args: argparse.Namespace) -> None:
@@ -1313,6 +1355,38 @@ def _build_init_status(workspace_exists: bool, research_root: Path, inv_state: d
     config_path = research_root / ".config.md"
     claims_dir = research_root / "claims"
     claims_scaffolded = claims_dir.exists() and any(child.is_dir() for child in claims_dir.iterdir())
+    context_exists = context_path.exists()
+    north_star_locked = north_star_path.exists()
+    repo_scan_required = not context_exists
+    north_star_interview_required = not north_star_locked
+    substeps = list(cast(list[str], inv_state.get("substeps", []))) if inv_state.get("action") == "understand" else []
+
+    interview_questions = [
+        {
+            "id": "problem",
+            "prompt": "What problem are we actually solving?",
+        },
+        {
+            "id": "success",
+            "prompt": "What would success look like if this workflow worked?",
+        },
+        {
+            "id": "intuition",
+            "prompt": "What core intuition makes this approach plausible?",
+        },
+        {
+            "id": "constraints",
+            "prompt": "What hard constraints must the design respect?",
+        },
+        {
+            "id": "non_goals",
+            "prompt": "What should Principia explicitly avoid optimizing for?",
+        },
+        {
+            "id": "falsifiers",
+            "prompt": "What evidence would make us abandon this north star?",
+        },
+    ]
 
     if not workspace_exists:
         status = "missing_workspace"
@@ -1325,14 +1399,300 @@ def _build_init_status(workspace_exists: bool, research_root: Path, inv_state: d
     else:
         status = "workflow_active"
 
+    if not workspace_exists:
+        blocking_reason = "Principia has not bootstrapped the workspace yet. It must inspect the repo and lock the north star before the workflow can continue."
+    elif repo_scan_required and north_star_interview_required:
+        blocking_reason = "Principia must inspect the repo and interview you to lock the north star before the workflow can continue."
+    elif repo_scan_required:
+        blocking_reason = "Principia must finish the repo scan and write principia/.context.md before the workflow can continue."
+    elif north_star_interview_required:
+        blocking_reason = "Principia must finish the north-star interview before the workflow can continue."
+    elif status == "ready_for_claims":
+        blocking_reason = "The north star is locked, but claim directions are not scaffolded yet."
+    else:
+        blocking_reason = None
+
     return {
         "status": status,
         "workspace_root": str(research_root),
         "workspace_exists": workspace_exists,
-        "north_star_locked": north_star_path.exists(),
-        "context_exists": context_path.exists(),
+        "north_star_locked": north_star_locked,
+        "context_exists": context_exists,
         "config_exists": config_path.exists(),
         "claims_scaffolded": claims_scaffolded,
+        "substeps": substeps,
+        "blocking_reason": blocking_reason,
+        "repo_scan": {
+            "required": True,
+            "complete": context_exists,
+            "path": "principia/.context.md",
+            "summary": "Inspect the repo and write a grounded summary of the codebase, tooling, and docs to principia/.context.md.",
+        },
+        "north_star_interview": {
+            "required": True,
+            "complete": north_star_locked,
+            "path": "principia/.north-star.md",
+            "summary": "Confirm the problem, success criteria, intuition, constraints, non-goals, and falsifiers before locking the north star.",
+            "questions": ([] if north_star_locked else interview_questions),
+        },
+    }
+
+
+def _claim_directory_from_file(file_path: str | None) -> str | None:
+    if not file_path:
+        return None
+    target = Path(file_path)
+    if target.name in {"claim.md", "frontier.md"}:
+        return target.parent.as_posix()
+    return target.as_posix()
+
+
+def _cycle_from_claim_path(claim_path: str | None) -> str | None:
+    if not claim_path:
+        return None
+    return Path(claim_path).name
+
+
+def _format_sidecar_policy(sidecars: dict[str, str]) -> str:
+    labels = {
+        "deep-thinker": "deep-thinker",
+        "researcher": "researcher",
+        "coder": "coder",
+    }
+    groups = {
+        "ask": [labels[key] for key, mode in sidecars.items() if mode == "ask" and key in labels],
+        "auto": [labels[key] for key, mode in sidecars.items() if mode == "auto" and key in labels],
+        "off": [labels[key] for key, mode in sidecars.items() if mode == "off" and key in labels],
+    }
+    parts: list[str] = []
+    if groups["ask"]:
+        parts.append(f"{', '.join(groups['ask'])} require approval")
+    if groups["auto"]:
+        parts.append(f"{', '.join(groups['auto'])} auto-run")
+    if groups["off"]:
+        parts.append(f"{', '.join(groups['off'])} stay off")
+    return "; ".join(parts) if parts else "no sidecar overrides are set"
+
+
+def _format_dispatch_preferences(dispatch: dict[str, str]) -> str:
+    external = [agent for agent, mode in dispatch.items() if mode == "external"]
+    if not external:
+        return "dispatch roles stay internal"
+    return f"dispatch roles may hand off externally for {', '.join(external)}"
+
+
+def _build_runner_invocation(command: str, *, claim_path: str | None = None, cycle: str | None = None) -> str:
+    base = "uv run python -m principia.cli.codex_runner --root principia"
+    if command in {"next", "packet", "prompt"} and claim_path:
+        return f"{base} {command} --path {claim_path}"
+    if command == "dispatch-log" and cycle:
+        return f"{base} {command} --cycle {cycle}"
+    return f"{base} {command}"
+
+
+def _make_operator_action(
+    *,
+    kind: str,
+    command: str,
+    reason: str,
+    claim_path: str | None = None,
+    cycle: str | None = None,
+) -> dict[str, object]:
+    result: dict[str, object] = {
+        "kind": kind,
+        "command": command,
+        "reason": reason,
+        "claim_path": claim_path,
+        "cycle": cycle,
+    }
+    if kind == "runner":
+        result["runner_command"] = _build_runner_invocation(command, claim_path=claim_path, cycle=cycle)
+    else:
+        result["runner_command"] = None
+    return result
+
+
+def _summarize_dispatch_status(
+    dispatch_lifecycle: dict[str, object],
+    dispatch_overview: dict[str, object],
+) -> str:
+    claim = cast(str | None, dispatch_lifecycle.get("claim"))
+    latest = cast(dict[str, Any] | None, dispatch_lifecycle.get("latest"))
+    if claim and latest:
+        agent = latest.get("agent")
+        round_num = latest.get("round")
+        round_suffix = f" round {round_num}" if round_num else ""
+        status = latest.get("status")
+        if status == "ready_to_send":
+            return f"{claim} is ready to send to {agent}{round_suffix}."
+        if status == "waiting_result":
+            return f"{claim} is waiting on {agent}{round_suffix}."
+        if status == "stale":
+            return f"{claim} has stale {agent}{round_suffix} handoff metadata."
+        if status == "recorded":
+            return f"{claim} has a recorded verdict handoff."
+        if status == "received":
+            return f"{claim} has a received sidecar result."
+
+    stale_claim_count = int(dispatch_overview.get("stale_claim_count", 0))
+    waiting_claim_count = int(dispatch_overview.get("waiting_result_claim_count", 0))
+    ready_claim_count = int(dispatch_overview.get("ready_to_send_claim_count", 0))
+    if stale_claim_count:
+        return f"{stale_claim_count} claim(s) have stale handoff metadata."
+    if waiting_claim_count:
+        return f"{waiting_claim_count} claim(s) are waiting on external results."
+    if ready_claim_count:
+        return f"{ready_claim_count} claim(s) are ready for external handoff."
+    return "No active external handoffs."
+
+
+def _build_operator_guidance(
+    *,
+    phase: str,
+    action: str,
+    claims: dict[str, int],
+    active_claim: str | None,
+    dispatch_lifecycle: dict[str, object],
+    dispatch_overview: dict[str, object],
+    pending_decisions: list[dict[str, str]],
+    patch_status: dict[str, Any],
+    warnings: list[dict[str, object]],
+    init: dict[str, object],
+    preferences: dict[str, object],
+    last_verdict: dict[str, str] | None,
+) -> dict[str, object]:
+    workflow_mode = str(preferences["workflow_autonomy"])
+    dispatch_summary = _format_dispatch_preferences(cast(dict[str, str], preferences["dispatch"]))
+    sidecar_summary = _format_sidecar_policy(cast(dict[str, str], preferences["sidecars"]))
+    autonomy_summary = f"Workflow runs in {workflow_mode} mode; {dispatch_summary}; sidecars: {sidecar_summary}."
+    lifecycle_summary = _summarize_dispatch_status(dispatch_lifecycle, dispatch_overview)
+    dispatch_claim = active_claim or cast(str | None, dispatch_lifecycle.get("claim"))
+    cycle = _cycle_from_claim_path(dispatch_claim)
+    latest = cast(dict[str, Any] | None, dispatch_lifecycle.get("latest"))
+    latest_status = str(latest.get("status")) if latest else ""
+    stale_claims = cast(list[dict[str, Any]], dispatch_overview.get("stale_claims", []))
+    waiting_claims = cast(list[dict[str, Any]], dispatch_overview.get("waiting_result_claims", []))
+    ready_claims = cast(list[dict[str, Any]], dispatch_overview.get("ready_to_send_claims", []))
+    open_claim_count = sum(
+        int(claims.get(status, 0)) for status in ("pending", "active", "partial", "weakened", "inconclusive")
+    )
+
+    init_blocking_reason = str(init.get("blocking_reason") or "Initialization is still in progress.")
+    init_requires_repo_scan = not bool(cast(dict[str, object], init.get("repo_scan", {})).get("complete", False))
+    if (
+        str(init["status"]) in {"missing_workspace", "discussion_in_progress"}
+        or not bool(init["north_star_locked"])
+        or init_requires_repo_scan
+    ):
+        reason = init_blocking_reason
+        recommended_action = _make_operator_action(kind="skill", command="principia:init", reason=reason)
+        summary = reason
+    elif str(init["status"]) == "ready_for_claims" and not active_claim:
+        reason = str(init.get("blocking_reason") or "The north star is locked, but claim directions are not scaffolded yet.")
+        recommended_action = _make_operator_action(kind="skill", command="principia:init", reason=reason)
+        summary = reason
+    elif pending_decisions:
+        decision = pending_decisions[0]
+        claim_path = _claim_directory_from_file(decision.get("file"))
+        reason = (
+            f"{decision['id']} is {decision['status']} and needs a human decision before the workflow can continue."
+        )
+        recommended_action = _make_operator_action(
+            kind="manual",
+            command="review the claim outcome",
+            reason=reason,
+            claim_path=claim_path,
+            cycle=_cycle_from_claim_path(claim_path),
+        )
+        summary = reason
+    elif stale_claims:
+        stale_claim = cast(str | None, stale_claims[0].get("claim")) or dispatch_claim
+        reason = f"{stale_claim} has stale handoff metadata that should be reconciled before dispatch continues."
+        recommended_action = _make_operator_action(
+            kind="runner",
+            command="dispatch-log",
+            reason=reason,
+            cycle=_cycle_from_claim_path(stale_claim),
+            claim_path=stale_claim,
+        )
+        summary = reason
+    elif waiting_claims:
+        waiting_claim = dispatch_claim if latest_status == "waiting_result" and dispatch_claim else cast(
+            str | None, waiting_claims[0].get("claim")
+        )
+        reason = f"{waiting_claim} is waiting on an external result."
+        recommended_action = _make_operator_action(
+            kind="runner",
+            command="dispatch-log",
+            reason=reason,
+            cycle=_cycle_from_claim_path(waiting_claim),
+            claim_path=waiting_claim,
+        )
+        summary = reason
+    elif patch_status.get("needs_review_count", 0):
+        first_claim = cast(dict[str, str], patch_status["needs_review"][0])
+        claim_path = _claim_directory_from_file(first_claim.get("file"))
+        reason = f"{first_claim['id']} is stale or missing a north-star version stamp."
+        recommended_action = _make_operator_action(
+            kind="runner",
+            command="patch-status",
+            reason=reason,
+            claim_path=claim_path,
+            cycle=_cycle_from_claim_path(claim_path),
+        )
+        summary = warnings[0]["message"] if warnings else reason
+    elif phase == "complete" or action.startswith("complete_"):
+        reason = "At least one claim has completed a verdict cycle, so refresh the synthesis."
+        recommended_action = _make_operator_action(kind="runner", command="results", reason=reason)
+        summary = reason
+    elif last_verdict and open_claim_count == 0:
+        reason = "The recorded verdict leaves no open claims, so refresh the synthesis."
+        recommended_action = _make_operator_action(kind="runner", command="results", reason=reason)
+        summary = reason
+    elif ready_claims:
+        ready_claim = dispatch_claim if latest_status == "ready_to_send" and dispatch_claim else cast(
+            str | None, ready_claims[0].get("claim")
+        )
+        reason = f"{ready_claim} is ready for an external handoff."
+        recommended_action = _make_operator_action(
+            kind="runner",
+            command="prompt",
+            reason=reason,
+            claim_path=ready_claim,
+            cycle=_cycle_from_claim_path(ready_claim),
+        )
+        summary = reason
+    elif dispatch_claim:
+        reason = f"{dispatch_claim} is the current working claim."
+        recommended_action = _make_operator_action(
+            kind="runner",
+            command="next",
+            reason=reason,
+            claim_path=dispatch_claim,
+            cycle=cycle,
+        )
+        summary = reason
+    elif claims:
+        reason = "The workspace already has claims, so ask Principia to choose the next one."
+        recommended_action = _make_operator_action(kind="runner", command="next", reason=reason)
+        summary = reason
+    else:
+        reason = "Status is the safest entry point when no active claim is selected yet."
+        recommended_action = _make_operator_action(kind="skill", command="principia:status", reason=reason)
+        summary = reason
+
+    return {
+        "summary": summary,
+        "autonomy": {
+            "workflow_mode": workflow_mode,
+            "summary": autonomy_summary,
+        },
+        "dispatch": {
+            "summary": lifecycle_summary,
+            "active_claim": active_claim,
+            "active_cycle": cycle,
+        },
+        "recommended_action": recommended_action,
     }
 
 
@@ -1638,6 +1998,20 @@ def get_dashboard_payload(root: Path | None = None) -> dict[str, object]:
             "dispatch": repo_config["dispatch"],
         },
     }
+    result["operator_guidance"] = _build_operator_guidance(
+        phase=str(phase),
+        action=str(action),
+        claims=claim_counts,
+        active_claim=active_claim if isinstance(active_claim, str) else None,
+        dispatch_lifecycle=dispatch_lifecycle,
+        dispatch_overview=dispatch_overview,
+        pending_decisions=decisions,
+        patch_status=patch_status,
+        warnings=warnings,
+        init=init,
+        preferences=cast(dict[str, object], result["preferences"]),
+        last_verdict=cast(dict[str, str] | None, last_verdict),
+    )
     conn.close()
     return result
 

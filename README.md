@@ -14,6 +14,8 @@ Principia is a claim-driven design system for taking a vague idea and forcing it
 
 Both bundles run against the same packaged Principia runtime under `principia/`. A full Principia checkout remains the install surface for both because the bundles depend on `principia/`, `agents/`, and `config/`.
 
+Terminology: `principia` is the Python package and plugin identity, `plugins/claude` and `plugins/codex` are installable bundle paths, and `principia/` inside a project is the generated workflow workspace.
+
 [Installation](#installation) | [Why Principia](#why-principia) | [Quick Start](#quick-start) | [Outputs](#outputs) | [How It Works](#how-it-works) | [Architecture](#architecture) | [Development](#development) | [Changelog](CHANGELOG.md)
 
 ## Why Principia
@@ -58,7 +60,7 @@ For local development and repo-scoped discovery, the checkout also publishes `.a
 
 Open the Principia checkout in Codex, then install the `principia` plugin from either marketplace surface. The installed bundle uses the packaged runtime entrypoint under `principia/cli/codex_runner.py`.
 
-Codex plugins expose Principia through skills rather than slash commands. Start with `principia:init`, then continue with `principia:status`, `principia:next-step`, `principia:validate`, and `principia:results`.
+Codex plugins expose Principia through skills rather than slash commands. The normal Codex-first path is `principia:init`, then `principia:status`, `principia:next-step`, `principia:results`, and `principia:validate` when you need an integrity check.
 
 ### Packaged Runtime Verification
 
@@ -84,14 +86,30 @@ uv pip install --python .tmp\principia-wheel\Scripts\python.exe dist\principia-*
 
 ## Quick Start
 
-| Goal | Claude | Codex |
-| --- | --- | --- |
-| Initialize a workspace | `/principia:init` | `principia:init` |
-| Inspect live status | `/principia:status` | `principia:status` |
-| Advance the next action | `/principia:step` | `principia:next-step` |
-| Refresh final synthesis | `/principia:results` | `principia:results` |
+### Codex
 
-The init flow inspects the repository, scaffolds the workspace, gathers autonomy and sidecar preferences, and keeps the conversation open until the north star is explicitly locked.
+1. Install the `principia` plugin from `./plugins/codex`.
+2. Reload Codex so the Principia skills are available.
+3. Run `principia:init` to create or lock the workflow workspace at `principia/`.
+4. Run `principia:status` for live state, `principia:next-step` for the next action, and `principia:results` for synthesis.
+
+### First 10 Minutes in Codex
+
+1. `principia:init` creates `principia/`, inspects the repo, and locks the north star.
+2. `principia:status` tells you what phase the workflow is in, which warnings matter, and whether a human decision, drift check, or handoff is blocking progress.
+3. `principia:next-step` answers "what do I do next?" with the preferred command or human review action.
+4. `principia:results` summarizes what the current report says before pointing you to `principia/RESULTS.md`.
+
+### Claude
+
+| Goal | Command |
+| --- | --- |
+| Initialize a workspace | `/principia:init` |
+| Inspect live status | `/principia:status` |
+| Advance the next action | `/principia:step` |
+| Refresh final synthesis | `/principia:results` |
+
+The init flow inspects the repository, scaffolds the workspace, gathers autonomy and delegation preferences, and keeps the conversation open until the north star is explicitly locked.
 
 If you want the visual overview immediately, generate the explorer after init:
 

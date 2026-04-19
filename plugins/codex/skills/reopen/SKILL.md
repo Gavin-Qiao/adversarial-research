@@ -1,20 +1,8 @@
 ---
 name: reopen
-description: Reopen a completed Principia claim and restore the workflow state in Codex.
+description: Use when reopening a completed Principia claim.
 ---
 
-# Reopen
-
-Reopen the claim:
-
-```bash
-uv run python -m principia.cli.manage --root principia reopen <node-id>
-```
-
-Then refresh with:
-
-```bash
-uv run python -m principia.cli.codex_runner --root principia dashboard
-```
-
-In Codex, explain what was reopened, whether weakened dependents were restored, and what the dashboard now shows as the next action.
+`uv run python -m principia.cli.manage --root principia reopen <node-id>`
+`uv run python -m principia.cli.codex_runner --root principia dashboard`
+Report reopened state and next.

@@ -992,9 +992,14 @@ class TestCmdNext:
         assert received["result_path"].endswith("architect/round-1/result.md")
 
     def test_auto_no_claims(self, research_dir):
+        import json
+
         rc, out, _ = run_manage(research_dir, "next", "auto")
         assert rc == 0
-        assert "No active claims" in out
+        result = json.loads(out)
+        assert result["status"] == "no_active_claims"
+        assert "No active claim is selected." in result["message"]
+        assert result["recommended_action"]["command"] == "principia:init"
 
     def test_auto_detects_legacy_cycle(self, research_dir):
         import json
@@ -1005,6 +1010,35 @@ class TestCmdNext:
         state = json.loads(out)
         assert state["sub_unit"] == sub_path
         assert state["action"] == "dispatch_architect"
+
+    def test_auto_follows_dashboard_guidance_when_waiting_on_external_result(self, research_dir):
+        import json
+        from principia.core.orchestration import compute_north_star_version
+
+        (research_dir / ".north-star.md").write_text("# Locked principle\n", encoding="utf-8")
+        (research_dir / ".context.md").write_text("# Context\n", encoding="utf-8")
+        north_star_version = compute_north_star_version(research_dir)
+
+        claim = research_dir / "claims" / "claim-1-test"
+        claim.mkdir(parents=True)
+        (claim / "claim.md").write_text(
+            "---\nid: h1-claim\ntype: claim\nstatus: pending\ndate: 2026-01-01\n"
+            f"north_star_version: {north_star_version}\n---\n\n# Claim\n",
+            encoding="utf-8",
+        )
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+            (claim / role).mkdir()
+
+        rc, _out, _ = run_manage(research_dir, "prompt", "claims/claim-1-test")
+        assert rc == 0
+
+        rc, out, _ = run_manage(research_dir, "next", "auto")
+        assert rc == 0
+        result = json.loads(out)
+        assert result["status"] == "guided_next"
+        assert result["active_claim"] == "claims/claim-1-test"
+        assert result["recommended_action"]["command"] == "dispatch-log"
+        assert result["recommended_action"]["cycle"] == "claim-1-test"
 
 
 class TestCmdContext:
@@ -2110,6 +2144,11 @@ class TestCmdDashboard:
         result = json.loads(out[out.find("{") :])
         assert result["init"]["status"] == "missing_workspace"
         assert result["init"]["workspace_exists"] is False
+        assert result["init"]["repo_scan"]["complete"] is False
+        assert result["init"]["north_star_interview"]["complete"] is False
+        assert result["init"]["north_star_interview"]["questions"]
+        assert result["operator_guidance"]["recommended_action"]["command"] == "principia:init"
+        assert "inspect the repo and lock the north star" in result["operator_guidance"]["summary"].lower()
 
     def test_reports_init_discussion_state_without_north_star(self, research_dir):
         import json
@@ -2119,8 +2158,12 @@ class TestCmdDashboard:
         result = json.loads(out)
         assert result["init"]["status"] == "discussion_in_progress"
         assert result["init"]["north_star_locked"] is False
+        assert result["init"]["repo_scan"]["complete"] is False
+        assert result["init"]["north_star_interview"]["complete"] is False
+        assert len(result["init"]["north_star_interview"]["questions"]) == 6
         assert result["preferences"]["workflow_autonomy"] == "checkpoints"
         assert result["preferences"]["sidecars"]["deep-thinker"] == "ask"
+        assert "inspect the repo and interview you" in result["operator_guidance"]["summary"].lower()
 
     def test_reports_ready_for_claims_after_north_star_is_locked(self, research_dir):
         import json
@@ -2136,10 +2179,24 @@ class TestCmdDashboard:
         assert result["patch_status"]["current_version"]
         assert result["warnings"] == []
 
+    def test_keeps_init_blocked_until_repo_scan_summary_exists(self, research_dir):
+        import json
+
+        (research_dir / ".north-star.md").write_text("# Locked principle\n", encoding="utf-8")
+
+        rc, out, _ = run_manage(research_dir, "dashboard")
+        assert rc == 0
+        result = json.loads(out)
+        assert result["init"]["north_star_locked"] is True
+        assert result["init"]["repo_scan"]["complete"] is False
+        assert result["operator_guidance"]["recommended_action"]["command"] == "principia:init"
+        assert "write principia/.context.md" in result["operator_guidance"]["summary"].lower()
+
     def test_reports_stale_patch_status_when_claim_version_lags(self, research_dir):
         import json
 
         (research_dir / ".north-star.md").write_text("# Locked principle\n", encoding="utf-8")
+        (research_dir / ".context.md").write_text("# Context\n", encoding="utf-8")
         claim = research_dir / "claims" / "claim-1-test"
         claim.mkdir(parents=True)
         (claim / "claim.md").write_text(
@@ -2161,6 +2218,7 @@ class TestCmdDashboard:
         assert result["patch_status"]["needs_review"][0]["id"] == "h1-claim"
         assert result["warnings"][0]["code"] == "north_star_drift"
         assert result["warnings"][0]["count"] == 1
+        assert result["operator_guidance"]["recommended_action"]["command"] == "patch-status"
 
     def test_reports_active_claim_dispatch_lifecycle(self, research_dir):
         import json
@@ -2190,16 +2248,21 @@ class TestCmdDashboard:
         assert lifecycle["outstanding"][0]["status"] == "waiting_result"
         assert lifecycle["outstanding"][0]["prompt_path"].endswith("architect/round-1/prompt.md")
         assert lifecycle["stale"] == []
+        assert result["operator_guidance"]["recommended_action"]["command"] == "dispatch-log"
+        assert result["operator_guidance"]["recommended_action"]["cycle"] == "claim-1-test"
 
     def test_reports_packet_as_ready_to_send(self, research_dir):
         import json
+        from principia.core.orchestration import compute_north_star_version
 
         (research_dir / ".north-star.md").write_text("# Locked principle\n", encoding="utf-8")
         (research_dir / ".context.md").write_text("# Context\n", encoding="utf-8")
+        north_star_version = compute_north_star_version(research_dir)
         claim = research_dir / "claims" / "claim-1-test"
         claim.mkdir(parents=True)
         (claim / "claim.md").write_text(
-            "---\nid: h1-claim\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# Claim\n",
+            "---\nid: h1-claim\ntype: claim\nstatus: pending\ndate: 2026-01-01\n"
+            f"north_star_version: {north_star_version}\n---\n\n# Claim\n",
             encoding="utf-8",
         )
         for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
@@ -2219,6 +2282,8 @@ class TestCmdDashboard:
         assert overview["ready_to_send_claim_count"] == 1
         assert overview["ready_to_send_handoff_count"] == 1
         assert overview["ready_to_send_claims"][0]["claim"] == "claims/claim-1-test"
+        assert result["operator_guidance"]["recommended_action"]["command"] == "prompt"
+        assert result["operator_guidance"]["recommended_action"]["claim_path"] == "claims/claim-1-test"
 
     def test_warns_when_dispatch_audit_is_stale(self, research_dir):
         import json
@@ -2271,13 +2336,17 @@ class TestCmdDashboard:
         assert warning["count"] == 1
         assert warning["claim_count"] == 1
         assert warning["claims"][0]["claim"] == "claims/claim-1-test"
+        assert result["operator_guidance"]["recommended_action"]["command"] == "dispatch-log"
+        assert result["operator_guidance"]["recommended_action"]["cycle"] == "claim-1-test"
 
     def test_workspace_warning_includes_non_active_stale_claims(self, research_dir):
         import json
+        from principia.core.orchestration import compute_north_star_version
 
         (research_dir / ".north-star.md").write_text("# Locked principle\n", encoding="utf-8")
         (research_dir / ".context.md").write_text("# Context\n", encoding="utf-8")
         (research_dir / "context" / "survey-topic.md").write_text("# Survey\n", encoding="utf-8")
+        north_star_version = compute_north_star_version(research_dir)
         (research_dir / "blueprint.md").write_text(
             "# Blueprint\n\n```yaml\n# CLAIM_REGISTRY\nclaims:\n"
             '  - id: active\n    statement: "Active claim"\n    maturity: conjecture\n    confidence: low\n'
@@ -2292,7 +2361,8 @@ class TestCmdDashboard:
         for claim_dir, claim_id in ((active_claim, "h1-active"), (stale_claim, "h2-stale")):
             claim_dir.mkdir(parents=True)
             (claim_dir / "claim.md").write_text(
-                f"---\nid: {claim_id}\ntype: claim\nstatus: pending\ndate: 2026-01-01\n---\n\n# Claim\n",
+                f"---\nid: {claim_id}\ntype: claim\nstatus: pending\ndate: 2026-01-01\n"
+                f"north_star_version: {north_star_version}\n---\n\n# Claim\n",
                 encoding="utf-8",
             )
             for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
@@ -2337,6 +2407,8 @@ class TestCmdDashboard:
         warning = next(w for w in result["warnings"] if w["code"] == "dispatch_handoff_stale")
         assert warning["claim_count"] == 1
         assert warning["claims"][0]["claim"] == "claims/claim-2-stale"
+        assert result["operator_guidance"]["recommended_action"]["command"] == "dispatch-log"
+        assert result["operator_guidance"]["recommended_action"]["cycle"] == "claim-2-stale"
 
     def test_counts_legacy_cycle_claims(self, research_dir):
         import json
@@ -2406,6 +2478,84 @@ class TestCmdDashboard:
         assert rc == 0
         result = json.loads(out)
         assert result["last_verdict"] is None
+
+    def test_reports_pending_decisions_as_human_action(self, research_dir):
+        import json
+        from principia.core.orchestration import compute_north_star_version
+
+        (research_dir / ".north-star.md").write_text("# Locked principle\n", encoding="utf-8")
+        (research_dir / ".context.md").write_text("# Context\n", encoding="utf-8")
+        north_star_version = compute_north_star_version(research_dir)
+        claim = research_dir / "claims" / "claim-1-test"
+        claim.mkdir(parents=True)
+        (claim / "claim.md").write_text(
+            "---\nid: h1-claim\ntype: claim\nstatus: partial\ndate: 2026-01-01\n"
+            f"north_star_version: {north_star_version}\n---\n\n# Claim\n",
+            encoding="utf-8",
+        )
+
+        rc, out, _ = run_manage(research_dir, "dashboard")
+        assert rc == 0
+        result = json.loads(out)
+        assert result["pending_decisions"] == [
+            {"id": "h1-claim", "status": "partial", "file": "claims/claim-1-test/claim.md"}
+        ]
+        assert result["operator_guidance"]["recommended_action"]["kind"] == "manual"
+        assert result["operator_guidance"]["recommended_action"]["command"] == "review the claim outcome"
+        assert result["operator_guidance"]["recommended_action"]["claim_path"] == "claims/claim-1-test"
+
+    def test_reports_completed_claims_as_results_refresh(self, research_dir):
+        import json
+        from principia.core.orchestration import compute_north_star_version
+
+        (research_dir / ".north-star.md").write_text("# Locked principle\n", encoding="utf-8")
+        (research_dir / ".context.md").write_text("# Context\n", encoding="utf-8")
+        north_star_version = compute_north_star_version(research_dir)
+        claim = research_dir / "claims" / "claim-1-test"
+        claim.mkdir(parents=True)
+        (claim / "claim.md").write_text(
+            "---\nid: h1-claim\ntype: claim\nstatus: proven\ndate: 2026-01-01\n"
+            f"north_star_version: {north_star_version}\n---\n\n# Claim\n",
+            encoding="utf-8",
+        )
+        for role in ("architect", "adversary", "experimenter", "arbiter", "scout"):
+            (claim / role).mkdir()
+        (claim / "arbiter" / "results").mkdir(parents=True, exist_ok=True)
+        (claim / "arbiter" / "results" / "verdict.md").write_text(
+            "---\nid: v1\ntype: verdict\nstatus: active\ndate: 2026-01-01\n---\n\n**Verdict**: PROVEN\n",
+            encoding="utf-8",
+        )
+        (claim / ".post_verdict_done").write_text("2026-01-02", encoding="utf-8")
+        run_manage(research_dir, "build")
+        run_manage(research_dir, "post-verdict", "claims/claim-1-test")
+
+        rc, out, _ = run_manage(research_dir, "dashboard")
+        assert rc == 0
+        result = json.loads(out)
+        assert result["operator_guidance"]["recommended_action"]["command"] == "results"
+
+    def test_summarizes_delegation_policy_in_one_sentence(self, research_dir):
+        import json
+
+        (research_dir / ".config.md").write_text(
+            "# Principia Configuration\n\n"
+            "- Workflow Autonomy: checkpoints\n"
+            "- Architect: external\n"
+            "- Deep Thinker Sidecar: ask\n"
+            "- Researcher Sidecar: auto\n"
+            "- Coder Sidecar: off\n",
+            encoding="utf-8",
+        )
+
+        rc, out, _ = run_manage(research_dir, "dashboard")
+        assert rc == 0
+        result = json.loads(out)
+        summary = result["operator_guidance"]["autonomy"]["summary"]
+        assert "Workflow runs in checkpoints mode" in summary
+        assert "dispatch roles may hand off externally for architect" in summary
+        assert "deep-thinker require approval" in summary
+        assert "researcher auto-run" in summary
+        assert "coder stay off" in summary
 
 
 class TestExtendDebate:

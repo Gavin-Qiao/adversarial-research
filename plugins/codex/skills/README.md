@@ -1,19 +1,18 @@
 # Codex Skills
 
-This directory contains the canonical Principia Codex skills under `plugins/codex`.
+Canonical Codex skills for the `principia` plugin in `plugins/codex`.
 
-The packaged runner powers the JSON engine commands:
+Terminology: `principia` is the plugin identity, `plugins/codex` is the bundle path, and `principia/` is the generated workflow workspace.
 
-```bash
-uv run python -m principia.cli.codex_runner --root principia <command>
-```
+Use the packaged runner: `uv run python -m principia.cli.codex_runner --root principia <command>`
 
-Use it for `build`, `dashboard`, `validate`, `results`, and `visualize`. Some workflow actions still call `principia.cli.manage`, so the bundle is not fully runner-backed yet.
-It now also exposes `next`, `packet`, `prompt`, `dispatch-log`, and `patch-status` for Codex-native workflow control and patch awareness. Some mutation-oriented actions still call `principia.cli.manage`, so the bundle is not fully runner-backed yet.
+User-intent map:
 
-`dispatch-log` tracks the external handoff lifecycle with structured events:
-
-- `packet`
-- `dispatch`
-- `received`
-- `recorded`
+- `init`: create `principia/` and lock the north star.
+- `status`: inspect live state, warnings, and operator guidance.
+- `next-step`: choose the next action or recovery move.
+- `results`: summarize stakeholder-facing synthesis and trust signals.
+- `validate`: run workspace integrity checks.
+- `patch-status`: inspect north-star drift.
+- `packet`, `prompt`, `dispatch-log`: stateful handoff tools.
+- `falsify`, `settle`, `reopen`, `replace-verdict`, `post-verdict`: state-changing bookkeeping flows.

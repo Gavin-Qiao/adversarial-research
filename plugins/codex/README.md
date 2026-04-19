@@ -1,77 +1,58 @@
 # Principia Codex Bundle
 
-Canonical repo-local `plugins/codex` bundle for Principia.
+Canonical Codex bundle for the `principia` plugin in a full Principia checkout.
 
-Install Principia in Codex from the canonical `plugins/codex` surface inside a full Principia checkout.
+Terminology: `principia` is the plugin identity and Python package, `plugins/codex` is the bundle path, and `principia/` is the generated workflow workspace.
 
-## Remote marketplace install
-
-Codex CLI `0.121.0` and newer can add Principia from GitHub without first opening the checkout as a repo-local marketplace:
+## Install
 
 ```bash
 codex marketplace add Gavin-Qiao/principia
 ```
 
-The remote install surface is the repository root `marketplace.json`, which exposes `./plugins/codex` from the cloned marketplace root.
+`marketplace.json` and `.agents/plugins/marketplace.json` both expose `./plugins/codex`. Open the checkout, then install the `principia` plugin from the repo-local marketplace or the remote marketplace.
 
-## Local marketplace install
+Codex exposes Principia through skills, not slash commands.
 
-The repository also publishes a repo-local Codex marketplace entry at `.agents/plugins/marketplace.json`, with `source.path` set to `./plugins/codex`.
+Ordered Codex flow:
 
-Open the full Principia checkout in Codex, then install the `principia` plugin from the repo-local marketplace. This keeps the Codex bundle aligned with the official `plugins/<name>` structure while still using the shared runtime from the checkout.
+1. Install the `principia` plugin from `plugins/codex`.
+2. Reload Codex.
+3. Run `principia:init`.
+4. Use `principia:status`, `principia:next-step`, and `principia:results`.
 
-Codex plugins expose Principia as skills, not slash commands. Start by asking Codex to use the `principia:init` skill, or simply ask it to initialize a Principia workspace for the current repository.
+First 10 minutes in Codex:
 
-Common Codex skill entry points:
+1. `principia:init` creates `principia/`, writes the repo scan to `principia/.context.md`, and locks the north star.
+2. `principia:status` shows warnings, delegation policy, drift, and operator guidance.
+3. `principia:next-step` answers "what do I do next?" with the preferred command or human review instruction.
+4. `principia:results` summarizes the current report before pointing to `principia/RESULTS.md`.
 
-- `principia:init`
-- `principia:status`
-- `principia:next-step`
-- `principia:validate`
-- `principia:results`
-
-In Codex, init is a guided repo ritual: it inspects the current project, scaffolds `principia/` if needed, collects autonomy and sidecar preferences, and stays in discussion until the north star is explicitly locked.
-
-This bundle is Codex-native. It uses the packaged runner to talk to the shared Principia engine:
+Runner commands:
 
 ```bash
 uv run python -m principia.cli.codex_runner --root principia dashboard
-uv run python -m principia.cli.codex_runner --root principia next --path claims/claim-1-example
 uv run python -m principia.cli.codex_runner --root principia packet --path claims/claim-1-example
-uv run python -m principia.cli.codex_runner --root principia prompt --path claims/claim-1-example
 uv run python -m principia.cli.codex_runner --root principia dispatch-log --cycle claim-1-example
 uv run python -m principia.cli.codex_runner --root principia patch-status
-uv run python -m principia.cli.codex_runner --root principia validate
 uv run python -m principia.cli.codex_runner --root principia results
 uv run python -m principia.cli.codex_runner --root principia visualize
 ```
 
-Dispatch lifecycle is now explicit in the audit log:
+Artifact ladder:
 
-- `packet`: canonical `packet.md` was materialized
-- `dispatch`: external handoff artifacts were written
-- `received`: a result artifact landed back in the claim workspace
-- `recorded`: arbiter verdict bookkeeping was committed
+- `principia:status` or `dashboard`: current workflow state and operator guidance.
+- `principia:next-step` or `next`: the next action.
+- `patch-status`: north-star drift and reconciliation.
+- `packet`, `prompt`, `dispatch-log`: stateful handoff tools.
+- `principia:results` or `results`: stakeholder-facing synthesis.
+- `visualize`: structural exploration.
 
-The dashboard payload exposes:
+Use `principia.cli.manage` only for state-changing operations like `falsify`, `settle`, `reopen`, `replace-verdict`, and `post-verdict`.
 
-- `dispatch_lifecycle` for the active or most recently touched claim
-- `dispatch_overview` for workspace-wide stale/outstanding aggregation across all claims with dispatch history
-
-Derived handoff statuses in `dispatch_lifecycle` are intentionally state-machine aware:
-
-- `ready_to_send`: packet exists, but the handoff has not been dispatched yet
-- `waiting_result`: dispatch artifacts exist and Principia is waiting on the external result
-- `stale`: the audit log and the current claim/filesystem state disagree
-
-`dispatch_handoff_stale` warnings are generated from `dispatch_overview`, so Codex can still surface stale claims even when the active claim itself is clean.
-`dispatch_overview` also breaks out `ready_to_send_claims` and `waiting_result_claims`, so Codex can answer which claims are unsent versus genuinely waiting on an external return.
-
-The bundle depends on shared repo content, including `principia/`, `agents/`, and `config/`. Copying `plugins/codex` by itself is unsupported.
-
-The root `marketplace.json` and the repo-local entry in `.agents/plugins/marketplace.json` both point at `./plugins/codex`, so Codex can discover this bundle either from a remote marketplace add flow or directly from the checkout.
+This bundle needs shared repo content under `principia/`, `agents/`, and `config/`; copying `plugins/codex` alone is unsupported.
 
 ## Layout
 
-- `.codex-plugin/plugin.json`: Codex plugin manifest
-- `skills/`: canonical Codex workflow skills
+- `.codex-plugin/plugin.json`
+- `skills/`

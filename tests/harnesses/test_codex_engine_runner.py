@@ -37,6 +37,12 @@ def _make_claim_workspace(
     claim_dir.mkdir(parents=True)
     (root / "context" / "assumptions").mkdir(parents=True, exist_ok=True)
     (root / ".db").mkdir(exist_ok=True)
+    if (root / ".north-star.md").exists() and "north_star_version:" not in extra_frontmatter:
+        from principia.core.orchestration import compute_north_star_version
+
+        version = compute_north_star_version(root)
+        if version:
+            extra_frontmatter += f"north_star_version: {version}\n"
     (claim_dir / "claim.md").write_text(
         "---\n"
         f"id: {claim_id}\n"
@@ -144,6 +150,9 @@ def test_engine_runner_exposes_extended_codex_commands():
     assert '"patch-status"' in runner_text
     assert '"results"' in runner_text
     assert '"visualize"' in runner_text
+    assert "Codex-friendly Principia control plane." in runner_text
+    assert "Common flow: dashboard -> next." in runner_text
+    assert "patch-status" in runner_text
 
 
 def test_codex_runner_module_exposes_main():
@@ -229,6 +238,27 @@ def test_engine_runner_next_command_accepts_path_argument(tmp_path):
     assert payload["packet_path"].endswith("architect/round-1/packet.md")
 
 
+def test_engine_runner_next_command_follows_operator_guidance_for_waiting_handoff(tmp_path):
+    (tmp_path / ".north-star.md").write_text("# Locked principle\n", encoding="utf-8")
+    (tmp_path / ".context.md").write_text("# Context\n", encoding="utf-8")
+    from principia.core.orchestration import compute_north_star_version
+
+    version = compute_north_star_version(tmp_path)
+    _make_claim_workspace(tmp_path, extra_frontmatter=f"north_star_version: {version}\n")
+
+    prompt_result = _run_codex_runner(tmp_path, "prompt", "--path", "claims/claim-1-test")
+    assert prompt_result.returncode == 0
+
+    result = _run_codex_runner(tmp_path, "next")
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "guided_next"
+    assert payload["active_claim"] == "claims/claim-1-test"
+    assert payload["recommended_action"]["command"] == "dispatch-log"
+    assert payload["recommended_action"]["cycle"] == "claim-1-test"
+
+
 def test_engine_runner_prompt_command_writes_prompt_artifact(tmp_path):
     claim_dir = tmp_path / "claims" / "claim-1-test"
     claim_dir.mkdir(parents=True)
@@ -272,9 +302,36 @@ def test_engine_runner_dashboard_command_returns_structured_payload(tmp_path):
 
     assert result.returncode == 0
     payload = json.loads(result.stdout)
-    assert set(payload.keys()) >= {"phase", "action", "claims", "dispatch_overview", "patch_status"}
+    assert set(payload.keys()) >= {
+        "phase",
+        "action",
+        "claims",
+        "dispatch_overview",
+        "patch_status",
+        "operator_guidance",
+        "init",
+    }
     assert payload["dispatch_overview"]["claim_count"] == 0
     assert "current_version" in payload["patch_status"]
+    assert payload["init"]["repo_scan"]["complete"] is True
+    assert payload["init"]["north_star_interview"]["complete"] is True
+    assert payload["operator_guidance"]["recommended_action"]["command"] == "next"
+
+
+def test_engine_runner_dashboard_keeps_init_blocked_until_repo_scan_is_written(tmp_path):
+    (tmp_path / ".north-star.md").write_text("# Locked principle\n", encoding="utf-8")
+    (tmp_path / "claims").mkdir(parents=True)
+    (tmp_path / "context" / "assumptions").mkdir(parents=True)
+    (tmp_path / ".db").mkdir()
+
+    result = _run_codex_runner(tmp_path, "dashboard")
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["init"]["north_star_locked"] is True
+    assert payload["init"]["repo_scan"]["complete"] is False
+    assert payload["operator_guidance"]["recommended_action"]["command"] == "principia:init"
+    assert "principia/.context.md" in payload["operator_guidance"]["summary"]
 
 
 def test_engine_runner_dispatch_log_command_returns_logged_rows(tmp_path):
@@ -328,6 +385,38 @@ def test_engine_runner_results_command_writes_results_report(tmp_path):
     assert payload["exists"] is True
     assert payload["message"].startswith("Generated:")
     assert Path(payload["results_path"]).exists()
+    assert payload["results_summary"]["claim_count"] == 1
+    assert payload["results_summary"]["verdict_counts"]["PROVEN"] == 1
+    assert payload["results_summary"]["latest_verdict"]["verdict"] == "PROVEN"
+    assert payload["results_summary"]["topline"]
+    assert payload["results_summary"]["open_claim_count"] == 0
+    assert payload["results_summary"]["confidence_counts"]["high"] == 1
+    assert isinstance(payload["results_summary"]["limitation_preview"], list)
+    report_text = Path(payload["results_path"]).read_text(encoding="utf-8")
+    assert "## Executive Summary" in report_text
+    assert "### Test" in report_text or "### H1 Test" in report_text or "### claim-1-test" in report_text
+
+
+def test_engine_runner_help_describes_operator_flow(tmp_path):
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "principia.cli.codex_runner",
+            "--help",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "Codex-friendly Principia control plane." in result.stdout
+    assert "dashboard" in result.stdout
+    assert "results" in result.stdout
+    assert "generated workflow" in result.stdout
+    assert "workspace" in result.stdout
+    assert "patch-status" in result.stdout
 
 
 def test_engine_runner_visualize_command_writes_explorer(tmp_path):

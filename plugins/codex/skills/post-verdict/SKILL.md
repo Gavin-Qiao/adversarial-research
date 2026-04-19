@@ -1,20 +1,8 @@
 ---
 name: post-verdict
-description: Run Principia post-verdict bookkeeping from Codex and refresh the workflow view.
+description: Use when writing a verdict back into Principia.
 ---
 
-# Post Verdict
-
-Run the bookkeeping command:
-
-```bash
-uv run python -m principia.cli.manage --root principia post-verdict <claim-path>
-```
-
-Then refresh state with:
-
-```bash
-uv run python -m principia.cli.codex_runner --root principia dashboard
-```
-
-In Codex, explain the bookkeeping outcome in workflow terms: verdict recorded, cascades applied if needed, and the next action from the dashboard JSON.
+`uv run python -m principia.cli.manage --root principia post-verdict <claim-path>`
+`uv run python -m principia.cli.codex_runner --root principia dashboard`
+Report bookkeeping, cascades, next.

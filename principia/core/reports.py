@@ -21,6 +21,167 @@ def _workspace_root(root: Path | None = None) -> Path:
     return root.resolve()
 
 
+def _readable_node_label(row: Any, fallback: str | None = None) -> str:
+    title = row["title"] if row and row["title"] else None
+    if isinstance(title, str) and title.strip():
+        return title.strip()
+    node_id = row["id"] if row and row["id"] else None
+    if isinstance(node_id, str) and node_id:
+        return readable_id(node_id)
+    return fallback or "Unknown node"
+
+
+def _format_results_topline(
+    *,
+    claim_count: int,
+    verdict_counts: dict[str, int],
+    open_claim_count: int,
+    limitations_count: int,
+) -> str:
+    if claim_count:
+        verdict_bits = ", ".join(f"{count} {verdict.lower()}" for verdict, count in sorted(verdict_counts.items()))
+        base = f"{claim_count} claim verdict(s) are recorded"
+        if verdict_bits:
+            base += f": {verdict_bits}"
+    else:
+        base = "No claim verdicts are recorded yet"
+
+    if open_claim_count:
+        base += f"; {open_claim_count} claim(s) are still open"
+    if limitations_count:
+        base += f"; {limitations_count} limitation(s) still need attention"
+    return base + "."
+
+
+def _collect_results_facts(research_root: Path, conn: Any) -> dict[str, object]:
+    from .orchestration import extract_confidence, extract_verdict, load_config
+
+    claim_rows = conn.execute(
+        f"SELECT id, title, status, file_path FROM nodes WHERE {_primary_claim_path_sql()} ORDER BY file_path"
+    ).fetchall()
+    claim_lookup: dict[str, dict[str, str]] = {}
+    for row in claim_rows:
+        claim_path = Path(str(row["file_path"])).parent.as_posix()
+        claim_lookup[claim_path] = {
+            "id": str(row["id"]),
+            "label": _readable_node_label(row, fallback=Path(claim_path).name),
+            "status": str(row["status"]),
+            "file_path": str(row["file_path"]),
+        }
+
+    orch_config = load_config(_cfg.DEFAULT_ORCH_CONFIG)
+    verdict_entries: list[dict[str, object]] = []
+    verdict_counts: dict[str, int] = {}
+    confidence_counts: dict[str, int] = {}
+    for root_dir in (research_root / "claims", research_root / "cycles"):
+        if not root_dir.exists():
+            continue
+        for verdict_file in sorted(root_dir.rglob("verdict.md")):
+            claim_dir = verdict_file.parent.parent.parent
+            claim_path = claim_dir.relative_to(research_root).as_posix()
+            claim_info = claim_lookup.get(claim_path, {})
+            verdict_val = extract_verdict(verdict_file, orch_config)
+            confidence_val = extract_confidence(verdict_file)
+            verdict_counts[verdict_val] = verdict_counts.get(verdict_val, 0) + 1
+            confidence_counts[confidence_val] = confidence_counts.get(confidence_val, 0) + 1
+            verdict_entries.append(
+                {
+                    "claim": claim_dir.name,
+                    "claim_id": claim_info.get("id", claim_dir.name),
+                    "claim_path": claim_path,
+                    "label": claim_info.get("label", claim_dir.name),
+                    "status": claim_info.get("status"),
+                    "verdict": verdict_val,
+                    "confidence": confidence_val,
+                    "timestamp": verdict_file.stat().st_mtime,
+                }
+            )
+
+    latest_verdict_row = conn.execute(
+        "SELECT l.node_id, l.event, l.timestamp, n.file_path, n.title FROM ledger l "
+        "JOIN nodes n ON n.id = l.node_id "
+        "WHERE l.event IN ('proven', 'disproven', 'partial', 'inconclusive') "
+        "AND (n.file_path LIKE 'claims/claim-%/claim.md' OR n.file_path LIKE 'cycles/%/frontier.md') "
+        "ORDER BY timestamp DESC LIMIT 1"
+    ).fetchone()
+    latest_verdict = None
+    if latest_verdict_row:
+        claim_file = Path(str(latest_verdict_row["file_path"]))
+        claim_path = claim_file.parent.as_posix()
+        verdict_path = research_root / claim_path / "arbiter" / "results" / "verdict.md"
+        latest_verdict = {
+            "claim": latest_verdict_row["node_id"],
+            "claim_path": claim_path,
+            "label": _readable_node_label(latest_verdict_row, fallback=claim_file.parent.name),
+            "verdict": latest_verdict_row["event"].upper(),
+            "timestamp": latest_verdict_row["timestamp"],
+            "confidence": extract_confidence(verdict_path) if verdict_path.exists() else "unknown",
+        }
+    elif verdict_entries:
+        fallback = max(verdict_entries, key=lambda entry: float(entry["timestamp"]))
+        latest_verdict = {
+            "claim": fallback["claim_id"],
+            "claim_path": fallback["claim_path"],
+            "label": fallback["label"],
+            "verdict": fallback["verdict"],
+            "timestamp": None,
+            "confidence": fallback["confidence"],
+        }
+
+    disproven_rows = conn.execute(
+        "SELECT id, title, file_path FROM nodes WHERE status = 'disproven' ORDER BY file_path"
+    ).fetchall()
+    pending_assumption_rows = conn.execute(
+        "SELECT id, title, file_path FROM nodes WHERE type = 'assumption' AND status = 'pending' ORDER BY file_path"
+    ).fetchall()
+    weakened_rows = conn.execute(
+        "SELECT id, title, file_path FROM nodes WHERE status IN ('partial', 'weakened') ORDER BY file_path"
+    ).fetchall()
+
+    def _limitation_payload(rows: list[Any], limitation_type: str) -> list[dict[str, str]]:
+        return [
+            {
+                "type": limitation_type,
+                "id": str(row["id"]),
+                "label": _readable_node_label(row, fallback=str(row["id"])),
+                "file_path": str(row["file_path"]),
+            }
+            for row in rows
+        ]
+
+    limitations = {
+        "disproven": _limitation_payload(disproven_rows, "disproven claim"),
+        "assumptions": _limitation_payload(pending_assumption_rows, "untested assumption"),
+        "weakened": _limitation_payload(weakened_rows, "partial or weakened claim"),
+    }
+    limitation_preview = (limitations["disproven"] + limitations["assumptions"] + limitations["weakened"])[:3]
+    open_claim_count = conn.execute(
+        f"SELECT COUNT(*) AS c FROM nodes WHERE {_primary_claim_path_sql()} "
+        "AND status IN ('pending', 'active', 'partial', 'weakened', 'inconclusive')"
+    ).fetchone()["c"]
+    limitations_count = sum(len(entries) for entries in limitations.values())
+
+    return {
+        "verdict_entries": verdict_entries,
+        "limitations": limitations,
+        "summary": {
+            "claim_count": len(verdict_entries),
+            "verdict_counts": verdict_counts,
+            "latest_verdict": latest_verdict,
+            "limitations_count": limitations_count,
+            "topline": _format_results_topline(
+                claim_count=len(verdict_entries),
+                verdict_counts=verdict_counts,
+                open_claim_count=int(open_claim_count),
+                limitations_count=limitations_count,
+            ),
+            "open_claim_count": int(open_claim_count),
+            "confidence_counts": confidence_counts,
+            "limitation_preview": limitation_preview,
+        },
+    }
+
+
 # ---------------------------------------------------------------------------
 # Command: status -> PROGRESS.md
 # ---------------------------------------------------------------------------
@@ -334,6 +495,111 @@ def generate_results_report(root: Path | None = None) -> tuple[Path, str]:
     """Generate RESULTS.md for a workspace and return its path and status message."""
     research_root = _workspace_root(root)
     conn = build_db(root=research_root)
+    try:
+        facts = _collect_results_facts(research_root, conn)
+        summary = facts["summary"]
+        verdict_entries = facts["verdict_entries"]
+        limitations = facts["limitations"]
+
+        lines: list[str] = ["# Design Results", ""]
+        for name in ("blueprint.md",):
+            bp = research_root / name
+            if bp.exists():
+                body = get_body(bp.read_text(encoding="utf-8"))
+                para = []
+                for line in body.splitlines():
+                    if line.strip():
+                        para.append(line.strip())
+                    elif para:
+                        break
+                if para:
+                    lines.append("## Principle")
+                    lines.append("")
+                    lines.extend(para)
+                    lines.append("")
+                break
+
+        lines.append("## Executive Summary")
+        lines.append("")
+        lines.append(f"- {summary['topline']}")
+        latest_verdict = summary["latest_verdict"]
+        if latest_verdict:
+            lines.append(
+                f"- Latest verdict: **{latest_verdict['verdict']}** on **{latest_verdict['label']}** "
+                f"at **{latest_verdict['confidence']}** confidence."
+            )
+        else:
+            lines.append("- Latest verdict: none recorded yet.")
+        lines.append(f"- Open claims: {summary['open_claim_count']}")
+        limitation_preview = summary["limitation_preview"]
+        if limitation_preview:
+            lines.append("- Current limitations:")
+            for entry in limitation_preview:
+                lines.append(f"  - {entry['label']} (`{entry['id']}`) — {entry['type']}")
+        else:
+            lines.append("- Current limitations: none identified.")
+        lines.append("")
+
+        lines.append("## Claims")
+        lines.append("")
+        if verdict_entries:
+            for entry in verdict_entries:
+                lines.append(f"### {entry['label']}")
+                lines.append(f"- **Claim ID**: `{entry['claim_id']}`")
+                lines.append(f"- **Claim path**: `{entry['claim_path']}`")
+                lines.append(f"- **Verdict**: {entry['verdict']}")
+                lines.append(f"- **Confidence**: {entry['confidence']}")
+                lines.append("")
+        else:
+            lines.append("No claim verdicts are recorded yet.")
+            lines.append("")
+
+        synthesis = research_root / "synthesis.md"
+        if synthesis.exists():
+            lines.append("## Synthesis")
+            lines.append("")
+            body = get_body(synthesis.read_text(encoding="utf-8"))
+            lines.append(body.strip())
+            lines.append("")
+
+        composition = research_root / "composition.md"
+        if composition.exists():
+            lines.append("## Composed Algorithm")
+            lines.append("")
+            body = get_body(composition.read_text(encoding="utf-8"))
+            lines.append(body.strip())
+            lines.append("")
+
+        lines.append("## Limitations")
+        lines.append("")
+        if limitations["disproven"]:
+            lines.append("### Disproven claims")
+            lines.append("")
+            for entry in limitations["disproven"]:
+                lines.append(f"- {entry['label']} (`{entry['id']}`)")
+            lines.append("")
+        if limitations["assumptions"]:
+            lines.append("### Untested assumptions")
+            lines.append("")
+            for entry in limitations["assumptions"]:
+                lines.append(f"- {entry['label']} (`{entry['id']}`)")
+            lines.append("")
+        if limitations["weakened"]:
+            lines.append("### Partially supported or weakened claims")
+            lines.append("")
+            for entry in limitations["weakened"]:
+                lines.append(f"- {entry['label']} (`{entry['id']}`)")
+            lines.append("")
+        if not limitations["disproven"] and not limitations["assumptions"] and not limitations["weakened"]:
+            lines.append("None identified.")
+            lines.append("")
+
+        content = "\n".join(lines) + "\n"
+        results_path = research_root / "RESULTS.md"
+        _cfg._atomic_write(results_path, content)
+        return results_path, f"Generated: {results_path}"
+    finally:
+        conn.close()
 
     lines: list[str] = ["# Design Results", ""]
 
@@ -440,6 +706,83 @@ def generate_results_report(root: Path | None = None) -> tuple[Path, str]:
     _cfg._atomic_write(results_path, content)
     conn.close()
     return results_path, f"Generated: {results_path}"
+
+
+def build_results_summary(root: Path | None = None) -> dict[str, object]:
+    """Summarize verdict and limitation signals that back RESULTS.md."""
+    research_root = _workspace_root(root)
+    conn = build_db(root=research_root)
+    try:
+        facts = _collect_results_facts(research_root, conn)
+        return dict(facts["summary"])
+    finally:
+        conn.close()
+
+    from .orchestration import extract_confidence, extract_verdict, load_config
+
+    orch_config = load_config(_cfg.DEFAULT_ORCH_CONFIG)
+    verdict_entries: list[dict[str, object]] = []
+    verdict_counts: dict[str, int] = {}
+    for root_dir in (research_root / "claims", research_root / "cycles"):
+        if not root_dir.exists():
+            continue
+        for verdict_file in sorted(root_dir.rglob("verdict.md")):
+            claim_dir = verdict_file.parent.parent.parent
+            verdict_val = extract_verdict(verdict_file, orch_config)
+            confidence_val = extract_confidence(verdict_file)
+            verdict_counts[verdict_val] = verdict_counts.get(verdict_val, 0) + 1
+            verdict_entries.append(
+                {
+                    "claim_path": claim_dir.relative_to(research_root).as_posix(),
+                    "claim": claim_dir.name,
+                    "verdict": verdict_val,
+                    "confidence": confidence_val,
+                    "timestamp": verdict_file.stat().st_mtime,
+                }
+            )
+
+    latest_verdict_row = conn.execute(
+        "SELECT l.node_id, l.event, l.timestamp, n.file_path FROM ledger l "
+        "JOIN nodes n ON n.id = l.node_id "
+        "WHERE l.event IN ('proven', 'disproven', 'partial', 'inconclusive') "
+        "AND (n.file_path LIKE 'claims/claim-%/claim.md' OR n.file_path LIKE 'cycles/%/frontier.md') "
+        "ORDER BY timestamp DESC LIMIT 1"
+    ).fetchone()
+    latest_verdict = None
+    if latest_verdict_row:
+        claim_file = Path(str(latest_verdict_row["file_path"]))
+        claim_path = claim_file.parent.as_posix()
+        verdict_path = research_root / claim_path / "arbiter" / "results" / "verdict.md"
+        latest_verdict = {
+            "claim": latest_verdict_row["node_id"],
+            "claim_path": claim_path,
+            "verdict": latest_verdict_row["event"].upper(),
+            "timestamp": latest_verdict_row["timestamp"],
+            "confidence": extract_confidence(verdict_path) if verdict_path.exists() else "unknown",
+        }
+    elif verdict_entries:
+        fallback = max(verdict_entries, key=lambda entry: float(entry["timestamp"]))
+        latest_verdict = {
+            "claim": fallback["claim"],
+            "claim_path": fallback["claim_path"],
+            "verdict": fallback["verdict"],
+            "timestamp": None,
+            "confidence": fallback["confidence"],
+        }
+
+    disproven = conn.execute("SELECT COUNT(*) AS c FROM nodes WHERE status = 'disproven'").fetchone()["c"]
+    pending_assumptions = conn.execute(
+        "SELECT COUNT(*) AS c FROM nodes WHERE type = 'assumption' AND status = 'pending'"
+    ).fetchone()["c"]
+    weakened = conn.execute("SELECT COUNT(*) AS c FROM nodes WHERE status IN ('partial', 'weakened')").fetchone()["c"]
+    conn.close()
+
+    return {
+        "claim_count": len(verdict_entries),
+        "verdict_counts": verdict_counts,
+        "latest_verdict": latest_verdict,
+        "limitations_count": disproven + pending_assumptions + weakened,
+    }
 
 
 def cmd_results(args: argparse.Namespace) -> None:

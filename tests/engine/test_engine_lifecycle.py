@@ -9,7 +9,16 @@ def test_engine_dashboard_returns_structured_data(research_dir) -> None:
     engine = PrincipiaEngine(root=research_dir)
     dashboard = engine.dashboard()
 
-    assert set(dashboard.keys()) >= {"phase", "claims", "blocked", "last_verdict", "dispatch_overview"}
+    assert set(dashboard.keys()) >= {
+        "phase",
+        "claims",
+        "blocked",
+        "last_verdict",
+        "dispatch_overview",
+        "operator_guidance",
+    }
+    assert "summary" in dashboard["operator_guidance"]
+    assert "recommended_action" in dashboard["operator_guidance"]
 
 
 def test_engine_validate_and_results_stay_bound_to_root(tmp_path: Path) -> None:
@@ -46,6 +55,12 @@ def test_engine_validate_and_results_stay_bound_to_root(tmp_path: Path) -> None:
     assert results_b["results_path"] == str(root_b / "RESULTS.md")
     assert results_a["exists"] is True
     assert results_b["exists"] is True
+    assert results_a["results_summary"]["claim_count"] == 0
+    assert results_b["results_summary"]["claim_count"] == 0
+    assert "topline" in results_a["results_summary"]
+    assert "open_claim_count" in results_a["results_summary"]
+    assert "confidence_counts" in results_a["results_summary"]
+    assert "limitation_preview" in results_a["results_summary"]
 
 
 def test_engine_visualize_generates_workspace_bound_explorer(tmp_path: Path) -> None:

@@ -1,14 +1,8 @@
 ---
 name: results
-description: Regenerate Principia RESULTS.md through the packaged Codex runner and present the result location.
+description: Use when summarizing Principia results.
 ---
 
-# Results
-
-Generate the summary through the adapter:
-
-```bash
-uv run python -m principia.cli.codex_runner --root principia results
-```
-
-Use the returned JSON to confirm whether `RESULTS.md` was generated and where it lives. Read the file only if the user asks for the rendered narrative.
+Here `principia` is the plugin identity, `plugins/codex` is the bundle path, and `principia/` is the generated workflow workspace.
+`uv run python -m principia.cli.codex_runner --root principia results`
+Confirm `exists`, `results_path`, `message`, and `results_summary`. Summarize the `topline`, `open_claim_count`, `verdict_counts`, `confidence_counts`, `latest_verdict`, and `limitation_preview` before only pointing to `RESULTS.md`. Read `RESULTS.md` only on request.

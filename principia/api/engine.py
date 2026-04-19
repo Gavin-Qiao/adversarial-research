@@ -14,7 +14,7 @@ from principia.core.commands import (
 )
 from principia.core.db import build_db
 from principia.core.explorer import generate_workspace_explorer
-from principia.core.reports import generate_results_report
+from principia.core.reports import build_results_summary, generate_results_report
 from principia.core.validation import ValidationResult, collect_validation_result
 
 
@@ -68,6 +68,7 @@ class PrincipiaEngine:
             "results_path": str(results_path),
             "exists": results_path.exists(),
             "message": message,
+            "results_summary": build_results_summary(self.root),
         }
 
     def visualize(self) -> dict[str, object]:
