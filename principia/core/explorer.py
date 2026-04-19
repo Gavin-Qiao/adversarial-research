@@ -907,8 +907,7 @@ def _claim_waves(
                         "index": None,
                         "claim_ids": cycle_claim_ids,
                         "detail": (
-                            "These claims depend on one another and cannot be "
-                            "scheduled until the cycle is broken."
+                            "These claims depend on one another and cannot be scheduled until the cycle is broken."
                         ),
                     }
                 )
