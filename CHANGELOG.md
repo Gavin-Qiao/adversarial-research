@@ -4,6 +4,44 @@ All notable changes to this project are documented in this file.
 
 The format is inspired by Keep a Changelog, but organized around the release-note sections used for Principia releases: Features, Changed, Fixes, Docs, Packaging, Upgrade Notes, and Verification.
 
+## [0.4.0b6] - 2026-04-18
+
+### Features
+
+- Added rule-driven init readiness signals to the shared dashboard so Principia now treats repository scan and north-star interview completion as mandatory first-run prerequisites.
+- Added stakeholder-facing `results_summary` rollups and a readable executive summary block to `RESULTS.md`, so Codex users can understand report state before opening the full artifact.
+
+### Changed
+
+- Reworked `next` and `operator_guidance` recovery prioritization so Codex surfaces executable recovery actions before generic workflow progression, especially for pending decisions, stale handoffs, waiting external results, patch drift, and completed verdict refreshes.
+- Extended the shared dashboard read model with richer operator guidance, including a single preferred next command, rendered autonomy/dispatch policy summaries, and structured init substeps that Codex can present without fallback docs.
+- Kept the shared engine and packaged Codex runner command surface intact while making first-run onboarding and control-plane explanations more decision-oriented.
+
+### Fixes
+
+- Removed remaining Codex-facing guidance that sent users to legacy `manage investigate-next` or `/principia:scaffold` flows instead of packaged runner commands.
+- Corrected a fresh-project onboarding gap where users could appear initialized before repository scan and north-star interview work had actually been completed.
+- Made `next auto` honor recovery guidance for primary `claims/` workflows so waiting-handoff and similar blocked states no longer masquerade as ordinary progression.
+
+### Docs
+
+- Rewrote the top-level and Codex bundle quickstarts into an ordered Codex-first path, clarified the distinction between `principia`, `plugins/codex`, and `principia/`, and added a “first 10 minutes in Codex” walkthrough.
+- Refocused the Codex skills index and high-traffic skills around user intent, operator recovery, delegation visibility, and results trust cues while keeping the bundle layout unchanged.
+
+### Packaging
+
+- Bumped Principia, Codex plugin, and Claude plugin metadata to `0.4.0b6`.
+
+### Upgrade Notes
+
+- Treat `principia:init` as incomplete until both the repository scan context and the north-star interview are finished. `principia:status` and `principia:next-step` now surface that rule directly.
+- Use `patch-status` as the primary reconciliation surface when drift or review warnings appear; `status` remains the live workflow view and `results` remains the synthesis entrypoint.
+
+### Verification
+
+- `uv run python -m pytest tests/harnesses/test_codex_layout.py tests/harnesses/test_codex_engine_runner.py tests/harnesses/test_readme_installation.py tests/test_commands.py::TestCmdNext tests/test_commands.py::TestCmdDashboard -q`
+- `53 passed`
+
 ## [0.4.0b5] - 2026-04-17
 
 ### Features

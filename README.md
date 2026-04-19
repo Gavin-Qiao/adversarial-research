@@ -2,7 +2,7 @@
 
 ![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-111827?style=flat-square)
 ![Claude + Codex](https://img.shields.io/badge/Surfaces-Claude%20%2B%20Codex-1f2937?style=flat-square)
-![Beta](https://img.shields.io/badge/Release-0.4.0b5-2563eb?style=flat-square)
+![Beta](https://img.shields.io/badge/Release-0.4.0b6-2563eb?style=flat-square)
 
 > Turn a philosophical principle into a working algorithm through rigorous adversarial testing.
 
