@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from . import config as _cfg
 from .db import build_db
@@ -118,7 +118,7 @@ def _collect_results_facts(research_root: Path, conn: Any) -> dict[str, object]:
             "confidence": extract_confidence(verdict_path) if verdict_path.exists() else "unknown",
         }
     elif verdict_entries:
-        fallback = max(verdict_entries, key=lambda entry: float(entry["timestamp"]))
+        fallback = max(verdict_entries, key=lambda entry: float(cast(int | float, entry["timestamp"])))
         latest_verdict = {
             "claim": fallback["claim_id"],
             "claim_path": fallback["claim_path"],
@@ -497,9 +497,9 @@ def generate_results_report(root: Path | None = None) -> tuple[Path, str]:
     conn = build_db(root=research_root)
     try:
         facts = _collect_results_facts(research_root, conn)
-        summary = facts["summary"]
-        verdict_entries = facts["verdict_entries"]
-        limitations = facts["limitations"]
+        summary = cast(dict[str, object], facts["summary"])
+        verdict_entries = cast(list[dict[str, object]], facts["verdict_entries"])
+        limitations = cast(dict[str, list[dict[str, str]]], facts["limitations"])
 
         lines: list[str] = ["# Design Results", ""]
         for name in ("blueprint.md",):
@@ -521,8 +521,8 @@ def generate_results_report(root: Path | None = None) -> tuple[Path, str]:
 
         lines.append("## Executive Summary")
         lines.append("")
-        lines.append(f"- {summary['topline']}")
-        latest_verdict = summary["latest_verdict"]
+        lines.append(f"- {cast(str, summary['topline'])}")
+        latest_verdict = cast(dict[str, object] | None, summary["latest_verdict"])
         if latest_verdict:
             lines.append(
                 f"- Latest verdict: **{latest_verdict['verdict']}** on **{latest_verdict['label']}** "
@@ -530,12 +530,12 @@ def generate_results_report(root: Path | None = None) -> tuple[Path, str]:
             )
         else:
             lines.append("- Latest verdict: none recorded yet.")
-        lines.append(f"- Open claims: {summary['open_claim_count']}")
-        limitation_preview = summary["limitation_preview"]
+        lines.append(f"- Open claims: {cast(int, summary['open_claim_count'])}")
+        limitation_preview = cast(list[dict[str, str]], summary["limitation_preview"])
         if limitation_preview:
             lines.append("- Current limitations:")
-            for entry in limitation_preview:
-                lines.append(f"  - {entry['label']} (`{entry['id']}`) — {entry['type']}")
+            for limitation in limitation_preview:
+                lines.append(f"  - {limitation['label']} (`{limitation['id']}`) - {limitation['type']}")
         else:
             lines.append("- Current limitations: none identified.")
         lines.append("")
@@ -543,12 +543,12 @@ def generate_results_report(root: Path | None = None) -> tuple[Path, str]:
         lines.append("## Claims")
         lines.append("")
         if verdict_entries:
-            for entry in verdict_entries:
-                lines.append(f"### {entry['label']}")
-                lines.append(f"- **Claim ID**: `{entry['claim_id']}`")
-                lines.append(f"- **Claim path**: `{entry['claim_path']}`")
-                lines.append(f"- **Verdict**: {entry['verdict']}")
-                lines.append(f"- **Confidence**: {entry['confidence']}")
+            for verdict_entry in verdict_entries:
+                lines.append(f"### {verdict_entry['label']}")
+                lines.append(f"- **Claim ID**: `{verdict_entry['claim_id']}`")
+                lines.append(f"- **Claim path**: `{verdict_entry['claim_path']}`")
+                lines.append(f"- **Verdict**: {verdict_entry['verdict']}")
+                lines.append(f"- **Confidence**: {verdict_entry['confidence']}")
                 lines.append("")
         else:
             lines.append("No claim verdicts are recorded yet.")
@@ -601,35 +601,7 @@ def generate_results_report(root: Path | None = None) -> tuple[Path, str]:
     finally:
         conn.close()
 
-    lines: list[str] = ["# Design Results", ""]
-
-    # --- Original question/principle ---
-    # Try to read from blueprint or framework
-    for name in ("blueprint.md",):
-        bp = research_root / name
-        if bp.exists():
-            body = get_body(bp.read_text(encoding="utf-8"))
-            # Extract first paragraph as the principle
-            para = []
-            for line in body.splitlines():
-                if line.strip():
-                    para.append(line.strip())
-                elif para:
-                    break
-            if para:
-                lines.append("## Principle")
-                lines.append("")
-                lines.extend(para)
-                lines.append("")
-            break
-
-    # --- Claims and verdicts ---
-    lines.append("## Claims")
-    lines.append("")
-
-    from .orchestration import extract_confidence, extract_verdict, load_config
-
-    orch_config = load_config(_cfg.DEFAULT_ORCH_CONFIG)
+    """Legacy implementation removed.
     # Scan verdict files directly — DB frontmatter status is unreliable
     # (verdict nodes typically have status: active, not the actual verdict)
     found_verdicts = False
@@ -706,6 +678,7 @@ def generate_results_report(root: Path | None = None) -> tuple[Path, str]:
     _cfg._atomic_write(results_path, content)
     conn.close()
     return results_path, f"Generated: {results_path}"
+    """
 
 
 def build_results_summary(root: Path | None = None) -> dict[str, object]:
@@ -714,9 +687,11 @@ def build_results_summary(root: Path | None = None) -> dict[str, object]:
     conn = build_db(root=research_root)
     try:
         facts = _collect_results_facts(research_root, conn)
-        return dict(facts["summary"])
+        return dict(cast(dict[str, object], facts["summary"]))
     finally:
         conn.close()
+
+    """Legacy implementation removed.
 
     from .orchestration import extract_confidence, extract_verdict, load_config
 
@@ -783,6 +758,7 @@ def build_results_summary(root: Path | None = None) -> dict[str, object]:
         "latest_verdict": latest_verdict,
         "limitations_count": disproven + pending_assumptions + weakened,
     }
+    """
 
 
 def cmd_results(args: argparse.Namespace) -> None:

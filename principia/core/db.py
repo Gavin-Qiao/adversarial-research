@@ -227,68 +227,18 @@ def _get_or_create_db(root: Path | None = None) -> sqlite3.Connection:
 
 
 def init_db(root: Path | None = None) -> sqlite3.Connection:
-    """Create a fresh database (full rebuild). Preserves ledger, coder_artifacts, and dispatches."""
-    db_path = _workspace_db_path(_workspace_root(root))
-    preserved_ledger: list[tuple] = []
-    preserved_artifacts: list[tuple] = []
-    preserved_dispatches: list[tuple] = []
-    if db_path.exists():
-        try:
-            old = sqlite3.connect(str(db_path))
-            old.row_factory = sqlite3.Row
-            has_agent_col = _has_column(old, "ledger", "agent")
-            preserved_ledger = [
-                (r["timestamp"], r["event"], r["node_id"], r["details"], r["agent"] if has_agent_col else None)
-                for r in old.execute("SELECT * FROM ledger").fetchall()
-            ]
-            if _get_schema_version(old) >= 2:
-                preserved_artifacts = [tuple(r) for r in old.execute("SELECT * FROM coder_artifacts").fetchall()]
-                has_sub_unit = _has_column(old, "dispatches", "sub_unit")
-                has_dispatch_mode = _has_column(old, "dispatches", "dispatch_mode")
-                has_packet_path = _has_column(old, "dispatches", "packet_path")
-                has_prompt_path = _has_column(old, "dispatches", "prompt_path")
-                has_result_path = _has_column(old, "dispatches", "result_path")
-                preserved_dispatches = [
-                    (
-                        r["timestamp"],
-                        r["cycle_id"],
-                        r["agent"],
-                        r["action"],
-                        r["round"],
-                        r["details"],
-                        r["sub_unit"] if has_sub_unit else None,
-                        r["dispatch_mode"] if has_dispatch_mode else None,
-                        r["packet_path"] if has_packet_path else None,
-                        r["prompt_path"] if has_prompt_path else None,
-                        r["result_path"] if has_result_path else None,
-                    )
-                    for r in old.execute("SELECT * FROM dispatches").fetchall()
-                ]
-            old.close()
-        except Exception:
-            pass
-        db_path.unlink()
+    """Create a fresh database view for a full rebuild.
 
+    This clears derived build state in-place so repeated rebuilds still work on
+    Windows when another connection still has the database file open.
+    Ledger, coder_artifacts, and dispatches are intentionally preserved.
+    """
     conn = _get_or_create_db(root)
-
-    if preserved_ledger:
-        conn.executemany(
-            "INSERT INTO ledger (timestamp, event, node_id, details, agent) VALUES (?, ?, ?, ?, ?)",
-            preserved_ledger,
-        )
-    if preserved_artifacts:
-        cols = "id, name, artifact_type, file_path, description, dependencies, created_by, created_at"
-        placeholders = ", ".join("?" for _ in cols.split(", "))
-        conn.executemany(
-            f"INSERT OR IGNORE INTO coder_artifacts ({cols}) VALUES ({placeholders})",
-            preserved_artifacts,
-        )
-    if preserved_dispatches:
-        conn.executemany(
-            "INSERT INTO dispatches (timestamp, cycle_id, agent, action, round, details, sub_unit, dispatch_mode, "
-            "packet_path, prompt_path, result_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            preserved_dispatches,
-        )
+    conn.execute("PRAGMA foreign_keys=OFF")
+    conn.execute("DELETE FROM edges")
+    conn.execute("DELETE FROM nodes")
+    conn.execute("DELETE FROM file_tracker")
+    conn.execute("PRAGMA foreign_keys=ON")
     conn.commit()
     return conn
 
@@ -348,7 +298,7 @@ def _parse_and_upsert(
     try:
         text = fpath.read_text(encoding="utf-8")
     except (UnicodeDecodeError, ValueError):
-        print(f"  WARN: Skipping {rel} — not valid UTF-8", file=sys.stderr)
+        print(f"  WARN: Skipping {rel} - not valid UTF-8", file=sys.stderr)
         return None
 
     meta = parse_frontmatter(text, filepath=rel)
@@ -359,9 +309,9 @@ def _parse_and_upsert(
     # Warn if frontmatter is missing or empty
     if not meta:
         if text.lstrip().startswith("---"):
-            print(f"  WARN: {rel} starts with --- but has no closing --- — frontmatter not parsed", file=sys.stderr)
+            print(f"  WARN: {rel} starts with --- but has no closing --- - frontmatter not parsed", file=sys.stderr)
         else:
-            print(f"  WARN: No frontmatter in {rel} — using path-derived defaults", file=sys.stderr)
+            print(f"  WARN: No frontmatter in {rel} - using path-derived defaults", file=sys.stderr)
     else:
         unknown = set(meta.keys()) - KNOWN_FRONTMATTER_KEYS
         if unknown:
@@ -369,7 +319,7 @@ def _parse_and_upsert(
         for k, v in meta.items():
             if isinstance(v, str) and "\n" in v:
                 print(
-                    f"  WARN: Multiline value in '{k}' of {rel} — only first line kept. "
+                    f"  WARN: Multiline value in '{k}' of {rel} - only first line kept. "
                     f"All frontmatter values must be single-line.",
                     file=sys.stderr,
                 )
@@ -389,7 +339,7 @@ def _parse_and_upsert(
 
     if seen_ids is not None and node_id in seen_ids:
         print(
-            f"  ERROR: Duplicate ID '{node_id}' — claimed by {seen_ids[node_id]} and {rel}. "
+            f"  ERROR: Duplicate ID '{node_id}' - claimed by {seen_ids[node_id]} and {rel}. "
             f"Skipping {rel} (first file wins).",
             file=sys.stderr,
         )
@@ -609,7 +559,7 @@ def _update_frontmatter_in_file(fpath: Path, updates: dict) -> bool:
     """Read a markdown file, update specific frontmatter keys, write back.
     Returns True on success, False on error (with message printed)."""
     if not fpath.exists():
-        print(f"  ERROR: File not found: {fpath} — run 'build' to refresh DB", file=sys.stderr)
+        print(f"  ERROR: File not found: {fpath} - run 'build' to refresh DB", file=sys.stderr)
         return False
     try:
         text = fpath.read_text(encoding="utf-8")

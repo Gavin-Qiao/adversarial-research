@@ -49,8 +49,12 @@ def test_release_metadata_versions_stay_aligned() -> None:
 
     assert f"## [{expected_version}] -" in Path("CHANGELOG.md").read_text(encoding="utf-8")
     assert codex_manifest["version"] == expected_version
-    assert f'"version": "{expected_version}"' in Path("plugins/claude/.claude-plugin/plugin.json").read_text(encoding="utf-8")
-    assert f'"version": "{expected_version}"' in Path("plugins/claude/.claude-plugin/marketplace.json").read_text(encoding="utf-8")
+    assert f'"version": "{expected_version}"' in Path("plugins/claude/.claude-plugin/plugin.json").read_text(
+        encoding="utf-8"
+    )
+    assert f'"version": "{expected_version}"' in Path("plugins/claude/.claude-plugin/marketplace.json").read_text(
+        encoding="utf-8"
+    )
     assert f'version = "{expected_version}"' in Path("uv.lock").read_text(encoding="utf-8")
 
 

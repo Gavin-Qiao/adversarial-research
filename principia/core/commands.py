@@ -78,6 +78,21 @@ def _resolved_frontmatter_id(
     return node_id or derive_id(rel)
 
 
+def _coerce_int(value: object, default: int = 0) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return default
+    return default
+
+
 def _load_primary_claim(target: Path) -> tuple[Path, dict[str, Any], str]:
     claim_file = _primary_claim_file(target)
     if not claim_file.exists():
@@ -140,7 +155,7 @@ def cmd_new(args: argparse.Namespace) -> None:
     # Ensure it ends with .md
     if not rel.endswith(".md"):
         rel += ".md"
-        print(f"  (appended .md → {rel})")
+        print(f"  (appended .md -> {rel})")
     full = (_cfg.RESEARCH_DIR / rel).resolve()
     # Prevent path traversal outside research/
     _check_path_containment(rel)
@@ -197,7 +212,7 @@ def cmd_falsify(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     if node["status"] == "disproven":
-        print(f"WARN: Node '{node_id}' is already disproven — skipping.")
+        print(f"WARN: Node '{node_id}' is already disproven - skipping.")
         return
 
     if evidence_id:
@@ -225,7 +240,7 @@ def cmd_falsify(args: argparse.Namespace) -> None:
         return
 
     # Confirmation (unless --force or non-interactive)
-    if not force and non_disproven and sys.stdin.isatty():
+    if not force and non_disproven and sys.stdin.isatty() and sys.stdout.isatty():
         print(f"About to disprove '{node_id}' and cascade to {len(non_disproven)} dependent(s):")
         for dep_id, fp, _status in non_disproven:
             print(f"  {dep_id}  ({fp})")
@@ -242,7 +257,7 @@ def cmd_falsify(args: argparse.Namespace) -> None:
     if evidence_id:
         updates["falsified_by"] = evidence_id
     if not _update_frontmatter_in_file(fpath, updates):
-        print(f"ERROR: Could not update file for '{node_id}' — aborting.")
+        print(f"ERROR: Could not update file for '{node_id}' - aborting.")
         sys.exit(1)
     changes.append((node_id, node["file_path"], "disproven"))
 
@@ -320,17 +335,17 @@ def cmd_settle(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     if node["status"] == "proven":
-        print(f"WARN: Node '{node_id}' is already proven — skipping.")
+        print(f"WARN: Node '{node_id}' is already proven - skipping.")
         return
 
     if node["status"] == "disproven":
-        print(f"ERROR: Node '{node_id}' is disproven — cannot prove a disproven node.")
+        print(f"ERROR: Node '{node_id}' is disproven - cannot prove a disproven node.")
         sys.exit(1)
 
     # Mark the node as proven
     fpath = _cfg.RESEARCH_DIR / node["file_path"]
     if not _update_frontmatter_in_file(fpath, {"status": "proven"}):
-        print(f"ERROR: Could not update file for '{node_id}' — aborting.")
+        print(f"ERROR: Could not update file for '{node_id}' - aborting.")
         sys.exit(1)
 
     conn.execute("UPDATE nodes SET status = 'proven' WHERE id = ?", (node_id,))
@@ -738,7 +753,7 @@ def cmd_register(args: argparse.Namespace) -> None:
         ),
     )
     conn.commit()
-    print(f"Registered: {args.id} ({args.name}) — {args.type} at {args.path}")
+    print(f"Registered: {args.id} ({args.name}) - {args.type} at {args.path}")
 
 
 def cmd_artifacts(args: argparse.Namespace) -> None:
@@ -1146,7 +1161,7 @@ def _legacy_cmd_dispatch_log(args: argparse.Namespace) -> None:
     print(f"{'Timestamp':<28} {'Cycle':<25} {'Agent':<12} {'Action':<16} {'Round':<6} Details")
     print("-" * 110)
     for r in rows:
-        rnd = str(r["round"]) if r["round"] is not None else "—"
+        rnd = str(r["round"]) if r["round"] is not None else "-"
         print(
             f"{r['timestamp']:<28} {r['cycle_id']:<25} {r['agent']:<12} {r['action']:<16} {rnd:<6} {r['details'] or ''}"
         )
@@ -1303,7 +1318,7 @@ def cmd_waves(args: argparse.Namespace) -> None:
     for i, wave in enumerate(waves, 1):
         print(f"\nWave {i}:")
         for node in wave:
-            maturity = node.get("maturity") or "—"
+            maturity = node.get("maturity") or "-"
             status = node["status"]
             title = node.get("title") or node["id"]
             print(f"  [{maturity:<15}] {status:<12} {title} ({node['id']})")
@@ -1534,9 +1549,9 @@ def _summarize_dispatch_status(
         if status == "received":
             return f"{claim} has a received sidecar result."
 
-    stale_claim_count = int(dispatch_overview.get("stale_claim_count", 0))
-    waiting_claim_count = int(dispatch_overview.get("waiting_result_claim_count", 0))
-    ready_claim_count = int(dispatch_overview.get("ready_to_send_claim_count", 0))
+    stale_claim_count = _coerce_int(dispatch_overview.get("stale_claim_count", 0))
+    waiting_claim_count = _coerce_int(dispatch_overview.get("waiting_result_claim_count", 0))
+    ready_claim_count = _coerce_int(dispatch_overview.get("ready_to_send_claim_count", 0))
     if stale_claim_count:
         return f"{stale_claim_count} claim(s) have stale handoff metadata."
     if waiting_claim_count:
@@ -1640,7 +1655,7 @@ def _build_operator_guidance(
             claim_path=claim_path,
             cycle=_cycle_from_claim_path(claim_path),
         )
-        summary = warnings[0]["message"] if warnings else reason
+        summary = str(warnings[0]["message"]) if warnings else reason
     elif phase == "complete" or action.startswith("complete_"):
         reason = "At least one claim has completed a verdict cycle, so refresh the synthesis."
         recommended_action = _make_operator_action(kind="runner", command="results", reason=reason)
@@ -2039,7 +2054,7 @@ def cmd_reopen(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     if node["status"] in ("pending", "active"):
-        print(f"WARN: Node '{node_id}' is already {node['status']} — nothing to reopen.")
+        print(f"WARN: Node '{node_id}' is already {node['status']} - nothing to reopen.")
         return
 
     old_status = node["status"]
@@ -2069,14 +2084,14 @@ def cmd_reopen(args: argparse.Namespace) -> None:
                         "UPDATE nodes SET status = ?, confidence = ? WHERE id = ?",
                         (restored_status, restored_conf, dep_id),
                     )
-                    print(f"   Reverted: {dep_id} weakened → {restored_status}")
+                    print(f"   Reverted: {dep_id} weakened -> {restored_status}")
 
     # Update frontmatter — clear falsified_by if present
     updates: dict[str, str] = {"status": "active"}
     if old_status == "disproven":
         updates["falsified_by"] = ""
     if not _update_frontmatter_in_file(fpath, updates):
-        print(f"ERROR: Could not update file for '{node_id}' — aborting.")
+        print(f"ERROR: Could not update file for '{node_id}' - aborting.")
         sys.exit(1)
 
     # Update DB
@@ -2101,7 +2116,7 @@ def cmd_reopen(args: argparse.Namespace) -> None:
     )
     conn.commit()
 
-    print(f"Reopened: {node_id} ({old_status} → active)")
+    print(f"Reopened: {node_id} ({old_status} -> active)")
     print(f"   File: {node['file_path']}")
 
 
@@ -2151,7 +2166,7 @@ def cmd_replace_verdict(args: argparse.Namespace) -> None:
                         "UPDATE nodes SET status = ?, confidence = ? WHERE id = ?",
                         (restored_status, restored_conf, dep_id),
                     )
-                    print(f"Reverted: {dep_id} weakened → {restored_status}")
+                    print(f"Reverted: {dep_id} weakened -> {restored_status}")
     # Clear falsified_by from frontmatter and reset to active
     updates: dict[str, str] = {"status": "active"}
     if claim_meta.get("falsified_by"):

@@ -1013,6 +1013,7 @@ class TestCmdNext:
 
     def test_auto_follows_dashboard_guidance_when_waiting_on_external_result(self, research_dir):
         import json
+
         from principia.core.orchestration import compute_north_star_version
 
         (research_dir / ".north-star.md").write_text("# Locked principle\n", encoding="utf-8")
@@ -2253,6 +2254,7 @@ class TestCmdDashboard:
 
     def test_reports_packet_as_ready_to_send(self, research_dir):
         import json
+
         from principia.core.orchestration import compute_north_star_version
 
         (research_dir / ".north-star.md").write_text("# Locked principle\n", encoding="utf-8")
@@ -2341,6 +2343,7 @@ class TestCmdDashboard:
 
     def test_workspace_warning_includes_non_active_stale_claims(self, research_dir):
         import json
+
         from principia.core.orchestration import compute_north_star_version
 
         (research_dir / ".north-star.md").write_text("# Locked principle\n", encoding="utf-8")
@@ -2481,6 +2484,7 @@ class TestCmdDashboard:
 
     def test_reports_pending_decisions_as_human_action(self, research_dir):
         import json
+
         from principia.core.orchestration import compute_north_star_version
 
         (research_dir / ".north-star.md").write_text("# Locked principle\n", encoding="utf-8")
@@ -2506,6 +2510,7 @@ class TestCmdDashboard:
 
     def test_reports_completed_claims_as_results_refresh(self, research_dir):
         import json
+
         from principia.core.orchestration import compute_north_star_version
 
         (research_dir / ".north-star.md").write_text("# Locked principle\n", encoding="utf-8")
